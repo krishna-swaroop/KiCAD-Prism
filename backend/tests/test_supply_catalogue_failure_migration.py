@@ -43,7 +43,8 @@ class CatalogueFailureMigrationTests(unittest.TestCase):
 
     def row(self, connector_id: str) -> dict:
         return self.conn.execute(
-            "SELECT catalogue_failed_at, catalogue_error, last_error_code FROM supply_connectors WHERE id = %s",
+            "SELECT catalogue_failed_at, catalogue_error, last_error_code, last_error_at "
+            "FROM supply_connectors WHERE id = %s",
             (connector_id,),
         ).fetchone()
 
@@ -56,6 +57,7 @@ class CatalogueFailureMigrationTests(unittest.TestCase):
         self.assertEqual(moved["catalogue_failed_at"], START)
         self.assertEqual(moved["catalogue_error"], "")
         self.assertEqual(moved["last_error_code"], "", "a poll must not read the catalogue's failure as its own")
+        self.assertIsNone(moved["last_error_at"], "a migrated connector is not still flagged as a failing call")
 
     def test_a_provider_error_is_left_alone(self) -> None:
         self.insert("c-poll", "rate_limited", START)
@@ -65,6 +67,7 @@ class CatalogueFailureMigrationTests(unittest.TestCase):
         poll = self.row("c-poll")
         self.assertIsNone(poll["catalogue_failed_at"])
         self.assertEqual(poll["last_error_code"], "rate_limited")
+        self.assertEqual(poll["last_error_at"], START, "a provider error keeps its time")
 
     def test_the_backfill_is_idempotent(self) -> None:
         self.insert("c-old", "catalogue", START)

@@ -81,6 +81,21 @@ class SupplyHealthTests(unittest.TestCase):
         self.assertEqual((row["listings"], row["late"], row["failing"], row["late_by_hours"]), (2, 1, 1, 5.0))
         self.assertTrue(row["oldest_read"].startswith("2026-02-28T06:00"))
 
+    def test_a_failed_catalogue_import_is_reported(self) -> None:
+        from app.services.supply import connector_health
+
+        with self.store.connection() as conn:
+            conn.execute(
+                "UPDATE supply_connectors SET catalogue = TRUE, catalogue_failed_at = %s, "
+                "catalogue_error = 'The catalogue could not be read.' WHERE id = 'c1'",
+                (NOW,),
+            )
+            (row,) = connector_health.connector_health(conn, NOW)
+        self.assertEqual(
+            (row["catalogue_failed_at"], row["catalogue_error"]),
+            (NOW.isoformat(), "The catalogue could not be read."),
+        )
+
     def test_calls_today_are_the_provider_s_day_not_utc_s(self) -> None:
         from app.services.supply import connector_health, quota
 

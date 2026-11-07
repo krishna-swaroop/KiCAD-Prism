@@ -9044,6 +9044,21 @@
             "title": "Calls Today",
             "type": "integer"
           },
+          "catalogue_error": {
+            "title": "Catalogue Error",
+            "type": "string"
+          },
+          "catalogue_failed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalogue Failed At"
+          },
           "connector_id": {
             "title": "Connector Id",
             "type": "string"
@@ -9141,6 +9156,8 @@
           "last_ok_at",
           "last_error_code",
           "last_error_at",
+          "catalogue_failed_at",
+          "catalogue_error",
           "listings",
           "late",
           "failing",

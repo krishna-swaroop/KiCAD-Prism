@@ -276,7 +276,12 @@ class HardeningTests(unittest.TestCase):
         with self.store.connection() as conn:
             watches.add_watch(conn, "Acme", "NE555DR", ACTOR, tier=1)
             conn.commit()
-        self.connectors.record_result(jlc, "rate_limited")
+        with self.store.connection() as conn:  # a poll succeeded, then failed an hour later
+            conn.execute(
+                "UPDATE supply_connectors SET last_ok_at = %s, last_error_code = 'rate_limited', last_error_at = %s WHERE id = %s",
+                (START, START + timedelta(hours=1), jlc),
+            )
+        ok_at = self.connectors.get(jlc)["last_ok_at"]
 
         published = files()
 
@@ -284,9 +289,14 @@ class HardeningTests(unittest.TestCase):
             return published.__getitem__
 
         with self.store.connection() as conn:
-            self.assertEqual(csv_import_service.refresh_catalogues(conn, START, fetch_for=fetch_for), 1)
+            self.assertEqual(csv_import_service.refresh_catalogues(conn, START + timedelta(hours=2), fetch_for=fetch_for), 1)
         shown = self.connectors.get(jlc)
         self.assertEqual(shown["last_error_code"], "rate_limited", "the poll's error stands")
+        self.assertEqual(shown["last_ok_at"], ok_at, "a catalogue import is not a provider call's success")
+        self.assertGreater(
+            datetime.fromisoformat(shown["last_error_at"]), datetime.fromisoformat(shown["last_ok_at"]),
+            "the poll failure still reads as the last call",
+        )
         self.assertIsNone(shown["catalogue_failed_at"])
         self.assertEqual(shown["catalogue_error"], "")
 

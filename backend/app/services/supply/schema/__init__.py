@@ -52,8 +52,8 @@ def add_catalogue_failure_state(conn) -> None:
         prepare=False,
     )
     conn.execute(
-        "UPDATE supply_connectors SET catalogue_failed_at = last_error_at, last_error_code = '' "
-        "WHERE last_error_code = 'catalogue'",
+        "UPDATE supply_connectors SET catalogue_failed_at = last_error_at, last_error_code = '', "
+        "last_error_at = NULL WHERE last_error_code = 'catalogue'",
         prepare=False,
     )
 

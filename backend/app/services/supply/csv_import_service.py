@@ -108,10 +108,11 @@ def refresh_catalogues(conn, now: datetime, *, fetch_for=_fetcher) -> int:
         # On the caller's clock, which ``due`` compares it with.
         conn.execute("UPDATE supply_csv_imports SET imported_at = %s WHERE connector_id = %s", (now, row["id"]))
         conn.execute("UPDATE supply_csv_offers SET fetched_at = %s WHERE connector_id = %s", (now, row["id"]))
-        # A catalogue import says nothing about a provider call's error, and a poll says nothing about this.
+        # A catalogue import says nothing about a provider call's error, and a poll says nothing about this. The import
+        # time is kept in ``supply_csv_imports.imported_at``; ``last_ok_at`` stays a provider call's.
         conn.execute(
-            "UPDATE supply_connectors SET last_ok_at = %s, catalogue_failed_at = NULL, catalogue_error = '' WHERE id = %s",
-            (now, row["id"]),
+            "UPDATE supply_connectors SET catalogue_failed_at = NULL, catalogue_error = '' WHERE id = %s",
+            (row["id"],),
         )
         conn.execute("DELETE FROM supply_discovery_runs WHERE connector_id = %s", (row["id"],))
         read_again(conn, row["id"], now)

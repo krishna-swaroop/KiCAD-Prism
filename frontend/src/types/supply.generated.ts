@@ -414,6 +414,8 @@ export interface ConfirmAliasRequest {
 export interface ConnectorHealth {
   budget: number | null;
   calls_today: number;
+  catalogue_error: string;
+  catalogue_failed_at: string | null;
   connector_id: string;
   enabled: boolean;
   failing: number;
