@@ -424,7 +424,8 @@ class ReleaseBuildRowFencingTests(unittest.TestCase):
                     service.finalize_cancel(job["job_id"], "worker-a", job["fence"])
                 release_build_attempts.settle_build_job(service.get(job["job_id"]))
                 settled = service.get(job["job_id"])["payload"]["pipeline"]["jobs"][0]
-                self.assertEqual([step["status"] for step in settled["steps"]], [step_status, step_status, "success"])
+                # The running step takes the job's end; a step that never started is cancelled either way.
+                self.assertEqual([step["status"] for step in settled["steps"]], [step_status, "cancelled", "success"])
                 self.assertEqual(settled["status"], step_status)
 
 

@@ -12,16 +12,19 @@ from app.services.job_service import JobService, jobs
 
 
 def newest_jobs(
-    *, kind: str = "", artifact_key: str = "", payload_key: str = "", payload_value: str = "",
+    *, kind: str | Sequence[str] = "", artifact_key: str = "", payload_key: str = "", payload_value: str = "",
     statuses: Sequence[str] = (), limit: int = 1, service: JobService = jobs,
 ) -> list[dict[str, Any]]:
     """The newest jobs matching every given filter, newest first."""
 
     clauses: list[str] = []
     params: list[Any] = []
-    if kind:
+    if isinstance(kind, str) and kind:
         clauses.append("kind = %s")
         params.append(kind)
+    elif not isinstance(kind, str) and kind:
+        clauses.append("kind = ANY(%s)")
+        params.append(list(kind))
     if artifact_key:
         clauses.append("artifact_key = %s")
         params.append(artifact_key)

@@ -27,6 +27,7 @@ from app.core.security import (
 from app.services.component_catalog_service import catalog_service
 from app.services.catalog import workflow_policy
 from app.services.catalog_job_service import catalog_jobs
+from app.services.catalog.project_import_sessions import IMPORT_JOB_KINDS
 from app.services.job_queries import newest_jobs
 from app.services.job_service import TERMINAL_STATUSES
 from app.services.local_artifact_store import artifact_store
@@ -523,7 +524,7 @@ def delete_project_import_session(
     user: AuthenticatedUser = Depends(require_catalog_writer),
 ):
     _import_session_for_user(session_id, user)
-    job = newest_jobs(payload_key="session_id", payload_value=session_id)
+    job = newest_jobs(kind=sorted(IMPORT_JOB_KINDS), payload_key="session_id", payload_value=session_id)
     terminal = bool(job and job[0].get("status") in TERMINAL_STATUSES)
     catalog_service.delete_project_import_session(session_id, job_terminal=terminal)
 

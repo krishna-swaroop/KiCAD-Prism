@@ -10,6 +10,8 @@ from app.core.errors import Conflict, NotFound
 from app.services.catalog.normalization import json_loads
 
 RUNNING_STATUSES = frozenset({"queued", "uploading", "scanning"})
+#: The job kinds that run an import session (their payload carries ``session_id``).
+IMPORT_JOB_KINDS = frozenset({"project_component_import", "folder_library_import"})
 
 
 class CatalogProjectImportSessions:
@@ -276,4 +278,4 @@ class CatalogProjectImportSessions:
         return proposal
 
 
-__all__ = ["RUNNING_STATUSES", "CatalogProjectImportSessions"]
+__all__ = ["IMPORT_JOB_KINDS", "RUNNING_STATUSES", "CatalogProjectImportSessions"]

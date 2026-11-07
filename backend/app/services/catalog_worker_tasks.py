@@ -20,7 +20,7 @@ from app.services.job_runtime import (
     RetryableJobError,
 )
 from app.services.catalog.conflicts import CatalogConflict
-from app.services.catalog.project_import_sessions import RUNNING_STATUSES, CatalogProjectImportSessions
+from app.services.catalog.project_import_sessions import IMPORT_JOB_KINDS, RUNNING_STATUSES, CatalogProjectImportSessions
 from app.services.catalog.step_quarantine import StepQuarantine
 from app.services.project_component_import_service import run_project_import_session
 from app.services.library_folder_import_service import run_folder_import_session
@@ -168,7 +168,7 @@ def run_folder_import(context: JobContext) -> dict[str, Any]:
     return {"session_id": session_id, "proposal_count": int((session or {}).get("proposal_count") or 0)}
 
 
-IMPORT_JOB_TYPES = frozenset({"project_component_import", "folder_library_import"})
+IMPORT_JOB_TYPES = IMPORT_JOB_KINDS
 
 
 def settle_import_job(job: Mapping[str, Any]) -> bool:
