@@ -17,9 +17,11 @@ Transactions, one per step:
   a failing proposal creates none of them and the batch stays
   ``needs_fields``. A key that is already defined is an expected outcome
   (``create_field_unless_defined`` returns ``None``), not an error.
-- ``apply``: each item is applied in its own transaction, so a conflict on one
-  item never rolls back another. A ``ValueError`` marks that item ``conflict``
-  in its own transaction. The accounting runs in one final transaction.
+- ``apply``: the batch row is locked for the length of the run, so concurrent
+  applies on one batch are serialized. Each item is applied in its own
+  transaction, so a conflict on one item never rolls back another. A
+  ``ValueError`` marks that item ``conflict`` in its own transaction. The
+  accounting runs in one final transaction.
 """
 
 from __future__ import annotations
@@ -147,33 +149,37 @@ class CatalogMetadataBatchLifecycle:
         item_ids: list[str] | None = None,
         progress_callback: ProgressCallback | None = None,
     ) -> dict[str, Any]:
-        """Apply the batch's valid items (or the selected ones) and record the totals."""
+        """Apply the batch's valid items (or the selected ones) and record the totals.
+
+        The batch row is locked for the whole run, so a concurrent apply on the
+        same batch waits and then reads the items the first one applied.
+        """
         self._initialize()
-        with self._connect() as conn:
-            batch = self._batches.fetch_batch_for_apply(conn, batch_id)
+        with self._connect() as lock_conn:
+            batch = self._batches.lock_batch_for_apply(lock_conn, batch_id)
             if not batch:
                 raise ValueError("Metadata batch not found")
             if str(batch["status"]) == "needs_fields":
                 raise ValueError("Unknown CSV fields must be approved before applying")
-            rows = self._batches.fetch_valid_item_rows(conn, batch_id)
-        selection = self._application.select_valid_item_ids(rows, item_ids)
-        ids = list(selection.ids)
-        if selection.selected and not ids:
-            raise ValueError("None of the selected metadata batch items are valid")
-        applied = 0
-        failed = 0
-        errors: list[dict[str, str]] = []
-        for index, item_id in enumerate(ids):
-            try:
-                self._apply_item(item_id, actor=actor)
-                applied += 1
-            except ValueError as exc:
-                failed += 1
-                errors.append({"item_id": item_id, "error": str(exc)})
-                self._mark_conflict(item_id, str(exc))
-            if progress_callback:
-                progress_callback({"completed": index + 1, "total": len(ids), "applied": applied, "failed": failed})
-        return self._account(batch_id, applied=applied, failed=failed, errors=errors)
+            rows = self._batches.fetch_valid_item_rows(lock_conn, batch_id)
+            selection = self._application.select_valid_item_ids(rows, item_ids)
+            ids = list(selection.ids)
+            if selection.selected and not ids:
+                raise ValueError("None of the selected metadata batch items are valid")
+            applied = 0
+            failed = 0
+            errors: list[dict[str, str]] = []
+            for index, item_id in enumerate(ids):
+                try:
+                    self._apply_item(item_id, actor=actor)
+                    applied += 1
+                except ValueError as exc:
+                    failed += 1
+                    errors.append({"item_id": item_id, "error": str(exc)})
+                    self._mark_conflict(item_id, str(exc))
+                if progress_callback:
+                    progress_callback({"completed": index + 1, "total": len(ids), "applied": applied, "failed": failed})
+            return self._account(lock_conn, batch_id, applied=applied, failed=failed, errors=errors)
 
     def _apply_item(self, item_id: str, *, actor: str) -> None:
         with self._connect() as conn:
@@ -186,21 +192,20 @@ class CatalogMetadataBatchLifecycle:
             conn.commit()
 
     def _account(
-        self, batch_id: str, *, applied: int, failed: int, errors: list[dict[str, str]]
+        self, conn: Any, batch_id: str, *, applied: int, failed: int, errors: list[dict[str, str]]
     ) -> dict[str, Any]:
-        with self._connect() as conn:
-            totals = self._batches.calculate_batch_totals(conn, batch_id)
-            accounting = self._application.account_batch(batch_id, totals, applied, failed, errors)
-            self._batches.finalize_batch(
-                conn,
-                batch_id=batch_id,
-                status=accounting.status,
-                valid_items=accounting.remaining,
-                applied_items=accounting.total_applied,
-                failed_items=accounting.total_failed,
-                updated_at=utc_now_iso(),
-            )
-            conn.commit()
+        totals = self._batches.calculate_batch_totals(conn, batch_id)
+        accounting = self._application.account_batch(batch_id, totals, applied, failed, errors)
+        self._batches.finalize_batch(
+            conn,
+            batch_id=batch_id,
+            status=accounting.status,
+            valid_items=accounting.remaining,
+            applied_items=accounting.total_applied,
+            failed_items=accounting.total_failed,
+            updated_at=utc_now_iso(),
+        )
+        conn.commit()
         return accounting.result
 
 
