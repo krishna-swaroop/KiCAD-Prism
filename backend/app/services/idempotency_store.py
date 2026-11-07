@@ -20,6 +20,8 @@ from app.services.postgres_database import database
 STATE_PENDING = "pending"
 STATE_DONE = "done"
 RETENTION_SECONDS = 24 * 60 * 60
+# Counted from the claim, with no heartbeat or owner: a write running longer than this could be
+# retried while it runs, and its later complete/release would act on the retry's claim.
 PENDING_LEASE_SECONDS = 10 * 60
 
 

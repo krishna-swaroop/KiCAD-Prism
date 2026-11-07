@@ -66,7 +66,7 @@ Send an `Idempotency-Key` header on a `POST`, `PUT`, `PATCH` or `DELETE`. Use a 
 
 - Repeating the request with the same key within 24 hours returns the first response, with the header `Idempotent-Replayed: true`. The work isn't done twice.
 - Reusing a key on the same route with a different query or body is refused with the code `idempotency-key-reused`.
-- A retry that arrives while the first request is still running gets a conflict with the code `idempotency-key-in-progress`. Wait and retry.
+- A retry that arrives while the first request is still running gets a conflict with the code `idempotency-key-in-progress`. Wait and retry. If the first request never finished, its key is freed after 10 minutes and the next retry runs the request.
 - A key is 1 to 255 printable ASCII characters.
 - A response with a 5xx status isn't stored, so a retry runs the request again.
 

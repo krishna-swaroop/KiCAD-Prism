@@ -271,7 +271,9 @@ running the write twice.
 
 - The same key with a different body answers `422` `idempotency-key-reused`.
 - A retry that arrives while the first request is still running answers `409`
-  `idempotency-key-in-progress`.
+  `idempotency-key-in-progress`. A claim whose request never finished (for
+  example, the process died) is released after 10 minutes, and the next retry
+  runs the write.
 - An invalid key answers `400` `idempotency-key-invalid`.
 - A request whose body exceeds 1 MiB is not covered: it passes through and
   carries `Idempotency-Key-Status: skipped-large-body`.
