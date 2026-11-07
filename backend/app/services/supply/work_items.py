@@ -153,7 +153,10 @@ def update(
 
 
 def decide(conn, item_id: str, state: str, *, actor: str, approver: bool, note: str = "") -> dict[str, Any]:
-    """Move an item: QA accepts or rejects it, or opens it again; its owner, its maker or QA marks it done."""
+    """Move an item: QA accepts or rejects it, or opens it again; its owner, its maker or QA marks it done.
+
+    A non-approver cannot close an item QA rejected; QA has to reopen it first.
+    """
 
     actor = actor_text(actor)
     if state not in STATES:
@@ -163,6 +166,8 @@ def decide(conn, item_id: str, state: str, *, actor: str, approver: bool, note: 
         raise NotAllowed("QA and administrators accept, reject or reopen a work item.")
     if state == "done" and not _may_edit(item, actor, approver):
         raise NotAllowed("Only its owner, whoever opened it, or QA may mark a work item done.")
+    if state == "done" and item["state"] == "rejected" and not approver:
+        raise NotAllowed("Only QA and administrators can close a work item QA rejected.")
     row_state, disposition = _MOVE[state]
     now = clock.now()
     conn.execute(
