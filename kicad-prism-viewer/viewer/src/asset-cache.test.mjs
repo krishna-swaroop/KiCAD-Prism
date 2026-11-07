@@ -54,6 +54,30 @@ test("the manifest merge keeps both tabs' entries, the most recently used entry 
   );
 });
 
+test("a key this tab pruned stays pruned when the disk manifest still lists it", () => {
+  const removed = { pruned: 1_800_000_000_000 };
+  const disk = { pruned: { bytes: 4, lastUsed: removed.pruned - 1 } };
+  assert.deepEqual(mergeEntries({}, disk, removed), {});
+  assert.deepEqual(
+    mergeEntries({}, { pruned: { bytes: 4, lastUsed: removed.pruned } }, removed),
+    {},
+    "an entry used at the moment of removal is not newer than it",
+  );
+  assert.deepEqual(
+    mergeEntries({}, { kept: { bytes: 2, lastUsed: removed.pruned - 1 } }, removed),
+    { kept: { bytes: 2, lastUsed: removed.pruned - 1 } },
+    "other keys are untouched",
+  );
+});
+
+test("a disk entry newer than this tab's removal survives the tombstone", () => {
+  const removed = { refetched: 1_800_000_000_000 };
+  const disk = { refetched: { bytes: 4, lastUsed: removed.refetched + 1 } };
+  assert.deepEqual(mergeEntries({}, disk, removed), disk);
+  // A flush merges the same way, so the newer entry is written, not dropped.
+  assert.deepEqual(mergeEntries({}, { refetched: { bytes: 9, lastUsed: removed.refetched + 2 } }, removed).refetched.bytes, 9);
+});
+
 test("prune spares unlisted files inside the grace period and removes older ones", () => {
   const now = 1_800_000_000_000;
   const minute = 60 * 1000;

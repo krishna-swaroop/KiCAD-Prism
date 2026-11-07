@@ -47,6 +47,16 @@ export function fileNameFor(key) {
   return `a_${encodeURIComponent(key)}`;
 }
 
+/** The cache key an OPFS file name stands for, or null when it is not one. */
+function keyForFileName(name) {
+  if (!name.startsWith("a_")) return null;
+  try {
+    return decodeURIComponent(name.slice(2));
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Which entries to delete: those unused for `maxAgeMs`, then the least recently
  * used until the rest fit in `maxBytes`. `entries` maps key → { bytes, lastUsed }.
@@ -68,14 +78,30 @@ export function planPrune(entries, now, { maxAgeMs = CACHE_MAX_AGE_MS, maxBytes 
 }
 
 /**
- * Both tabs' view of the manifest: every key from either side, the more
- * recently used entry winning. A tab whose in-memory entries predate another
- * tab's write still keeps that write when it flushes.
+ * Whether `removed` (key → removal time) makes `entry` stale: this tab deleted
+ * the key and no writer has used it since. A newer entry supersedes the
+ * removal, so a later download of the same key is kept.
  */
-export function mergeEntries(local = {}, disk = {}) {
-  const merged = { ...disk, ...local };
+function tombstoned(removed, key, entry) {
+  const removedAt = Number(removed?.[key] || 0);
+  return removedAt > 0 && Number(entry?.lastUsed || 0) <= removedAt;
+}
+
+/**
+ * Both tabs' view of the manifest: every key from either side, the more
+ * recently used entry winning, except keys this tab removed (`removed`, key →
+ * removedAt). A tab whose in-memory entries predate another tab's write still
+ * keeps that write when it flushes, and a tab that pruned a key keeps it gone
+ * when another tab's stale manifest still lists it.
+ */
+export function mergeEntries(local = {}, disk = {}, removed = {}) {
+  const merged = {};
   for (const [key, entry] of Object.entries(disk)) {
-    if (Number(entry?.lastUsed || 0) > Number(local[key]?.lastUsed || 0)) merged[key] = entry;
+    if (!tombstoned(removed, key, entry)) merged[key] = entry;
+  }
+  for (const [key, entry] of Object.entries(local)) {
+    if (tombstoned(removed, key, entry)) continue;
+    if (Number(entry?.lastUsed || 0) >= Number(merged[key]?.lastUsed || 0)) merged[key] = entry;
   }
   return merged;
 }
@@ -102,6 +128,8 @@ export class AssetCache {
     this.maxAgeMs = maxAgeMs;
     this.maxBytes = maxBytes;
     this.stats = { hits: 0, misses: 0, bypassed: 0, cachedBytes: 0, networkBytes: 0, writeErrors: 0 };
+    /** Keys this tab removed (key → removedAt); the merge drops older disk entries for them. */
+    this.removed = {};
     this.ready = this.init();
     this.flushTimer = null;
   }
@@ -221,24 +249,41 @@ export class AssetCache {
 
   async prune(now = Date.now()) {
     if (!this.directory) return [];
-    const drop = planPrune(this.entries, now, { maxAgeMs: this.maxAgeMs, maxBytes: this.maxBytes });
-    for (const key of drop) {
-      delete this.entries[key];
-      await this.directory.removeEntry(fileNameFor(key)).catch(() => {});
+    let drop = [];
+    try {
+      await this.#withLock(async () => {
+        // Merge first: another tab's entries are candidates too, and its view
+        // must survive the write that follows the deletions.
+        this.entries = mergeEntries(this.entries, await this.#readManifest(), this.removed);
+        drop = planPrune(this.entries, now, { maxAgeMs: this.maxAgeMs, maxBytes: this.maxBytes });
+        for (const key of drop) {
+          delete this.entries[key];
+          this.removed[key] = now;
+          await this.directory.removeEntry(fileNameFor(key)).catch(() => {});
+        }
+        // Files no manifest lists (another tab's torn write, an older manifest)
+        // go too, once they have had the grace period to be listed by their
+        // writer. Only unlisted names need their timestamp.
+        const listed = new Set(Object.keys(this.entries).map(fileNameFor));
+        const files = [];
+        for await (const name of this.directory.keys()) {
+          if (name === MANIFEST || listed.has(name)) continue;
+          const file = await this.directory.getFileHandle(name).then((handle) => handle.getFile()).catch(() => null);
+          files.push({ name, lastModified: file?.lastModified || 0 });
+        }
+        const unlisted = planUnlisted(files, listed, now);
+        for (const name of unlisted) {
+          const key = keyForFileName(name);
+          if (key) this.removed[key] = now;
+          await this.directory.removeEntry(name).catch(() => {});
+        }
+        // Deletions and the manifest are one atomic plan: a union merge would
+        // otherwise put a pruned key back on the next flush.
+        if (drop.length || unlisted.length) await this.#writeManifest(this.entries);
+      });
+    } catch {
+      this.stats.writeErrors += 1;
     }
-    // Files no manifest lists (another tab's torn write, an older manifest) go
-    // too, once they have had the grace period to be listed by their writer.
-    const listed = new Set(Object.keys(this.entries).map(fileNameFor));
-    const files = [];
-    for await (const name of this.directory.keys()) {
-      if (name === MANIFEST) continue;
-      const file = await this.directory.getFileHandle(name).then((handle) => handle.getFile()).catch(() => null);
-      files.push({ name, lastModified: file?.lastModified || 0 });
-    }
-    for (const name of planUnlisted(files, listed, now)) {
-      await this.directory.removeEntry(name).catch(() => {});
-    }
-    if (drop.length) await this.flush();
     return drop;
   }
 
@@ -246,11 +291,17 @@ export class AssetCache {
   async clear() {
     await this.ready;
     if (!this.directory) return;
+    const now = Date.now();
+    const known = Object.keys(this.entries || {});
     this.entries = {};
     try {
       await this.#withLock(async () => {
+        for (const key of [...known, ...Object.keys(await this.#readManifest())]) this.removed[key] = now;
         for await (const name of this.directory.keys()) {
-          if (name !== MANIFEST) await this.directory.removeEntry(name).catch(() => {});
+          if (name === MANIFEST) continue;
+          const key = keyForFileName(name);
+          if (key) this.removed[key] = now;
+          await this.directory.removeEntry(name).catch(() => {});
         }
         await this.#writeManifest({});
       });
@@ -305,9 +356,10 @@ export class AssetCache {
     if (!this.directory) return;
     try {
       await this.#withLock(async () => {
-        // Re-read first: another tab's entries must survive this write, and
-        // the merged set becomes this tab's view for its next prune.
-        this.entries = mergeEntries(this.entries, await this.#readManifest());
+        // Re-read first: another tab's entries must survive this write, keys
+        // this tab removed must not, and the merged set becomes this tab's view
+        // for its next prune.
+        this.entries = mergeEntries(this.entries, await this.#readManifest(), this.removed);
         await this.#writeManifest(this.entries);
       });
     } catch {
