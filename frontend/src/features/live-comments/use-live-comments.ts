@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { fetchApi } from "@/lib/api";
+import { commentLiveAvailable } from "@/lib/auth";
 import { normalizeComment } from "@/lib/comment-overlays";
 import type { Comment, CommentChangeEvent, CommentsFile } from "@/types/comments";
 
@@ -9,7 +10,7 @@ const MAX_RECONNECT_MS = 30_000;
 /** Beyond this many changed threads in one burst, one snapshot is cheaper. */
 const MAX_THREAD_REFRESH = 20;
 
-export type CommentConnectionStatus = "loading" | "live" | "reconnecting";
+export type CommentConnectionStatus = "loading" | "connecting" | "live" | "polling" | "reconnecting";
 
 type CommentScope =
     | { kind: "canvas"; revision?: string }
@@ -104,10 +105,21 @@ export function useLiveComments(projectId: string, scope: CommentScope): LiveCom
         const pendingThreads = new Map<string, number>();
         let retryCount = 0;
         let socket: WebSocket | null = null;
+        // "polling" means no socket will open: the backend turned live comments
+        // off, or the browser has no WebSocket. The banners ignore it.
+        let polling = false;
+        // Reconnecting is only true once a connection has actually been lost.
+        let disconnected = false;
         let refreshTimer: ReturnType<typeof setTimeout> | null = null;
         let retryTimer: ReturnType<typeof setTimeout> | null = null;
         let pollTimer: ReturnType<typeof setInterval> | null = null;
         let requestController: AbortController | null = null;
+
+        const connectionStatus = (): CommentConnectionStatus => {
+            if (polling) return "polling";
+            if (socket?.readyState === 1) return "live";
+            return disconnected ? "reconnecting" : "connecting";
+        };
 
         const updateStatus = (status: CommentConnectionStatus, error?: string | null) => {
             if (disposed) return;
@@ -227,13 +239,13 @@ export function useLiveComments(projectId: string, scope: CommentScope): LiveCom
                 setState(() => ({
                     key,
                     comments: payload.comments.map(normalizeComment),
-                    status: socket?.readyState === 1 ? "live" : "reconnecting",
+                    status: connectionStatus(),
                     error: null,
                     hasLoaded: true,
                 }));
             } catch (error) {
                 if (disposed || controller.signal.aborted) return;
-                updateStatus(socket?.readyState === 1 ? "live" : "reconnecting",
+                updateStatus(connectionStatus(),
                     error instanceof Error ? error.message : "Comments could not be loaded.");
             } finally {
                 requestInFlight = false;
@@ -262,14 +274,18 @@ export function useLiveComments(projectId: string, scope: CommentScope): LiveCom
             }, delay);
         };
         const connect = () => {
-            if (disposed || typeof WebSocket === "undefined") {
+            if (disposed) return;
+            if (polling || typeof WebSocket === "undefined") {
+                polling = true;
+                updateStatus("polling");
                 startFallbackPoll();
                 return;
             }
             try {
                 socket = new WebSocket(socketUrl(projectId, cursor));
             } catch {
-                updateStatus("reconnecting");
+                disconnected = true;
+                updateStatus(connectionStatus());
                 startFallbackPoll();
                 reconnect();
                 return;
@@ -277,6 +293,7 @@ export function useLiveComments(projectId: string, scope: CommentScope): LiveCom
             socket.onopen = () => {
                 if (disposed) return;
                 retryCount = 0;
+                disconnected = false;
                 stopFallbackPoll();
                 updateStatus("live");
                 // Reconcile any edits between the last snapshot and socket open.
@@ -305,7 +322,8 @@ export function useLiveComments(projectId: string, scope: CommentScope): LiveCom
             socket.onerror = () => socket?.close();
             socket.onclose = () => {
                 if (disposed) return;
-                updateStatus("reconnecting");
+                disconnected = true;
+                updateStatus(connectionStatus());
                 startFallbackPoll();
                 reconnect();
             };
@@ -317,7 +335,21 @@ export function useLiveComments(projectId: string, scope: CommentScope): LiveCom
         refreshRef.current = scheduleRefresh;
         document.addEventListener("visibilitychange", onVisible);
         startFallbackPoll();
-        void readSnapshot().finally(connect);
+        // Read the snapshot now; open the socket once both it and the deployment
+        // setting have answered, so the socket resumes from the snapshot cursor.
+        const snapshotReady = readSnapshot();
+        void commentLiveAvailable().then((enabled) => {
+            if (disposed) return;
+            if (!enabled) {
+                polling = true;
+                updateStatus("polling");
+                startFallbackPoll();
+                return;
+            }
+            void snapshotReady.then(() => {
+                if (!disposed) connect();
+            });
+        });
 
         return () => {
             disposed = true;

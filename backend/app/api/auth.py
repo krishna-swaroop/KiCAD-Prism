@@ -105,6 +105,8 @@ class AuthConfig(BaseModel):
     workspace_name: str
     # Its routes 404 when off; the frontend asks here instead of probing one.
     sim_studio_enabled: bool = False
+    # Off, the live socket refuses every connection; the frontend polls instead.
+    comment_live_enabled: bool = True
     supply_enabled: bool = True
 
 
@@ -234,6 +236,7 @@ async def get_auth_config():
         password_auth_enabled=password_auth_enabled(),
         workspace_name=settings.WORKSPACE_NAME,
         sim_studio_enabled=settings.PRISM_SIM_STUDIO_ENABLED,
+        comment_live_enabled=settings.PRISM_COMMENT_LIVE_ENABLED,
         supply_enabled=settings.PRISM_SUPPLY_ENABLED,
     )
 

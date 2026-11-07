@@ -1765,6 +1765,11 @@
             "title": "Auth Enabled",
             "type": "boolean"
           },
+          "comment_live_enabled": {
+            "default": true,
+            "title": "Comment Live Enabled",
+            "type": "boolean"
+          },
           "dev_mode": {
             "title": "Dev Mode",
             "type": "boolean"

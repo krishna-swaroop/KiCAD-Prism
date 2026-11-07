@@ -41,6 +41,25 @@ export function fetchAuthConfig(signal?: AbortSignal) {
   );
 }
 
+let commentLiveAvailability: Promise<boolean> | null = null;
+
+/**
+ * Whether the backend streams comment changes (PRISM_COMMENT_LIVE_ENABLED).
+ * Off, its socket closes immediately, so the client polls instead. A failed
+ * config read keeps the socket: the setting is on unless the backend says off.
+ */
+export function commentLiveAvailable(): Promise<boolean> {
+  commentLiveAvailability ??= fetchAuthConfig().then(
+    (config) => config.comment_live_enabled !== false,
+    () => {
+      // Not remembered: the next caller asks again.
+      commentLiveAvailability = null;
+      return true;
+    },
+  );
+  return commentLiveAvailability;
+}
+
 export function fetchCurrentUser(signal?: AbortSignal) {
   return fetchJson<User>(
     "/api/auth/me",
