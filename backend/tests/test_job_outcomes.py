@@ -509,7 +509,7 @@ class CatalogImportJobSettleTests(unittest.TestCase):
             mock.patch.object(self.tasks.catalog_service, "get_project_import_session", side_effect=get_session),
             mock.patch.object(self.tasks.catalog_service, "update_project_import_session", side_effect=update_session),
             mock.patch.object(self.tasks, "_running_import_session_ids", side_effect=running),
-            mock.patch("app.services.job_service.jobs.newest_job", return_value=[self._job()]),
+            mock.patch("app.services.job_queries.newest_jobs", return_value=[self._job()]),
         )
 
     def test_a_failed_or_cancelled_job_fails_its_running_session(self) -> None:

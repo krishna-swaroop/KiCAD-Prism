@@ -195,9 +195,9 @@ def _running_import_session_ids(session_ids: list[str]) -> set[str]:
 
 
 def _unsettled_import_job_ids(kind: str) -> list[str]:
-    from app.services.job_service import jobs as job_service
+    from app.services.job_queries import newest_jobs
 
-    ended = job_service.newest_job(kind=kind, statuses=("failed", "cancelled"), limit=100)
+    ended = newest_jobs(kind=kind, statuses=("failed", "cancelled"), limit=100)
     session_ids = [str((job.get("payload") or {}).get("session_id") or "") for job in ended]
     running = _running_import_session_ids([session_id for session_id in session_ids if session_id])
     return [

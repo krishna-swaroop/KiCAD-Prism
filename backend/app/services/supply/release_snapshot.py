@@ -44,9 +44,9 @@ def _state(conn, project_id: str, build_id: str, state: str, reason: str = "", *
 def _ended_job(build_id: str) -> dict[str, Any] | None:
     """The snapshot job of ``build_id`` when it ended without success."""
 
-    from app.services.job_service import jobs as job_service
+    from app.services.job_queries import newest_jobs
 
-    found = job_service.newest_job(kind=JOB_KIND, artifact_key=artifact_key(build_id))
+    found = newest_jobs(kind=JOB_KIND, artifact_key=artifact_key(build_id))
     if not found or found[0].get("status") not in {"failed", "cancelled"}:
         return None
     return found[0]

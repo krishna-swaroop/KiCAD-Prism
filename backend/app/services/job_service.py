@@ -689,34 +689,6 @@ class JobService:
             ).fetchall()
         return [str(row["id"]) for row in rows]
 
-    def newest_job(
-        self, *, kind: str = "", artifact_key: str = "", payload_key: str = "",
-        payload_value: str = "", statuses: Sequence[str] = (), limit: int = 1,
-    ) -> list[dict[str, Any]]:
-        """The newest jobs matching the filters (a kind's end hook and its readers)."""
-        clauses: list[str] = []
-        params: list[Any] = []
-        if kind:
-            clauses.append("kind = %s")
-            params.append(kind)
-        if artifact_key:
-            clauses.append("artifact_key = %s")
-            params.append(artifact_key)
-        if payload_key and payload_value:
-            clauses.append("payload->>%s = %s")
-            params.extend((payload_key, payload_value))
-        if statuses:
-            clauses.append("status = ANY(%s)")
-            params.append(list(statuses))
-        self.initialize()
-        with self._connect() as conn:
-            conn.execute("SET search_path TO workspace, public")
-            rows = conn.execute(
-                f"SELECT * FROM ws_jobs WHERE {' AND '.join(clauses) or 'TRUE'} ORDER BY updated_at DESC LIMIT %s",
-                (*params, limit),
-            ).fetchall()
-        return [self._decode(row) for row in rows]
-
     def register_fenced_artifacts(
         self,
         job_id: str,
