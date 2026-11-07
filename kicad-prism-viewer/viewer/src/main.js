@@ -20,6 +20,12 @@ import {
   planComponentVisibility,
 } from "./component-visibility.js";
 import { componentRetryDue, noteComponentFailure } from "./component-retry.js";
+import {
+  applyIsolationPrefs,
+  applyNetProbePrefs,
+  applyRestorePrefs,
+  planShowBoard,
+} from "./visibility-prefs.js";
 import { escapeHtml } from "./escape-html.js";
 import { findNetByName } from "./net-emphasis.js";
 import { hasCommandModifier, isTypingTarget } from "./key-target.js";
@@ -2769,21 +2775,13 @@ function emphasizedNetIds() {
 }
 
 function applyNetProbeVisibility() {
-  // Snapshot prefs only when leaving a non-probe visibility state so chained
-  // net probes do not overwrite the user's last ON preferences with false.
-  if (state.showBoard || state.showComponents) {
-    state.savedShowBoard = state.showBoard;
-    state.savedShowComponents = state.showComponents;
-  }
-  state.showBoard = false;
-  state.showComponents = false;
+  applyNetProbePrefs(state);
   syncNetIsolationControls();
   if (typeof refreshControls === "function") refreshControls();
 }
 
 function restoreViewVisibilityPrefs() {
-  state.showBoard = state.savedShowBoard !== false;
-  state.showComponents = state.savedShowComponents !== false;
+  applyRestorePrefs(state);
   syncNetIsolationControls();
   if (typeof refreshControls === "function") refreshControls();
 }
@@ -4354,15 +4352,7 @@ function setNetIsolation(enabled) {
   // Restore the visibility that was current when Isolate was entered — not
   // savedShowBoard (user prefs for Esc). Net-probe already hides the board;
   // unisolating must not turn the substrate back on.
-  if (next && !wasIsolating) {
-    state.preIsolationShowBoard = state.showBoard;
-    state.showBoard = false;
-  } else if (!next && wasIsolating) {
-    if (typeof state.preIsolationShowBoard === "boolean") {
-      state.showBoard = state.preIsolationShowBoard;
-    }
-    state.preIsolationShowBoard = null;
-  }
+  applyIsolationPrefs(state, wasIsolating, next);
   syncNetIsolationControls();
   refreshControls();
 }
@@ -4445,10 +4435,15 @@ function applyLayerPreset(preset, placementKey = null) {
 }
 
 function setShowBoard(visible) {
-  state.showBoard = Boolean(visible);
-  state.savedShowBoard = state.showBoard;
-  if (state.showBoard && state.isolateNet) setNetIsolation(false);
-  else syncNetIsolationControls();
+  const plan = planShowBoard(state, visible);
+  // Exit isolation before applying the toggle: setNetIsolation(false) restores
+  // the pre-isolation snapshot, then the explicit value wins and the snapshot
+  // is dropped so a later exit cannot override it.
+  if (plan.exitIsolation) setNetIsolation(false);
+  state.showBoard = plan.showBoard;
+  state.savedShowBoard = plan.showBoard;
+  state.preIsolationShowBoard = plan.preIsolationShowBoard;
+  syncNetIsolationControls();
 }
 
 function setShowComponents(visible) {
@@ -4797,12 +4792,12 @@ function clearSelection() {
   state.selectionAnchor = null;
   const stillEmphasised = anyEmphasis();
   const wasIsolating = state.isolateNet;
-  if (wasIsolating && !stillEmphasised) setNetIsolation(false);
-  else if (!stillEmphasised) {
-    // Still clear isolation bookkeeping without forcing substrate ON.
-    state.isolateNet = false;
+  if (!stillEmphasised) {
+    // Exit through the same transition that restores the pre-isolation
+    // snapshot, then apply the pre-probe preference.
+    setNetIsolation(false);
+    restoreViewVisibilityPrefs();
   } else if (wasIsolating) applyNetIsolationLayers();
-  if (!stillEmphasised) restoreViewVisibilityPrefs();
   schematicScene.activeNetUid = "";
   if (schematicRenderer) schematicRenderer.activeNetUid = "";
   schematicDomRenderer?.setSelection(null);
