@@ -153,7 +153,7 @@ class CatalogMetadataBatches:
         committed instead of reading them as still valid.
         """
         return conn.execute(
-            "SELECT * FROM catalog_metadata_batches WHERE id = %s FOR UPDATE", (batch_id,)
+            "SELECT * FROM catalog_metadata_batches WHERE id = %s FOR NO KEY UPDATE", (batch_id,)
         ).fetchone()
 
     @staticmethod
