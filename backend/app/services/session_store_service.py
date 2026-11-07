@@ -48,6 +48,38 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _idle_timeout_minutes() -> int:
+    """The configured idle timeout; 0 disables idle expiry."""
+    return max(0, int(settings.SESSION_IDLE_TIMEOUT_MINUTES or 0))
+
+
+def _live_session_sql(prefix: str = "") -> str:
+    """SQL predicate for a session that may still authenticate.
+
+    `load_session` and `list_sessions` share this so an idle-expired session is
+    never listed as live. It binds the idle timeout twice.
+    """
+    return (
+        f"{prefix}revoked_at IS NULL"
+        f" AND {prefix}expires_at > NOW()"
+        f" AND (%s = 0 OR {prefix}last_seen_at + make_interval(mins => %s) > NOW())"
+    )
+
+
+def _idle_expired_sql(prefix: str = "") -> str:
+    """SQL predicate for a session that is dead only because of the idle timeout.
+
+    A subset of `NOT _live_session_sql`, used to record why it was revoked. It
+    also binds the idle timeout twice.
+    """
+    return (
+        f"{prefix}revoked_at IS NULL"
+        f" AND {prefix}expires_at > NOW()"
+        f" AND %s <> 0"
+        f" AND {prefix}last_seen_at + make_interval(mins => %s) <= NOW()"
+    )
+
+
 def session_id_digest(session_id: str) -> str:
     return hashlib.sha256(session_id.encode("utf-8")).hexdigest()
 
@@ -126,38 +158,44 @@ def load_session(session_id: str) -> SessionRecord | None:
 
     with database.connection() as connection:
         connection.execute("SET search_path TO workspace, public")
+        idle_minutes = _idle_timeout_minutes()
         row = connection.execute(
-            """
+            f"""
             SELECT s.email, s.name, s.picture, s.created_at, s.last_seen_at, s.expires_at,
-                   s.revoked_at, s.user_id,
-                   COALESCE(c.must_change_password, FALSE) AS password_change_required
+                   s.user_id,
+                   COALESCE(c.must_change_password, FALSE) AS password_change_required,
+                   ({_live_session_sql("s.")}) AS live,
+                   ({_idle_expired_sql("s.")}) AS idle_expired
             FROM user_sessions s
             LEFT JOIN user_credentials c ON c.user_id = s.user_id AND s.user_id <> ''
             WHERE s.session_digest = %s
             """,
-            (session_id_digest(session_id),),
+            (
+                idle_minutes,
+                idle_minutes,
+                idle_minutes,
+                idle_minutes,
+                session_id_digest(session_id),
+            ),
         ).fetchone()
 
-        if row is None or row["revoked_at"] is not None:
+        if row is None:
+            return None
+
+        if not row["live"]:
+            if row["idle_expired"]:
+                connection.execute(
+                    """
+                    UPDATE user_sessions
+                    SET revoked_at = NOW(), revoked_reason = 'idle_timeout'
+                    WHERE session_digest = %s AND revoked_at IS NULL
+                    """,
+                    (session_id_digest(session_id),),
+                )
+                connection.commit()
             return None
 
         now = _now()
-        if row["expires_at"] <= now:
-            return None
-
-        idle_minutes = settings.SESSION_IDLE_TIMEOUT_MINUTES
-        if idle_minutes and row["last_seen_at"] + timedelta(minutes=idle_minutes) <= now:
-            connection.execute(
-                """
-                UPDATE user_sessions
-                SET revoked_at = NOW(), revoked_reason = 'idle_timeout'
-                WHERE session_digest = %s AND revoked_at IS NULL
-                """,
-                (session_id_digest(session_id),),
-            )
-            connection.commit()
-            return None
-
         if (now - row["last_seen_at"]).total_seconds() >= _TOUCH_INTERVAL_SECONDS:
             connection.execute(
                 "UPDATE user_sessions SET last_seen_at = NOW() WHERE session_digest = %s",
@@ -231,16 +269,17 @@ def revoke_sessions_for_email(email: str, *, reason: str = "revoked", keep_sessi
 
 def list_sessions(email: str) -> list[dict[str, Any]]:
     initialize_session_store()
+    idle_minutes = _idle_timeout_minutes()
     with database.connection() as connection:
         connection.execute("SET search_path TO workspace, public")
         rows = connection.execute(
-            """
+            f"""
             SELECT session_digest, created_at, last_seen_at, expires_at, user_agent, client_ip
             FROM user_sessions
-            WHERE email = %s AND revoked_at IS NULL AND expires_at > NOW()
+            WHERE email = %s AND {_live_session_sql()}
             ORDER BY last_seen_at DESC
             """,
-            (email.strip().lower(),),
+            (email.strip().lower(), idle_minutes, idle_minutes),
         ).fetchall()
 
     return [
