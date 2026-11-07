@@ -83,13 +83,11 @@ describe("DcDropStudio board reads", () => {
         vi.mocked(session.loadTree).mockResolvedValue(tree() as never);
     });
 
-    it("holds the board reads until the branch head is known", async () => {
+    it("reads at HEAD until the branch head is known, then at the head", async () => {
         const { rerender } = render(panel({}));
         await screen.findByText("Head-following setup");
-
-        expect(session.boardIndex).not.toHaveBeenCalled();
-        expect(session.candidatesFor).not.toHaveBeenCalled();
-        expect(session.semanticIndexFor).not.toHaveBeenCalled();
+        // No branch list yet: the canvas still gets a board, read at HEAD.
+        await waitFor(() => expect(session.boardIndex).toHaveBeenCalledWith("p1", undefined));
 
         rerender(panel({ headCommit: "head-sha" }));
         await waitFor(() => expect(session.boardIndex).toHaveBeenCalledWith("p1", "head-sha"));
