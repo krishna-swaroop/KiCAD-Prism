@@ -18,6 +18,10 @@ vi.mock("@/lib/api", async (importOriginal) => {
 
 vi.mock("@/components/markdown-content", () => ({ MarkdownContent: () => null }));
 vi.mock("@/components/release-studio/ReleaseStudioPanel", () => ({ ReleaseStudioPanel: () => null }));
+vi.mock("@/components/sim-studio/use-sim-studio-available", () => ({ useSimStudioAvailable: () => true }));
+vi.mock("@/components/sim-studio/SimStudioPanel", () => ({
+    SimStudioPanel: ({ headCommit }: { headCommit?: string }) => <div>studio at {headCommit}</div>,
+}));
 vi.mock("@/components/visualizer", () => ({
     Visualizer: ({ commit }: { commit: string | null }) => <div>viewer at {commit}</div>,
 }));
@@ -127,6 +131,16 @@ describe("ProjectDetailPage branch polling", () => {
         expect(screen.getByText("viewer at a1")).toBeInTheDocument();
         fireEvent.click(offer);
         expect(await screen.findByText("viewer at b2")).toBeInTheDocument();
+    });
+
+    it("gives the simulation studio the resolved branch head, and a new one after it moves", async () => {
+        renderPage("/project/p1?section=simulation-studio");
+        expect(await screen.findByText("studio at a1")).toBeInTheDocument();
+
+        BRANCHES = { branches: [{ ...MAIN, hash: "b2", commit: "b2" }] };
+        await invalidateServerState(["project", "p1", "branches"]);
+
+        expect(await screen.findByText("studio at b2")).toBeInTheDocument();
     });
 
     it("stays up while it reads the overview again for the branch head, so open sections are not loaded twice", async () => {

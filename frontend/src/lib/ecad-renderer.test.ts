@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assetContentUrl,
   loadAssetText,
+  loadEcadRenderer,
   symbolUnitCount,
   symbolUnitLabel,
 } from "./ecad-renderer";
@@ -48,6 +49,19 @@ describe("symbol units", () => {
   it("names units the way KiCad suffixes a reference", () => {
     expect(symbolUnitLabel(1)).toBe("Unit A");
     expect(symbolUnitLabel(2)).toBe("Unit B");
+  });
+});
+
+describe("renderer loading", () => {
+  it("retries an import that failed instead of caching the rejection", async () => {
+    const renderer = { parseSymbolLibrary: vi.fn() };
+    const load = vi.fn()
+      .mockRejectedValueOnce(new Error("chunk failed"))
+      .mockResolvedValueOnce(renderer);
+
+    await expect(loadEcadRenderer(load)).rejects.toThrow("chunk failed");
+    await expect(loadEcadRenderer(load)).resolves.toBe(renderer);
+    expect(load).toHaveBeenCalledTimes(2);
   });
 });
 

@@ -83,10 +83,19 @@ export interface EcadRenderer {
  */
 let rendererModule: Promise<EcadRenderer> | null = null;
 
-export function loadEcadRenderer(): Promise<EcadRenderer> {
+type RendererImport = (url: string) => Promise<unknown>;
+
+const importRenderer: RendererImport = (url) => import(/* @vite-ignore */ url);
+
+export function loadEcadRenderer(loadModule: RendererImport = importRenderer): Promise<EcadRenderer> {
   const url = new URL(ECAD_RENDERER_URL, window.location.href).href;
-  rendererModule ??= import(/* @vite-ignore */ url).then(
+  rendererModule ??= loadModule(url).then(
     (module) => module as unknown as EcadRenderer,
+    (error) => {
+      // A failed chunk load is not the renderer: let the next preview retry.
+      rendererModule = null;
+      throw error;
+    },
   );
   return rendererModule;
 }

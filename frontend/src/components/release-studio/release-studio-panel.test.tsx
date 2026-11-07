@@ -1,4 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ReleaseStudioPanel } from "./ReleaseStudioPanel";
@@ -66,6 +68,21 @@ vi.mock("@/lib/jobs", () => ({
 }));
 
 import * as api from "./api";
+
+/** What the router believes the URL is, which `window.location` cannot show in a memory router. */
+function LocationProbe() {
+    const location = useLocation();
+    return <output data-testid="router-location">{location.pathname}{location.search}</output>;
+}
+
+function renderPanel(panel: ReactElement) {
+    return render(
+        <MemoryRouter initialEntries={[`${window.location.pathname}${window.location.search}`]}>
+            <LocationProbe />
+            {panel}
+        </MemoryRouter>,
+    );
+}
 
 const candidate: ReleaseCandidate = {
     id: "cand-1",
@@ -209,7 +226,7 @@ describe("ReleaseStudioPanel", () => {
     });
 
     it("keeps a viewer out of the New release wizard", async () => {
-        render(<ReleaseStudioPanel projectId="p1" canMutate={false} userRole="viewer" />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate={false} userRole="viewer" />);
         const current = await screen.findByRole("tab", { name: /^Current$/i });
         await waitFor(() => expect(current).toHaveAttribute("aria-selected", "true"));
         expect(screen.queryByRole("tab", { name: /New release/i })).toBeNull();
@@ -218,7 +235,7 @@ describe("ReleaseStudioPanel", () => {
 
     it("starts a viewer with no current release on History", async () => {
         vi.mocked(api.listCandidates).mockResolvedValue([]);
-        render(<ReleaseStudioPanel projectId="p1" canMutate={false} userRole="viewer" />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate={false} userRole="viewer" />);
         const history = await screen.findByRole("tab", { name: /^History$/i });
         await waitFor(() => expect(history).toHaveAttribute("aria-selected", "true"));
         expect(screen.queryByRole("tab", { name: /New release/i })).toBeNull();
@@ -226,13 +243,13 @@ describe("ReleaseStudioPanel", () => {
     });
 
     it("opens a designer on the New release wizard", async () => {
-        render(<ReleaseStudioPanel projectId="p1" canMutate userRole="designer" />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate userRole="designer" />);
         expect(await screen.findByRole("heading", { name: /^Source$/i })).toBeTruthy();
         expect(screen.getByRole("tab", { name: /New release/i })).toHaveAttribute("aria-selected", "true");
     });
 
     it("opens a new release on Source and keeps the build action behind identity", async () => {
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         expect(await screen.findByRole("heading", { name: /^Source$/i })).toBeTruthy();
         expect(screen.getByRole("navigation", { name: /run stages/i }).textContent).toContain("Identity");
         expect(screen.getByRole("navigation", { name: /run stages/i }).textContent).toContain("Manufacturing");
@@ -246,19 +263,19 @@ describe("ReleaseStudioPanel", () => {
             ipc: { manufacturing: [], assembly: [] },
             forge: { kind: "github", name: "GitHub", host: "github.com", owner_repo: "org/repo", token_configured: true, token_hint: "" },
         });
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         expect(await screen.findByRole("button", { name: /^Continue$/i })).toBeDisabled();
     });
 
     it("discovers KiCad files at the selected revision", async () => {
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await waitFor(() => expect(api.getSource).toHaveBeenCalledWith("p1", "abcdef12abcdef12abcdef12abcdef12abcdef12"));
         expect(await screen.findByDisplayValue("board.kicad_pcb")).toBeTruthy();
         expect(screen.getByDisplayValue("board.kicad_sch")).toBeTruthy();
     });
 
     it("remembers source picks when continuing to identity", async () => {
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await continueToIdentity();
         expect(api.saveSourceDefaults).toHaveBeenCalledWith("p1", {
             board: "board.kicad_pcb",
@@ -270,7 +287,7 @@ describe("ReleaseStudioPanel", () => {
 
     it("still continues when remembering source picks fails", async () => {
         vi.mocked(api.saveSourceDefaults).mockRejectedValue(new Error("defaults unavailable"));
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await continueToIdentity();
         expect(screen.getByText("defaults unavailable")).toBeTruthy();
     });
@@ -282,7 +299,7 @@ describe("ReleaseStudioPanel", () => {
             { hash: tip.slice(0, 7), full_hash: tip, author: "designer", email: "d@example.com", date: "2026-08-11T00:00:00Z", message: "tip" },
             { hash: historical.slice(0, 7), full_hash: historical, author: "designer", email: "d@example.com", date: "2026-08-10T00:00:00Z", message: "historical" },
         ]);
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         const revision = await screen.findByLabelText("Revision");
         fireEvent.change(revision, { target: { value: historical } });
         await waitFor(() => expect(api.getSource).toHaveBeenCalledWith("p1", historical));
@@ -291,7 +308,7 @@ describe("ReleaseStudioPanel", () => {
 
     it("blocks Identity when the tag already exists", async () => {
         vi.mocked(api.tagExists).mockResolvedValue(true);
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await continueToIdentity();
         fireEvent.change(screen.getByLabelText("Tag"), { target: { value: "v1.0.0" } });
         fireEvent.change(screen.getByLabelText("Document Name"), { target: { value: "USBPD-100" } });
@@ -301,7 +318,7 @@ describe("ReleaseStudioPanel", () => {
 
     it("disables Identity Continue while the tag check is in flight", async () => {
         vi.mocked(api.tagExists).mockImplementation(() => new Promise(() => {}));
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await continueToIdentity();
         fireEvent.change(screen.getByLabelText("Tag"), { target: { value: "v1.0.0" } });
         fireEvent.change(screen.getByLabelText("Document Name"), { target: { value: "USBPD-100" } });
@@ -311,14 +328,14 @@ describe("ReleaseStudioPanel", () => {
 
     it("accepts a pasted full SHA that is not in the recent-commit list", async () => {
         const historical = "1".repeat(40);
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await screen.findByLabelText("Revision");
         fireEvent.change(screen.getByLabelText("Or paste a full SHA"), { target: { value: historical } });
         await waitFor(() => expect(api.getSource).toHaveBeenCalledWith("p1", historical));
     });
 
     it("replays Identity from the configuration snapshot after enqueue", async () => {
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await selectHistoryRun();
         fireEvent.click(await screen.findByRole("button", { name: /Identity/i }));
         expect(screen.getByRole("heading", { name: /Release identity/i })).toBeTruthy();
@@ -328,7 +345,7 @@ describe("ReleaseStudioPanel", () => {
     });
 
     it("keeps completed ticks when inspecting a finished run", async () => {
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await openOutputs();
         const rail = screen.getByRole("navigation", { name: /run stages/i });
         const states = () => Array.from(rail.querySelectorAll("[data-state]")).map((node) => node.getAttribute("data-state"));
@@ -355,7 +372,7 @@ describe("ReleaseStudioPanel", () => {
                 created_at: "2026-08-14T00:00:00Z",
             } },
         });
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await openOutputs();
         const rail = screen.getByRole("navigation", { name: /run stages/i });
         expect(Array.from(rail.querySelectorAll("[data-state]")).map((node) => node.getAttribute("data-state")))
@@ -363,7 +380,7 @@ describe("ReleaseStudioPanel", () => {
     });
 
     it("replays Manufacturing from the nested configuration fields snapshot", async () => {
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await selectHistoryRun();
         fireEvent.click(await screen.findByRole("button", { name: /Manufacturing/i }));
         expect(screen.getByRole("heading", { name: /Manufacturing and assembly/i })).toBeTruthy();
@@ -377,7 +394,7 @@ describe("ReleaseStudioPanel", () => {
     });
 
     it("starts a build with identity and manufacturing fields", async () => {
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await startRun();
         await waitFor(() => expect(api.startBuild).toHaveBeenCalledWith("p1", expect.objectContaining({
             commit_sha: "abcdef12abcdef12abcdef12abcdef12abcdef12",
@@ -392,7 +409,7 @@ describe("ReleaseStudioPanel", () => {
     });
 
     it("offers solder mask, silkscreen, and via treatment dropdowns", async () => {
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await continueToManufacturing();
         expect(screen.getByLabelText("Solder mask colour")).toBeTruthy();
         expect(screen.getByLabelText("Silkscreen colour")).toBeTruthy();
@@ -407,7 +424,7 @@ describe("ReleaseStudioPanel", () => {
                 pdf: { path: "documentation/fabrication.pdf", released_digest: "b".repeat(64), media_type: "application/pdf" },
             },
         ]);
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await openOutputs();
         await waitFor(() =>
             expect(screen.getByRole("tab", { name: /Documents \(1\)/ })).toBeTruthy(),
@@ -418,7 +435,7 @@ describe("ReleaseStudioPanel", () => {
 
     it("says when the documents could not be read, and retries", async () => {
         vi.mocked(api.listDocumentSheets).mockRejectedValueOnce(new Error("sheets unavailable"));
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await openOutputs();
         expect(await screen.findByText("Documents not loaded")).toHaveAttribute("title", "sheets unavailable");
         expect(screen.queryByText("No documents")).toBeNull();
@@ -459,7 +476,7 @@ describe("ReleaseStudioPanel", () => {
             options?.onUpdate?.(done, []);
             return done;
         });
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await startRun();
         await waitFor(() => expect(screen.getByText("Checks")).toBeTruthy());
         expect(screen.getByText("DRC")).toBeTruthy();
@@ -481,7 +498,7 @@ describe("ReleaseStudioPanel", () => {
             await new Promise((resolve) => window.setTimeout(resolve, 60));
             return { ...job, status: "completed" as const, percent: 100 };
         });
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await startRun();
 
         const rail = await screen.findByRole("navigation", { name: /run stages/i });
@@ -494,7 +511,7 @@ describe("ReleaseStudioPanel", () => {
     });
 
     it("offers a manufacturer pack picker driven by the registry", async () => {
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await openOutputs();
         fireEvent.click(await screen.findByRole("tab", { name: /Members/i }));
         await waitFor(() => expect(screen.getByLabelText("Manufacturer")).toBeTruthy());
@@ -512,7 +529,7 @@ describe("ReleaseStudioPanel", () => {
             ],
             vendor_readiness: [{ vendor_id: "jlcpcb", ready: false, missing_requirements: ["bom.xlsx", "cpl.xlsx"] }],
         });
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await openOutputs();
         expect(screen.getByText("bom.csv").parentElement?.textContent).toContain("ready");
         expect(screen.getByText("bom.xlsx").parentElement?.textContent).toContain("missing");
@@ -520,7 +537,7 @@ describe("ReleaseStudioPanel", () => {
     });
 
     it("downloads build evidence from the authoritative build-evidence route", async () => {
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await openOutputs();
         fireEvent.click(screen.getByRole("button", { name: /Build evidence/i }));
         await waitFor(() => expect(vi.mocked(api.downloadFile)).toHaveBeenCalledWith(
@@ -531,7 +548,7 @@ describe("ReleaseStudioPanel", () => {
 
     it("surfaces build download failures through the workflow error state", async () => {
         vi.mocked(api.downloadFile).mockRejectedValueOnce(new Error("evidence download denied"));
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await openOutputs();
         fireEvent.click(screen.getByRole("button", { name: /Build evidence/i }));
         expect(await screen.findByText("evidence download denied")).toBeTruthy();
@@ -550,7 +567,7 @@ describe("ReleaseStudioPanel", () => {
         vi.mocked(api.getBuild).mockImplementation((_, buildId) =>
             buildId === "build-1" ? Promise.resolve(detail) : new Promise<BuildDetail>(() => {}),
         );
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         fireEvent.click(await screen.findByRole("tab", { name: /^history$/i }));
         fireEvent.click(await screen.findByRole("button", { name: /succeeded.*attempt 1/i }));
         await waitFor(() => expect(within(screen.getByLabelText("Release identity")).getByText("succeeded")).toBeTruthy());
@@ -566,14 +583,14 @@ describe("ReleaseStudioPanel", () => {
 
     it("fails closed when the selected revision cannot be read", async () => {
         vi.mocked(api.getSource).mockRejectedValue(new Error("immutable source lookup failed"));
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await waitFor(() => expect(screen.getByText(/immutable source lookup failed/i)).toBeTruthy());
         expect(screen.getByRole("button", { name: /^Continue$/i })).toBeDisabled();
     });
 
     it("treats a missing vendor readiness response as unavailable rather than ready", async () => {
         vi.mocked(api.getBuild).mockResolvedValue({ ...detail, vendor_readiness: undefined });
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await openOutputs();
         expect(screen.getByText("gerber").parentElement?.textContent).toContain("unavailable");
         expect(screen.getByText("bom.csv").parentElement?.textContent).toContain("unavailable");
@@ -589,7 +606,7 @@ describe("ReleaseStudioPanel", () => {
         vi.mocked(watchPrismJob).mockResolvedValue({ job_id: "job-failed", kind: "release_studio_build", status: "completed", stage: "build", message: "failed", percent: 100 });
         vi.mocked(api.startBuild).mockResolvedValueOnce({ job: { job_id: "job-failed" } });
         vi.mocked(throwIfJobFailed).mockImplementation(() => { throw new Error("The build failed."); });
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await startRun();
         const rail = await screen.findByRole("navigation", { name: /run stages/i });
         await waitFor(() => expect(within(rail).getByRole("button", { name: /Build/i })).toHaveAttribute("data-state", "failed"));
@@ -603,7 +620,7 @@ describe("ReleaseStudioPanel", () => {
         const cancelledCandidate = { ...candidate, latest_build: cancelled, builds: [cancelled] };
         vi.mocked(api.listCandidates).mockResolvedValue([cancelledCandidate]);
         vi.mocked(api.getBuild).mockResolvedValue({ ...detail, build: cancelled, candidate: cancelledCandidate });
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
 
         await selectHistoryRun();
         const rail = await screen.findByRole("navigation", { name: /run stages/i });
@@ -625,7 +642,7 @@ describe("ReleaseStudioPanel", () => {
             return new Promise(() => {});
         });
         vi.mocked(api.startBuild).mockResolvedValueOnce({ job: { job_id: "job-live" } });
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await startRun();
         expect(await screen.findByLabelText("Live build log")).toHaveTextContent("Running DRC");
         expect(screen.getByRole("progressbar", { name: /Release build progress/i })).toBeTruthy();
@@ -647,10 +664,10 @@ describe("ReleaseStudioPanel", () => {
             build: buildId === "build-2" ? nextBuild : candidate.latest_build!,
             candidate: buildId === "build-2" ? nextCandidate : candidate,
         }));
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await startRun();
         await waitFor(() => expect(api.getBuild).toHaveBeenCalledWith("p1", "build-2"));
-        expect(window.location.search).toContain("build=build-2");
+        await waitFor(() => expect(screen.getByTestId("router-location").textContent).toContain("build=build-2"));
     });
 
     it("publishes a successful build as a GitHub Release without editing identity", async () => {
@@ -684,7 +701,7 @@ describe("ReleaseStudioPanel", () => {
                 },
             },
         });
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await openOutputs();
         fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
         expect(screen.queryByLabelText("Tag")).toBeNull();
@@ -735,7 +752,7 @@ describe("ReleaseStudioPanel", () => {
             },
         };
         vi.mocked(api.getBuild).mockResolvedValue(approvedDetail);
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await openOutputs();
         fireEvent.click(screen.getByRole("button", { name: /^Continue$/i }));
         const publish = screen.getByRole("button", { name: /Hold to publish to GitHub/i });
@@ -805,7 +822,7 @@ describe("ReleaseStudioPanel", () => {
                 { kind: "erc", report_digest: "e", counts: { error: 4 } },
             ],
         });
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await openOutputs();
         fireEvent.mouseDown(screen.getByRole("tab", { name: /Evidence \(2\)/i }));
         expect(screen.queryByRole("combobox", { name: /Warning group/i })).toBeNull();
@@ -828,7 +845,7 @@ describe("ReleaseStudioPanel", () => {
             latest_build: publishedBuild,
             builds: [publishedBuild],
         }]);
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         fireEvent.click(await screen.findByRole("tab", { name: /^history$/i }));
         const run = await screen.findByRole("button", { name: /succeeded.*attempt 1/i });
         // The status is the row's dot; its name and title carry the word.
@@ -837,7 +854,7 @@ describe("ReleaseStudioPanel", () => {
     });
 
     it("collapses the run history and remembers it", async () => {
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         fireEvent.click(await screen.findByRole("tab", { name: /^history$/i }));
         expect(await screen.findByText("Run history")).toBeInTheDocument();
         fireEvent.click(screen.getByRole("button", { name: "Hide run history" }));
@@ -849,7 +866,7 @@ describe("ReleaseStudioPanel", () => {
 
     it("starts the release checks rail collapsed in a narrow window", async () => {
         vi.stubGlobal("innerWidth", 1100);
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await openOutputs();
         expect(screen.queryByRole("button", { name: "Approve Designer" })).toBeNull();
         fireEvent.click(screen.getByRole("button", { name: "Show release checks" }));
@@ -861,7 +878,7 @@ describe("ReleaseStudioPanel", () => {
     });
 
     it("renders designer and QA sign-off as separate pending cards", async () => {
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await openOutputs();
         expect(screen.getByText("Designer")).toBeTruthy();
         expect(screen.getByText("QA")).toBeTruthy();
@@ -889,7 +906,7 @@ describe("ReleaseStudioPanel", () => {
                 can_withdraw: true,
             },
         });
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await openOutputs();
         expect(screen.getByText("Approved")).toBeTruthy();
         expect(screen.getByText("designer@example.com")).toBeTruthy();
@@ -907,7 +924,7 @@ describe("ReleaseStudioPanel", () => {
                 can_approve_qa: true,
             },
         });
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await openOutputs();
         const approve = screen.getByRole("button", { name: "Approve Designer" });
         expect(approve).toBeDisabled();
@@ -935,7 +952,7 @@ describe("ReleaseStudioPanel", () => {
                 }],
             },
         });
-        render(<ReleaseStudioPanel projectId="p1" canMutate />);
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />);
         await openOutputs();
         // The list folds behind its count; the tick stays in view.
         expect(screen.queryByText("${KICAD10_3DMODEL_DIR}/R_0603.step")).toBeNull();

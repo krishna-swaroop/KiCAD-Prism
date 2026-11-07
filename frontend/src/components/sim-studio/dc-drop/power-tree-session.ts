@@ -1,4 +1,5 @@
 import * as api from "../api";
+import { registerModuleCacheReset } from "@/lib/module-caches";
 import type { PrismSemanticIndex } from "@/types/prism-selection";
 
 import type { SetupRecord, SimSetup } from "../types";
@@ -78,6 +79,15 @@ export function candidatesFor(projectId: string, commit?: string): Promise<Candi
     }
     return found;
 }
+
+/** Drop every cached board read: another account's revision data must not be shown after sign-out. */
+export function forgetSimStudioCaches(): void {
+    indexes.clear();
+    boards.clear();
+    offers.clear();
+}
+
+registerModuleCacheReset(forgetSimStudioCaches);
 
 /** A new setup as the canvas expects one: adaptive mesh on, and blank or the inferred tree. */
 export async function createSetup(projectId: string, name: string, seed: "inferred" | "blank", commit?: string): Promise<TreeRecord> {

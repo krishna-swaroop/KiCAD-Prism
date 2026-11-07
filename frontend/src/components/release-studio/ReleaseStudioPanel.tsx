@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { History, ListRestart, PanelLeftOpen, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -95,24 +96,22 @@ export function ReleaseStudioPanel({
     defaultCommit = "HEAD",
 // react-doctor-disable-next-line prefer-useReducer - the states belong to separate concerns: build lifecycle, detail cache, upload fields
 }: Props) {
-    const [view, setView] = useState<StudioView>(() => {
-        if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("build")) return "history";
-        return "current";
-    });
+    // The open run is URL state, written through the router so a reload, a
+    // copied link, and the page's own URL rebuilds all see the same run.
+    const [searchParams, setSearchParams] = useSearchParams();
+    const requestedBuild = searchParams.get("build");
+    const [view, setView] = useState<StudioView>(() => (requestedBuild ? "history" : "current"));
     const [stage, setStage] = useState<RunStage>("source");
     // Set when the user opens a specific run, so a newer build does not pull
     // the view out from under someone reading an older release's evidence.
-    const pinnedRef = useRef(
-        typeof window !== "undefined" && Boolean(new URLSearchParams(window.location.search).get("build")),
-    );
+    const pinnedRef = useRef(Boolean(requestedBuild));
     // "New release" opens the Source stage so a revision and configuration can
     // be chosen. Building immediately took that choice away and made the button
     // fire an expensive job on a single click. A viewer cannot create a
     // candidate, so the wizard is a dead end and never opens for one.
     const [drafting, setDrafting] = useState(() => {
         if (!canMutate) return false;
-        if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("build")) return false;
-        return true;
+        return !requestedBuild;
     });
     const draftingRef = useCommittedRef(drafting);
     const [historyCollapsed, setHistoryCollapsed] = useCollapsed("prism.releaseStudio.runHistoryCollapsed", 1600);
@@ -147,10 +146,7 @@ export function ReleaseStudioPanel({
     // The run lives in the URL so it survives a reload and can be shared --
     // an approver following a link must land on the build they were asked
     // about, not on whatever happens to be newest.
-    const [selectedBuildId, setSelectedBuildId] = useState<string | null>(() => {
-        if (typeof window === "undefined") return null;
-        return new URLSearchParams(window.location.search).get("build");
-    });
+    const [selectedBuildId, setSelectedBuildId] = useState<string | null>(requestedBuild);
     const selectedBuildIdRef = useCommittedRef(selectedBuildId);
     const detailRequestRef = useRef(0);
     const [detail, setDetail] = useState<BuildDetail | null>(null);
@@ -332,12 +328,13 @@ export function ReleaseStudioPanel({
     }, [activeJobIdRef, refresh, refreshDetail, selectedDetail?.build.id, selectedDetail?.build.job_id, selectedDetail?.build.status]);
 
     useEffect(() => {
-        if (typeof window === "undefined") return;
-        const url = new URL(window.location.href);
-        if (selectedBuildId) url.searchParams.set("build", selectedBuildId);
-        else url.searchParams.delete("build");
-        window.history.replaceState(window.history.state, "", url.toString());
-    }, [selectedBuildId]);
+        setSearchParams((previous) => {
+            const next = new URLSearchParams(previous);
+            if (selectedBuildId) next.set("build", selectedBuildId);
+            else next.delete("build");
+            return next;
+        }, { replace: true });
+    }, [selectedBuildId, setSearchParams]);
 
     const openRun = useCallback((buildId: string, destination: RunStage = "build") => {
         pinnedRef.current = true;

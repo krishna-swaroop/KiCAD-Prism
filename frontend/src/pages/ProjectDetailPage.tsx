@@ -632,7 +632,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                         >
                             <ErrorBoundary label="the simulation studio panel" resetKeys={[projectId]}>
                                 <Suspense fallback={null}>
-                                    <SimStudioPanel key={projectId} projectId={projectId!} canMutate={canMutateProject} active={activeSection === "simulation-studio"} />
+                                    <SimStudioPanel key={projectId} projectId={projectId!} canMutate={canMutateProject} active={activeSection === "simulation-studio"} headCommit={currentBranch?.commit ?? undefined} />
                                 </Suspense>
                             </ErrorBoundary>
                         </ProjectSectionPanel>
