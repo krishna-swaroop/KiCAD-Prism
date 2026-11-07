@@ -24,7 +24,7 @@ import {
   applyIsolationPrefs,
   applyNetProbePrefs,
   applyRestorePrefs,
-  planShowBoard,
+  applyShowBoard,
 } from "./visibility-prefs.js";
 import { escapeHtml } from "./escape-html.js";
 import { findNetByName } from "./net-emphasis.js";
@@ -4435,14 +4435,7 @@ function applyLayerPreset(preset, placementKey = null) {
 }
 
 function setShowBoard(visible) {
-  const plan = planShowBoard(state, visible);
-  // Exit isolation before applying the toggle: setNetIsolation(false) restores
-  // the pre-isolation snapshot, then the explicit value wins and the snapshot
-  // is dropped so a later exit cannot override it.
-  if (plan.exitIsolation) setNetIsolation(false);
-  state.showBoard = plan.showBoard;
-  state.savedShowBoard = plan.showBoard;
-  state.preIsolationShowBoard = plan.preIsolationShowBoard;
+  applyShowBoard(state, visible, () => setNetIsolation(false));
   syncNetIsolationControls();
 }
 
@@ -4795,7 +4788,7 @@ function clearSelection() {
   if (!stillEmphasised) {
     // Exit through the same transition that restores the pre-isolation
     // snapshot, then apply the pre-probe preference.
-    setNetIsolation(false);
+    if (wasIsolating) setNetIsolation(false);
     restoreViewVisibilityPrefs();
   } else if (wasIsolating) applyNetIsolationLayers();
   schematicScene.activeNetUid = "";

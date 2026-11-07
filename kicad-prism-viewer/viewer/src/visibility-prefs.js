@@ -42,16 +42,17 @@ export function applyIsolationPrefs(state, wasIsolating, next) {
 }
 
 /**
- * Plan an explicit "Show board" toggle. Turning it on exits isolation first so
- * the toggle wins over the snapshot Isolate would restore, and drops the
- * snapshot so a later exit cannot override it.
+ * An explicit "Show board" toggle. Turning it on during isolation exits
+ * isolation first (`exitIsolation` runs the viewer's full transition, which
+ * restores the pre-isolation snapshot and the layers), then the requested value
+ * wins and the snapshot is dropped so a later exit cannot override it.
  */
-export function planShowBoard(state, visible) {
+export function applyShowBoard(state, visible, exitIsolation) {
   const next = Boolean(visible);
-  const exitIsolation = next && Boolean(state.isolateNet);
-  return {
-    exitIsolation,
-    showBoard: next,
-    preIsolationShowBoard: exitIsolation ? null : state.preIsolationShowBoard,
-  };
+  const exiting = next && Boolean(state.isolateNet);
+  if (exiting) exitIsolation();
+  state.showBoard = next;
+  state.savedShowBoard = next;
+  if (exiting) state.preIsolationShowBoard = null;
+  return exiting;
 }

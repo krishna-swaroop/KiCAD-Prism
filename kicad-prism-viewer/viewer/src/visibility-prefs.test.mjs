@@ -6,7 +6,7 @@ import {
   applyIsolationPrefs,
   applyNetProbePrefs,
   applyRestorePrefs,
-  planShowBoard,
+  applyShowBoard,
 } from "./visibility-prefs.js";
 
 function visibleState() {
@@ -20,8 +20,8 @@ function visibleState() {
   };
 }
 
-// Mirrors main.js setNetIsolation's visibility coupling and setShowBoard's
-// apply step, so the assertions describe the state the viewer ends up in.
+// Mirrors main.js setNetIsolation's visibility coupling, so the assertions
+// describe the state the viewer ends up in; setShowBoard is the real code.
 function probe(state) {
   applyNetProbePrefs(state);
 }
@@ -32,15 +32,14 @@ function isolate(state) {
   applyIsolationPrefs(state, wasIsolating, true);
 }
 
+// The viewer's setNetIsolation(false), reduced to its visibility coupling.
+function exitIsolation(state) {
+  applyIsolationPrefs(state, state.isolateNet, false);
+  state.isolateNet = false;
+}
+
 function showBoard(state, visible) {
-  const plan = planShowBoard(state, visible);
-  if (plan.exitIsolation) {
-    applyIsolationPrefs(state, state.isolateNet, false);
-    state.isolateNet = false;
-  }
-  state.showBoard = plan.showBoard;
-  state.savedShowBoard = plan.showBoard;
-  state.preIsolationShowBoard = plan.preIsolationShowBoard;
+  applyShowBoard(state, visible, () => exitIsolation(state));
 }
 
 describe("explicit show-board during isolation", () => {
