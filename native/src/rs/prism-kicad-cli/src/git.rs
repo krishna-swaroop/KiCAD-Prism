@@ -37,6 +37,7 @@ pub struct GitError {
 impl Drop for Git {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.home);
+        prism_bundle::temp::unregister(&self.home);
     }
 }
 
@@ -49,6 +50,7 @@ impl Git {
         std::fs::create_dir_all(&home).map_err(|error| {
             Failure::internal(format!("the empty HOME for git could not be made: {error}"))
         })?;
+        prism_bundle::temp::register(home.clone());
         Ok(Self {
             repo: repo.to_path_buf(),
             home,

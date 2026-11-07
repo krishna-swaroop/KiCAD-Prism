@@ -352,12 +352,12 @@ class ReleaseBuildRowFencingTests(unittest.TestCase):
         self.assertEqual(self._candidate_status(first["candidate_id"]), "failed")
 
 
-    def _claimed_job(self) -> tuple[Any, dict[str, Any]]:
+    def _claimed_job(self, payload: dict[str, Any] | None = None) -> tuple[Any, dict[str, Any]]:
         from app.services.job_service import JobService
 
         service = JobService()
         pool = f"test-{uuid.uuid4().hex[:8]}"
-        service.enqueue("release_studio_build", {}, worker_pool=pool)
+        service.enqueue("release_studio_build", payload or {}, worker_pool=pool)
         claimed = service.claim("worker-a", worker_pool=pool)
         return service, claimed
 
@@ -395,6 +395,39 @@ class ReleaseBuildRowFencingTests(unittest.TestCase):
         self.assertEqual((settled["status"], settled["error_code"]), ("failed", "runner_exited"))
         self.assertEqual(self._candidate_status(first["candidate_id"]), "failed")
         self.assertEqual(release_build_attempts.settle_build_job(service.get(job["job_id"])), 0)
+
+    def test_a_job_that_ends_without_success_settles_its_persisted_pipeline(self) -> None:
+        from app.services import release_build_attempts
+
+        def pipeline() -> dict[str, Any]:
+            return {
+                "jobs": [
+                    {
+                        "id": "checks",
+                        "name": "Checks",
+                        "status": "queued",
+                        "steps": [
+                            {"id": "drc", "name": "DRC", "status": "in_progress"},
+                            {"id": "erc", "name": "ERC", "status": "queued"},
+                            {"id": "bom", "name": "BOM", "status": "success"},
+                        ],
+                    }
+                ]
+            }
+
+        for job_status, step_status in (("failed", "failure"), ("cancelled", "cancelled")):
+            with self.subTest(status=job_status):
+                service, job = self._claimed_job({"pipeline": pipeline()})
+                if job_status == "failed":
+                    service.fail(job["job_id"], "worker-a", job["fence"], error_code="runner_exited", error_message="gone")
+                else:
+                    service.finalize_cancel(job["job_id"], "worker-a", job["fence"])
+                release_build_attempts.settle_build_job(service.get(job["job_id"]))
+                settled = service.get(job["job_id"])["payload"]["pipeline"]["jobs"][0]
+                # The running step takes the job's end; a step that never started is cancelled either way.
+                self.assertEqual([step["status"] for step in settled["steps"]], [step_status, "cancelled", "success"])
+                self.assertEqual(settled["status"], step_status)
+
 
 @requires_scratch_postgres("the release.candidate_built producer")
 class ReleaseCandidateBuiltEventTests(unittest.TestCase):
@@ -442,6 +475,67 @@ class ReleaseCandidateBuiltEventTests(unittest.TestCase):
         }
         self.assertEqual(release_build_attempts.settle_build_job(job), 0)
         self.assertEqual(self._events(), [])
+
+
+class CatalogImportJobSettleTests(unittest.TestCase):
+    """A catalog import session ends with its job, not with its process."""
+
+    def setUp(self) -> None:
+        from app.services import catalog_worker_tasks
+
+        self.tasks = catalog_worker_tasks
+        self.sessions = {"session-1": "scanning"}
+
+    def _job(self, status: str = "failed") -> dict[str, Any]:
+        return {
+            "job_id": "job-1",
+            "kind": "project_component_import",
+            "status": status,
+            "payload": {"session_id": "session-1"},
+            "error_message": "The worker died",
+        }
+
+    def _patches(self) -> tuple[Any, ...]:
+        def get_session(session_id: str) -> dict[str, Any] | None:
+            status = self.sessions.get(session_id)
+            return {"id": session_id, "status": status} if status else None
+
+        def update_session(session_id: str, *, status: str, error_message: str = "") -> None:
+            self.sessions[session_id] = status
+
+        def running(session_ids: list[str]) -> set[str]:
+            return {session_id for session_id in session_ids if self.sessions.get(session_id) in self.tasks.RUNNING_STATUSES}
+
+        return (
+            mock.patch.object(self.tasks.catalog_service, "get_project_import_session", side_effect=get_session),
+            mock.patch.object(self.tasks.catalog_service, "update_project_import_session", side_effect=update_session),
+            mock.patch.object(self.tasks, "_running_import_session_ids", side_effect=running),
+            mock.patch("app.services.job_queries.newest_jobs", return_value=[self._job()]),
+        )
+
+    def test_a_failed_or_cancelled_job_fails_its_running_session(self) -> None:
+        for status in ("failed", "cancelled"):
+            with self.subTest(status=status):
+                self.sessions = {"session-1": "scanning"}
+                get_session, update_session, _running, _newest = self._patches()
+                with get_session, update_session:
+                    self.assertTrue(self.tasks.settle_import_job(self._job(status)))
+                self.assertEqual(self.sessions["session-1"], "failed")
+
+    def test_orphans_lists_the_job_only_until_its_session_is_settled(self) -> None:
+        get_session, update_session, running, newest = self._patches()
+        with get_session, update_session, running, newest:
+            self.assertEqual(
+                self.tasks._unsettled_import_job_ids("project_component_import"), ["job-1"]
+            )
+            self.assertTrue(self.tasks.settle_import_job(self._job()))
+            self.assertEqual(self.tasks._unsettled_import_job_ids("project_component_import"), [])
+
+    def test_a_staged_session_is_left_alone(self) -> None:
+        self.sessions = {"session-1": "staged"}
+        get_session, update_session, _running, _newest = self._patches()
+        with get_session, update_session:
+            self.assertFalse(self.tasks.settle_import_job(self._job()))
 
 
 if __name__ == "__main__":

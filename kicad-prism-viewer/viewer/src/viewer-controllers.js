@@ -177,9 +177,20 @@ class ModeController {
     this.shared = shared;
   }
 
-  /** The mounted scene, or null between mounts. */
-  get port() {
+  /** The mounted scene even when it no longer drives the page-wide session (see `port`). */
+  get attachedPort() {
     return this.#port;
+  }
+
+  /**
+   * The mounted scene while it still drives the page-wide session, else null.
+   * Another element's mount disposes this scene without telling this
+   * controller; forwarding host state into its dead port would write into the
+   * module-global board the other element now owns.
+   */
+  get port() {
+    const port = this.#port;
+    return port?.isCurrent?.() === false ? null : port;
   }
 
   /** Drive a freshly mounted scene and replay the host's state onto it. */
@@ -205,7 +216,7 @@ class ModeController {
 
   setSelection(selection) {
     this.shared.selection = selection || null;
-    const port = this.#port;
+    const port = this.port;
     // The viewer's own selection echoed back is already shown.
     if (port?.takeEcho?.(this.shared.selection)) return;
     if (port) port.quietly(() => this.applySelection(port, this.shared.selection));
@@ -213,81 +224,81 @@ class ModeController {
 
   setGpuBudget(bytes) {
     this.shared.gpuBudget = bytes;
-    this.#port?.setGpuBudget(gpuBudgetBytes(bytes));
+    this.port?.setGpuBudget(gpuBudgetBytes(bytes));
   }
 
   resize() {
-    this.#port?.resize();
+    this.port?.resize();
   }
 
   /** The host-rendered 3D controls' state; null until mounted. */
   getViewState() {
-    return this.#port?.getViewState() ?? null;
+    return this.port?.getViewState() ?? null;
   }
 
   setLayerVisible(layerId, visible, placement = null) {
-    this.#port?.setLayerVisible(layerId, visible, placement);
+    this.port?.setLayerVisible(layerId, visible, placement);
   }
 
   applyLayerPreset(preset, placement = null) {
-    this.#port?.applyLayerPreset(preset, placement);
+    this.port?.applyLayerPreset(preset, placement);
   }
 
   setShowBoard(visible) {
-    this.#port?.setShowBoard(visible);
+    this.port?.setShowBoard(visible);
   }
 
   setShowComponents(visible) {
-    this.#port?.setShowComponents(visible);
+    this.port?.setShowComponents(visible);
   }
 
   setShowPlaceholders(visible) {
-    this.#port?.setShowPlaceholders(visible);
+    this.port?.setShowPlaceholders(visible);
   }
 
   setRealisticColors(enabled) {
-    this.#port?.setRealisticColors(enabled);
+    this.port?.setRealisticColors(enabled);
   }
 
   setBoardLayerVisible(role, side, visible) {
-    this.#port?.setBoardLayerVisible(role, side, visible);
+    this.port?.setBoardLayerVisible(role, side, visible);
   }
 
   setSeparation(value, placement = null) {
-    this.#port?.setSeparation(value, placement);
+    this.port?.setSeparation(value, placement);
   }
 
   showNetLayers() {
-    this.#port?.showNetLayers();
+    this.port?.showNetLayers();
   }
 
   setNetIsolation(enabled) {
-    this.#port?.setNetIsolation(enabled);
+    this.port?.setNetIsolation(enabled);
   }
 
   setStatsOverlay(visible) {
-    this.#port?.setStatsOverlay(visible);
+    this.port?.setStatsOverlay(visible);
   }
 
   getStats() {
-    return this.#port?.stats() ?? null;
+    return this.port?.stats() ?? null;
   }
 
   setLodOverride(lod) {
-    this.#port?.setLodOverride(lod);
+    this.port?.setLodOverride(lod);
   }
 
   /** What is under a client point, without selecting it; resolves null before mount. */
   pickAt(clientX, clientY) {
-    return Promise.resolve(this.#port?.pickAt(clientX, clientY) ?? null);
+    return Promise.resolve(this.port?.pickAt(clientX, clientY) ?? null);
   }
 
   projectComponent(reference, occurrenceKey) {
-    return this.#port?.projectComponent(reference, occurrenceKey) ?? null;
+    return this.port?.projectComponent(reference, occurrenceKey) ?? null;
   }
 
   projectPoint(point, occurrenceKey) {
-    return this.#port?.projectPoint(point, occurrenceKey) ?? null;
+    return this.port?.projectPoint(point, occurrenceKey) ?? null;
   }
 }
 

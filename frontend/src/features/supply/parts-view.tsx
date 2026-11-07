@@ -28,6 +28,7 @@ import { SearchBox } from "./search-box";
 import { ReadProjectBomsButton } from "./read-project-boms-button";
 import { WatchPartDialog } from "./watch-part-dialog";
 
+
 const SCOPES: ReadonlyArray<{ id: PartsScope; label: string }> = [
   { id: "followed", label: "Tracked and in projects" },
   { id: "watched", label: "Tracked" },

@@ -483,7 +483,7 @@ export async function mountStandaloneViewer(options = {}) {
   // The board scene port (AC-30): BoardModeController in viewer-controllers.js drives it.
   return {
     performance: performanceTimings,
-    ...sharedPortMembers(),
+    ...sharedPortMembers(token),
     selectOccurrence: selectOccurrenceByKey,
     setHighlightedNetIds(ids) {
       board.highlightedNetIds = ids;
@@ -949,7 +949,7 @@ export async function mountSystemViewer(options = {}) {
   scheduleFrame(token);
   // The system scene port (AC-30): SystemModeController in viewer-controllers.js drives it.
   return {
-    ...sharedPortMembers(),
+    ...sharedPortMembers(token),
     focusPlacement,
     selectBoardContext,
     setEmphasisSets,
@@ -2591,8 +2591,12 @@ function systemFrameNeedsRender(now, inputs, emphasis) {
 
 
 /** Port members both mounts share: selection, lit nets and the view controls. */
-function sharedPortMembers() {
+function sharedPortMembers(token) {
   return {
+    /** Whether this port still drives the page-wide viewer session. */
+    isCurrent() {
+      return viewerSessionActive(token);
+    },
     nets: () => board.scene.nets,
     quietly(apply) {
       suppressSelectionChange = true;

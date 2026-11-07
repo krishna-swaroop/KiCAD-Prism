@@ -101,6 +101,19 @@ class WorkItemTests(unittest.TestCase):
         self.assertEqual(self.call("POST", f"/{item['id']}/state", "qa", {"state": "done"}).json["state"], "done")
         self.assertEqual(self.call("GET", "/not-a-number/history", "qa").status, 404)
 
+    def test_an_owner_cannot_close_an_item_that_qa_rejected(self) -> None:
+        part_id = self.make()
+        item = self.call("POST", "", "qa", {"subject_kind": "part", "subject_id": part_id, "title": "Retire OLD-1", "action": "retire"}).json
+        owned = self.call("PATCH", f"/{item['id']}", "qa", {"owner": "designer@example.com"}).json
+        self.assertEqual(owned["owner"], "designer@example.com")
+        self.assertEqual(self.call("POST", f"/{item['id']}/state", "qa", {"state": "rejected"}).json["state"], "rejected")
+
+        self.assertEqual(self.call("POST", f"/{item['id']}/state", "designer", {"state": "done"}).status, 403, "only QA closes a rejection")
+        rejected = self.call("GET", "", "qa", query="state=rejected").json["items"]
+        self.assertEqual([row["id"] for row in rejected], [item["id"]], "the rejection stands")
+
+        self.assertEqual(self.call("POST", f"/{item['id']}/state", "qa", {"state": "done"}).json["state"], "done")
+
     def test_someone_who_is_neither_owner_nor_maker_nor_qa_may_not_change_it(self) -> None:
         part_id = self.make()
         item = self.call("POST", "", "qa", {"subject_kind": "part", "subject_id": part_id, "title": "Retire OLD-1", "action": "retire"}).json

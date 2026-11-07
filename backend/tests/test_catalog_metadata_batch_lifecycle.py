@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import sys
 import tempfile
+import threading
 import unittest
 import uuid
-from unittest import mock
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -89,6 +91,68 @@ class MetadataBatchLifecycleTests(unittest.TestCase):
             (accounted["status"], accounted["valid_items"], accounted["applied_items"], accounted["failed_items"]),
             ("partial", 0, 1, 1),
         )
+
+    def test_two_applies_on_one_batch_never_mark_an_applied_item_conflict(self) -> None:
+        part = self._part("J")
+        batch = self.lifecycle.stage(
+            [{"component_id": part["id"], "expected_revision_id": part["revision_id"], "patch": {"value": "68k"}}],
+            source="grid", actor=ACTOR, change_summary="Concurrent apply",
+        )
+        lifecycle = self.lifecycle
+        real_apply_item = lifecycle._apply_item
+        start = threading.Barrier(2)
+        entered = threading.Lock()
+        winner: list[str] = []
+        loser_arrived = threading.Event()
+        winner_done = threading.Event()
+
+        def apply_item(candidate: str, *, actor: str) -> None:
+            with entered:
+                first = not winner
+                if first:
+                    winner.append(candidate)
+            if first:
+                # Without the batch lock both applies reach this point: wait
+                # for the loser to read its stale row before committing.
+                loser_arrived.wait(timeout=1.0)
+                try:
+                    real_apply_item(candidate, actor=actor)
+                finally:
+                    winner_done.set()
+            else:
+                loser_arrived.set()
+                winner_done.wait(timeout=10)
+                raise ValueError("Component revision conflict: current revision changed after preview")
+
+        def run() -> dict:
+            start.wait(timeout=10)
+            return lifecycle.apply(batch["id"], actor=ACTOR)
+
+        with (
+            mock.patch.object(lifecycle, "_apply_item", side_effect=apply_item),
+            ThreadPoolExecutor(max_workers=2) as executor,
+        ):
+            results = list(executor.map(lambda _: run(), range(2)))
+
+        self.assertEqual(self._item(batch, part["id"])["validation_status"], "applied")
+        accounted = self.lifecycle.get(batch["id"])
+        self.assertEqual((accounted["applied_items"], accounted["failed_items"]), (1, 0))
+        self.assertEqual(sum(result["applied"] for result in results), 1)
+
+    def test_a_late_conflict_never_overwrites_an_applied_item(self) -> None:
+        part = self._part("K")
+        batch = self.lifecycle.stage(
+            [{"component_id": part["id"], "expected_revision_id": part["revision_id"], "patch": {"value": "82k"}}],
+            source="grid", actor=ACTOR, change_summary="Applied first",
+        )
+        self.assertEqual(self.lifecycle.apply(batch["id"], actor=ACTOR)["status"], "completed")
+        item_id = self._item(batch, part["id"])["id"]
+
+        with self.lifecycle._connect() as conn:
+            self.lifecycle._batches.mark_item_conflict(conn, item_id, "late conflict", "2026-01-01T00:00:00Z")
+            conn.commit()
+
+        self.assertEqual(self._item(batch, part["id"])["validation_status"], "applied")
 
     def test_applying_again_skips_what_was_applied(self) -> None:
         part = self._part("C")

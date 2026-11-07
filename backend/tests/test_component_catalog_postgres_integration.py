@@ -654,6 +654,7 @@ class ComponentCatalogPostgresIntegrationTests(unittest.TestCase):
 
     def test_health_reports_released_revision_with_missing_files(self) -> None:
         self._install_deterministic_preview_renderer()
+        released_before = self.service.catalog_health()["released"]
         component = self._component("health-" + uuid.uuid4().hex[:8])
         self.service.import_symbol_library(
             component["id"],
@@ -703,6 +704,7 @@ class ComponentCatalogPostgresIntegrationTests(unittest.TestCase):
             expected_manifest_hash=approved["manifest_hash"],
         )
         self.assertEqual(released["release_status"], "released")
+        self.assertEqual(self.service.catalog_health()["released"], released_before + 1)
 
         released_step = next(asset for asset in released["assets"] if asset["asset_type"] == "3dmodel")
 
@@ -724,6 +726,11 @@ class ComponentCatalogPostgresIntegrationTests(unittest.TestCase):
         )["component"]
         self.assertNotEqual(draft["revision_id"], released["revision_id"])
         self.assertNotIn(released_step["id"], [asset["id"] for asset in draft["assets"]])
+        self.assertEqual(
+            self.service.catalog_health()["released"],
+            released_before + 1,
+            "an open draft head does not hide the component's released revision",
+        )
 
         # The disk check is opt-in; the default report never stats asset files.
         self.assertIsNone(self.service.catalog_health()["released_assets_missing_on_disk"])

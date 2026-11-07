@@ -213,6 +213,13 @@ describe("a part's tracking", () => {
     await waitFor(() => expect(changed).toHaveBeenCalled());
   });
 
+  it("shows an untracked part as a disabled Not followed placeholder, with no choice that does nothing", async () => {
+    tracking.getPartTracking.mockResolvedValue({ tier: null, waiting_at: [], watch: null });
+    render(<TrackingControl partId="p1" canEdit onChanged={vi.fn()} />);
+    expect((await screen.findByRole("option", { name: "Not followed" }) as HTMLOptionElement).disabled).toBe(true);
+    expect(screen.queryByRole("option", { name: "Not tracked by choice" })).toBeNull();
+  });
+
   it("only reads for someone who may not change it", async () => {
     tracking.getPartTracking.mockResolvedValue({ tier: null, waiting_at: ["c1"], watch: null });
     render(<TrackingControl partId="p1" canEdit={false} onChanged={vi.fn()} />);

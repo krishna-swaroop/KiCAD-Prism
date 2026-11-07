@@ -58,6 +58,8 @@ export function ProjectPartsList({ projectId, variant, boards, currency, selecte
   const narrow = <T,>(set: (value: T) => void) => (value: T) => { set(value); setOffset(0); };
   const items = page?.items ?? [];
   const unmatched = page?.unmatched ?? [];
+  // A page past the end (a smaller variant or build) starts again at the first rather than reading as an empty list.
+  if (page && offset > 0 && items.length === 0) setOffset(0);
 
   return (
     <div className="space-y-3">

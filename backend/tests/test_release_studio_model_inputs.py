@@ -116,6 +116,8 @@ class PrepareCandidateTests(unittest.TestCase):
             build_service, "materialize_input_closure", return_value=closure
         ) as materialize, mock.patch.object(
             build_service, "toolchain_identity", return_value=({}, "t" * 64)
+        ) as identity, mock.patch.object(
+            build_service, "detected_cli_version", return_value="10.0.7"
         ), mock.patch.object(
             build_service.store, "create_candidate", return_value={"id": "cand-1"}
         ) as create:
@@ -130,6 +132,7 @@ class PrepareCandidateTests(unittest.TestCase):
                 configuration={"board": "board.kicad_pcb"},
             )
         self.assertEqual(materialize.call_args.kwargs["model_stage"], workspace / "models")
+        self.assertEqual(identity.call_args.kwargs["cli_version"], "10.0.7")
         fields = create.call_args.kwargs
         self.assertEqual([row["reference"] for row in fields["model_inputs"]], ["${MODELS}/a.step"])
         self.assertIs(fields["self_contained"], False)

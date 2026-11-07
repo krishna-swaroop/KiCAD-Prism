@@ -1,7 +1,8 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { forgetServerState, useServerState } from "@/lib/server-state";
+import { registerModuleCacheReset } from "@/lib/module-caches";
 import type { User } from "@/types/auth";
 
 import { useSignedInUser } from "./use-signed-in-user";
@@ -49,5 +50,18 @@ describe("useSignedInUser", () => {
     same.unmount();
     act(() => session.result.current[1]({ ...admin, role: "viewer" } as User));
     expect(readAgain(() => new Promise<string>(() => undefined)).result.current.data).toBeUndefined();
+  });
+
+  it("forgets module-level caches on a new account, not for the same account", () => {
+    const reset = vi.fn();
+    registerModuleCacheReset(reset);
+    const session = renderHook(() => useSignedInUser());
+
+    act(() => session.result.current[1](admin));
+    expect(reset).toHaveBeenCalledTimes(1);
+    act(() => session.result.current[1]({ ...admin }));
+    expect(reset).toHaveBeenCalledTimes(1);
+    act(() => session.result.current[1](designer));
+    expect(reset).toHaveBeenCalledTimes(2);
   });
 });

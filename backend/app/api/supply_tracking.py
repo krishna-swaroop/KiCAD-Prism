@@ -137,6 +137,9 @@ async def read_project_bom(project_id: str, user: AuthenticatedUser = Depends(re
             status = project_bom.read(conn, project, roles, clock.now())
         if status == "reading":
             return job_progress("running", total=1)
+        if status == "without_index":
+            # The design index ended failed: a finished read that did not happen, so the caller can say so.
+            return job_progress("failed", total=1, failed=1, reason="The project's design data could not be built.")
         return job_progress("done", done=1, total=1, changed=status == "updated")
 
     return await _run(run)

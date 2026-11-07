@@ -128,6 +128,17 @@ class HealthApiTests(unittest.TestCase):
             self.assertEqual(health.kicad_cli_version(), "unavailable")
             self.assertIsNone(health._kicad_cli_version)
 
+    def test_kicad_cli_version_does_not_cache_a_failed_probe(self) -> None:
+        failed = MagicMock(returncode=1, stdout="", stderr="")
+        recovered = MagicMock(returncode=0, stdout="10.0.4\n")
+        with (
+            patch.object(health, "_kicad_cli_version", None),
+            patch.object(health.shutil, "which", return_value="/usr/bin/kicad-cli"),
+            patch.object(health.subprocess, "run", side_effect=[failed, recovered]),
+        ):
+            self.assertEqual(health.kicad_cli_version(), "unknown")
+            self.assertEqual(health.kicad_cli_version(), "10.0.4")
+
 
 if __name__ == "__main__":
     unittest.main()

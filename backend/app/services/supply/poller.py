@@ -43,6 +43,13 @@ STOPPED_INACTIVE = "inactive"
 STOPPED_COOLING_DOWN = "cooling_down"
 STOPPED_NOTHING_DUE = "nothing_due"
 STOPPED_BUDGET = "budget"
+# A run that stopped for one of these rested the work instead of trying it, so its attempts must not grow. Polling's own
+# reasons and the refusals ``trouble.react`` returns are the one list both callers share. A plain provider ``error`` is a
+# real failed try and still counts, so a provider that keeps failing ends the work after ``MAX_ATTEMPTS``.
+RESTING_STOPS = frozenset({
+    STOPPED_INACTIVE, STOPPED_COOLING_DOWN, STOPPED_BUDGET,
+    trouble.RATE_LIMITED, trouble.AUTH_FAILED, trouble.BLOCKED,
+})
 
 
 @dataclass(frozen=True, slots=True)
@@ -437,10 +444,10 @@ class Poller:
                 conn.execute(
                     """
                     INSERT INTO supply_poll_state (listing_id, tier, next_poll_at, last_polled_at, error_streak, last_error_code)
-                    VALUES (%s, 'daily', %s, %s, %s, %s)
+                    VALUES (%s, COALESCE((SELECT rate FROM supply_part_tiers WHERE part_id = %s), %s), %s, %s, %s, %s)
                     ON CONFLICT (listing_id) DO UPDATE SET
                         next_poll_at = EXCLUDED.next_poll_at, last_polled_at = EXCLUDED.last_polled_at,
                         error_streak = EXCLUDED.error_streak, last_error_code = EXCLUDED.last_error_code
                     """,
-                    (row.id, tiers.retry_at(now, streak, key=row.id), now, streak, code[:64]),
+                    (row.id, row.part_id, tiers.DEFAULT_RATE, tiers.retry_at(now, streak, key=row.id), now, streak, code[:64]),
                 )

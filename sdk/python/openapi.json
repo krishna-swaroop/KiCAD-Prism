@@ -1765,6 +1765,11 @@
             "title": "Auth Enabled",
             "type": "boolean"
           },
+          "comment_live_enabled": {
+            "default": true,
+            "title": "Comment Live Enabled",
+            "type": "boolean"
+          },
           "dev_mode": {
             "title": "Dev Mode",
             "type": "boolean"
@@ -26520,7 +26525,7 @@
       },
       "ProjectSupply": {
         "additionalProperties": true,
-        "description": "How a project stands in supply, from its stored BOM. Without a BOM read, only ``available``, the variants, releases and notes.",
+        "description": "How a project stands in supply, from its stored BOM. Without parts, only ``available``, ``has_usage``, the variants, releases and notes.",
         "properties": {
           "attrition_percent": {
             "anyOf": [
@@ -26606,6 +26611,11 @@
             ],
             "description": "Without a BOM read: whether the project has a schematic to read it from.",
             "title": "Has Schematic"
+          },
+          "has_usage": {
+            "description": "Whether the project's BOM has been read, even when it has no fitted parts.",
+            "title": "Has Usage",
+            "type": "boolean"
           },
           "money": {
             "anyOf": [
@@ -26693,6 +26703,7 @@
         },
         "required": [
           "available",
+          "has_usage",
           "variant",
           "variants",
           "releases",

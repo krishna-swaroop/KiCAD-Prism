@@ -29,7 +29,7 @@ const rollup = bomRollupFixture({
 });
 
 const supply = (overrides: Partial<ProjectSupply> = {}): ProjectSupply => ({
-  available: true, variant: "", variants: [], rollup,
+  available: true, has_usage: true, variant: "", variants: [], rollup,
   parts: [
     projectLineFixture({ key: "k2", manufacturer: "Acme", mpn: "GOOD-1", quantity: 2, references: "R1 R2", part_id: "p2", state: "tracked", status: "ok", stock: 5000, lifecycle: "active", short: false, unit_price: "0.1", notes: 0, need: 200 }),
     projectLineFixture({ key: "k1", manufacturer: "Acme", mpn: "FLAKY-1", quantity: 1, references: "U1", part_id: "p1", state: "tracked", status: "error", stock: 0, lifecycle: "obsolete", short: true, unit_price: "1.2", notes: 2, need: 100 }),
@@ -265,11 +265,19 @@ describe("the project Supply tab", () => {
   });
 
   it("says when the BOM has not been read, offers to read it now, and still offers tracking", async () => {
-    mocked.getProjectSupply.mockResolvedValue(supply({ available: false, parts: undefined, rollup: undefined, releases: [], notes: [] }));
+    mocked.getProjectSupply.mockResolvedValue(supply({ available: false, has_usage: false, parts: undefined, rollup: undefined, releases: [], notes: [] }));
     renderTab();
     expect(await screen.findByText("Not read")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Read now" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Track this project" })).toBeTruthy();
+  });
+
+  it("says a read BOM with no fitted parts as such, not as unread", async () => {
+    mocked.getProjectSupply.mockResolvedValue(supply({ available: false, has_usage: true, parts: undefined, rollup: undefined, releases: [], notes: [] }));
+    renderTab();
+    expect(await screen.findByText("No fitted parts")).toBeTruthy();
+    expect(screen.queryByText("Not read")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Read now" })).toBeNull();
   });
 
   it("says a board-only project has no schematic instead of offering to read it", async () => {
@@ -284,6 +292,19 @@ describe("the project Supply tab", () => {
     renderTab();
     fireEvent.change(await screen.findByLabelText("Design variant"), { target: { value: "Lite" } });
     await waitFor(() => expect(mocked.getProjectSupply).toHaveBeenLastCalledWith("prj", "Lite", undefined, "", expect.anything()));
+  });
+
+  it("starts the parts list again at the first page when the variant changes", async () => {
+    mocked.getProjectSupply.mockResolvedValue(supply({ variants: ["Lite"] }));
+    mocked.getProjectParts.mockResolvedValue({
+      items: [], total: 250, limit: 100, offset: 0, next_offset: 100, unmatched: [], chips: [],
+      forecast_state: { runout: "shown", out_4w: "shown", can_buy_4w: "shown", can_buy_8w: "shown" },
+    } as never);
+    renderTab();
+    fireEvent.click(await screen.findByRole("button", { name: "Next" }));
+    await waitFor(() => expect(mocked.getProjectParts).toHaveBeenLastCalledWith("prj", expect.objectContaining({ offset: 100 }), expect.anything()));
+    fireEvent.change(screen.getByLabelText("Design variant"), { target: { value: "Lite" } });
+    await waitFor(() => expect(mocked.getProjectParts).toHaveBeenLastCalledWith("prj", expect.objectContaining({ variant: "Lite", offset: 0 }), expect.anything()));
   });
 
   it("is closed to a role without supply access, and never asks", () => {

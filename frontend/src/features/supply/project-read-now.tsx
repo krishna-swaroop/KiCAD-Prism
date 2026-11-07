@@ -25,6 +25,7 @@ export function ProjectReadNow({ projectId, onRead }: { projectId: string; onRea
     onData: (progress) => {
       if (progress.state === "running") return;
       setStarted(null);
+      if (progress.state === "failed") toast.error(progress.reason || "Could not read the project's BOM");
       onRead();
     },
     onError: (error) => {

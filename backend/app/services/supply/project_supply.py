@@ -336,13 +336,18 @@ def overview(conn, project_id: str, variant: str = "", build_quantity: int | Non
     rows = usage.project_rows(conn, project_id, variant)
     notes = bom_comments.for_project(conn, project_id)
     notes_by_line = _notes_by_line(notes)
+    # The BOM was read even when this design has no fitted lines: the usage row is written with line_count 0.
+    has_usage = conn.execute("SELECT 1 FROM supply_bom_usage_projects WHERE project_id = %s", (project_id,)).fetchone() is not None
     if not rows:
-        return {"available": False, "variants": usage.project_variants(conn, project_id), "variant": variant, "releases": [], "notes": notes}
+        return {
+            "available": False, "has_usage": has_usage, "variants": usage.project_variants(conn, project_id), "variant": variant,
+            "releases": [], "notes": notes,
+        }
     parts, rollup, curve = _parts(conn, rows, build_quantity, notes_by_line, attrition_percent)
     history, left_out = _cost_history(conn, project_id, variant)
     status_now = {part["part_id"]: part["status"] for part in parts if part["part_id"]}
     return {
-        "available": True, "variant": variant, "build_quantity": build_quantity, "usual_build": usual, "attrition_percent": attrition_percent, "usual_spares": (tracked or {}).get("spares"),
+        "available": True, "has_usage": has_usage, "variant": variant, "build_quantity": build_quantity, "usual_build": usual, "attrition_percent": attrition_percent, "usual_spares": (tracked or {}).get("spares"),
         "variants": usage.project_variants(conn, project_id), "rollup": rollup,
         "parts": parts, "cost_curve": curve, "money": _where_the_money_goes(parts, bool(rollup.get("converted"))), "cost_history": history, "cost_history_left_out": left_out, "releases": _releases(conn, project_id, status_now, build_quantity), "notes": notes,
     }
