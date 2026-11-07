@@ -30,7 +30,7 @@ function Location() {
 
 function renderView() {
   render(
-    <MemoryRouter initialEntries={["/?section=supply&part=old&partsQ=x"]}>
+    <MemoryRouter initialEntries={["/?section=supply&part=old&partsQ=x&partsVendor=c1&partsSort=runout"]}>
       <DashboardView user={user} />
       <Location />
     </MemoryRouter>,
@@ -64,6 +64,8 @@ describe("the dashboard", () => {
     expect(search()).toContain("supplyView=tracking");
     expect(search()).toContain("partsOnly=at_risk");
     expect(search()).not.toContain("partsQ");
+    expect(search()).not.toContain("partsVendor");
+    expect(search()).not.toContain("partsSort");
     fireEvent.click(screen.getByText("Queued for calls").closest("button")!);
     expect(search()).toContain("partsScope=waiting");
   });

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SupplyBomLookup } from "@/types/supply";
@@ -74,6 +74,29 @@ describe("the BOM file view", () => {
       { key: "globex | lm,358", manufacturer: "Globex", mpn: "LM,358", quantity: 2 },
     ]);
     expect(mocked.lookupSupplyBom.mock.calls[0][1]).toEqual({ buildQuantity: 5, attritionPercent: 0 });
+    expect(await screen.findByText("Stock covers 5 boards")).toBeTruthy();
+    expect(screen.getByText("R-10K")).toBeTruthy();
+  });
+
+  it("hides a check's answer when the lines or build it was worked out from change", async () => {
+    const lookup: SupplyBomLookup = {
+      build_quantity: 5, attrition_percent: 0, attrition_by_part: null, rollup,
+      lines: { "acme | r10k": bomLineFixture({ state: "tracked", part_id: "p1", manufacturer_match: "exact", need: 10, watched: true, status: "ok", stock: 500, short: false, buy: null }) },
+    };
+    let answer: (value: SupplyBomLookup) => void = () => undefined;
+    mocked.lookupSupplyBom.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+    render(<BomFileView />);
+    const file = new File([CSV], "bom.csv", { type: "text/csv" });
+    Object.defineProperty(file, "text", { value: () => Promise.resolve(CSV) });
+    fireEvent.change(screen.getByLabelText(/BOM file/), { target: { files: [file] } });
+    fireEvent.change(await screen.findByLabelText("Boards to build"), { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Check 2 distinct parts" }));
+    await waitFor(() => expect(mocked.lookupSupplyBom).toHaveBeenCalled());
+    fireEvent.change(screen.getByLabelText("Boards to build"), { target: { value: "7" } });
+    await act(async () => { answer(lookup); });
+    await waitFor(() => expect(screen.queryByText("Stock covers 5 boards")).toBeNull());
+    expect(screen.queryByText("R-10K")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Boards to build"), { target: { value: "5" } });
     expect(await screen.findByText("Stock covers 5 boards")).toBeTruthy();
     expect(screen.getByText("R-10K")).toBeTruthy();
   });

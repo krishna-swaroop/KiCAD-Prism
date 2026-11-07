@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import type { SupplyBomLookup } from "@/types/supply";
 import { rollupSentences } from "./bom-rollup-text";
 import {
-  buildFileLines, guessMapping, MAX_FILE_BYTES, MAX_FILE_ROWS, type Mapping, type Role,
+  buildFileLines, guessMapping, MAX_FILE_BYTES, MAX_FILE_ROWS, type FileLine, type Mapping, type Role,
 } from "./bom-file-model";
 import { readTableFile } from "./bom-file-read";
 import { BomFileResults } from "./bom-file-results";
@@ -34,16 +34,18 @@ export function BomFileView() {
   const [header, setHeader] = useState(true);
   const [mapping, setMapping] = useState<Mapping>({ manufacturer: null, mpn: null, lcsc: null, quantity: null, references: null });
   const [build, setBuild] = useState(1);
-  const [lookup, setLookup] = useState<SupplyBomLookup | null>(null);
+  // The answer with the lines and build it was worked out from: a changed mapping or build hides it instead of ageing it.
+  const [checked, setChecked] = useState<{ lookup: SupplyBomLookup; lines: FileLine[]; build: number } | null>(null);
   const { busy, error, run } = useConnectorSubmit();
   const [dragging, setDragging] = useState(false);
 
   const columns = rows[0]?.map((name, index) => ({ id: `column-${index}`, index, name: header ? name.trim() || `Column ${index + 1}` : `Column ${index + 1}` })) ?? [];
   const body = header ? rows.slice(1) : rows;
-  const built = useMemo(() => buildFileLines(body, mapping), [body, mapping]);
+  // Rows, the header flag and the mapping are what the lines come from; a new `body` array alone must not invalidate a check.
+  const built = useMemo(() => buildFileLines(header ? rows.slice(1) : rows, mapping), [rows, header, mapping]);
+  const lookup = checked && checked.lines === built.lines && checked.build === build ? checked.lookup : null;
 
   const choose = async (file: File) => {
-    setLookup(null);
     if (file.size > MAX_FILE_BYTES) {
       setRows([]);
       await run(async () => { throw new Error("The file is larger than 2 MB."); });
@@ -70,7 +72,9 @@ export function BomFileView() {
   };
 
   const check = () => run(async () => {
-    setLookup(await lookupSupplyBom(built.lines.map(lineInput), { buildQuantity: build, attritionPercent: 0 }));
+    const lines = built.lines;
+    const result = await lookupSupplyBom(lines.map(lineInput), { buildQuantity: build, attritionPercent: 0 });
+    setChecked({ lookup: result, lines, build });
   });
 
   return (
@@ -98,7 +102,7 @@ export function BomFileView() {
         <div className="space-y-3">
           <p className="text-xs text-muted-foreground">{body.length.toLocaleString()} rows{rows.length > MAX_FILE_ROWS ? ` (only the first ${MAX_FILE_ROWS.toLocaleString()} are read)` : ""}.</p>
           <div className="flex items-center gap-2">
-            <Checkbox id="bom-header" checked={header} onCheckedChange={(value) => { setHeader(value === true); setLookup(null); }} />
+            <Checkbox id="bom-header" checked={header} onCheckedChange={(value) => setHeader(value === true)} />
             <Label htmlFor="bom-header" className="font-normal">The first row is a header</Label>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -109,7 +113,7 @@ export function BomFileView() {
                   id={`map-${role}`}
                   className="h-9 w-full border bg-background px-2 text-sm"
                   value={mapping[role] ?? ""}
-                  onChange={(event) => { setMapping({ ...mapping, [role]: event.target.value === "" ? null : Number(event.target.value) }); setLookup(null); }}
+                  onChange={(event) => setMapping({ ...mapping, [role]: event.target.value === "" ? null : Number(event.target.value) })}
                 >
                   <option value="">{required ? "Choose a column" : "None"}</option>
                   {columns.map((column) => <option key={column.id} value={column.index}>{column.name}</option>)}
@@ -121,7 +125,7 @@ export function BomFileView() {
             <div className="space-y-1">
               <Label htmlFor="bom-file-build" className="text-xs">Boards to build</Label>
               <Input id="bom-file-build" type="number" min={1} max={1_000_000} className="h-9 w-28" value={build}
-                onChange={(event) => { const next = Math.floor(Number(event.target.value)); if (next >= 1 && next <= 1_000_000) { setBuild(next); setLookup(null); } }} />
+                onChange={(event) => { const next = Math.floor(Number(event.target.value)); if (next >= 1 && next <= 1_000_000) setBuild(next); }} />
             </div>
             <button
               type="button"
