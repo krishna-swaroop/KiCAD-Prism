@@ -206,15 +206,14 @@ def _get_prism_mtime(project_path: str) -> Optional[float]:
         return None
 
 
-_DESIGN_SOURCE_SUFFIXES = (".kicad_sch", ".kicad_pcb", ".kicad_pro")
-
-
 def _design_source_mtimes(project_path: str) -> tuple[tuple[str, int], ...]:
-    """Names and mtimes of the root files detection chooses between.
+    """Names and mtimes of every entry in the project root, files and directories.
 
-    A sync that adds or renames a schematic or board runs in the worker
-    process. Validating the cache against these means every process notices
-    the new source without a process-local invalidation.
+    Detection reads root files (schematic, board, project, README, jobset) and
+    root subdirectories (sheets, docs, outputs, thumbnail). A sync that changes
+    any of them runs in the worker process; signing the root listing means
+    every process notices it without a process-local invalidation. A
+    directory's mtime changes when an entry is added to or removed from it.
     """
 
     try:
@@ -223,8 +222,6 @@ def _design_source_mtimes(project_path: str) -> tuple[tuple[str, int], ...]:
         return ()
     sources: list[tuple[str, int]] = []
     for entry in entries:
-        if entry.suffix not in _DESIGN_SOURCE_SUFFIXES:
-            continue
         try:
             sources.append((entry.name, entry.stat().st_mtime_ns))
         except OSError:

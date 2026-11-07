@@ -289,6 +289,13 @@ class CacheFollowsTheDetectedSources(unittest.TestCase):
         second = path_config_service.get_path_config(str(self.root))
         self.assertEqual(second.pcb, "board.kicad_pcb")
 
+    def test_a_new_readme_is_detected_without_an_explicit_invalidation(self) -> None:
+        first = path_config_service.get_path_config(str(self.root))
+        self.assertNotEqual(first.readme, "README.rst")
+        (self.root / "README.rst").write_text("Board", encoding="utf-8")
+        second = path_config_service.get_path_config(str(self.root))
+        self.assertEqual(second.readme, "README.rst")
+
 
 if __name__ == "__main__":
     unittest.main()
