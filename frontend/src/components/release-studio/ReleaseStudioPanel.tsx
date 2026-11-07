@@ -99,7 +99,7 @@ export function ReleaseStudioPanel({
     // The open run is URL state, written through the router so a reload, a
     // copied link, and the page's own URL rebuilds all see the same run.
     const [searchParams, setSearchParams] = useSearchParams();
-    const requestedBuild = searchParams.get("build");
+    const requestedBuild = searchParams.get("build") || null;
     const [view, setView] = useState<StudioView>(() => (requestedBuild ? "history" : "current"));
     const [stage, setStage] = useState<RunStage>("source");
     // Set when the user opens a specific run, so a newer build does not pull
@@ -327,14 +327,43 @@ export function ReleaseStudioPanel({
         return () => controller.abort();
     }, [activeJobIdRef, refresh, refreshDetail, selectedDetail?.build.id, selectedDetail?.build.job_id, selectedDetail?.build.status]);
 
-    useEffect(() => {
+    // The URL names the open run. Write it only when the selection changes:
+    // in react-router 7 `setSearchParams` changes identity on every location
+    // change, so an effect keyed on it would put `build` back after the page
+    // rebuilt its URL (e.g. "Reset to latest") and undo a navigation to
+    // another run.
+    const showBuildInUrl = useCallback((buildId: string | null) => {
         setSearchParams((previous) => {
+            if ((previous.get("build") || null) === buildId) return previous;
             const next = new URLSearchParams(previous);
-            if (selectedBuildId) next.set("build", selectedBuildId);
+            if (buildId) next.set("build", buildId);
             else next.delete("build");
             return next;
         }, { replace: true });
-    }, [selectedBuildId, setSearchParams]);
+    }, [setSearchParams]);
+
+    // A navigation elsewhere on the page selects the run its URL names, and
+    // removing the parameter clears the selection. Our own writes above have
+    // already set the selection, so only an external change reaches this.
+    const lastRequestedBuild = useRef(requestedBuild);
+    useEffect(() => {
+        if (requestedBuild === lastRequestedBuild.current) return;
+        lastRequestedBuild.current = requestedBuild;
+        if (requestedBuild === selectedBuildIdRef.current) return;
+        setDetail(null);
+        setPipeline(null);
+        setLiveLogs([]);
+        setJobStatus("");
+        setJobMessage("");
+        setJobPercent(0);
+        if (requestedBuild) {
+            pinnedRef.current = true;
+            setDrafting(false);
+            setView("history");
+            setStage("build");
+        }
+        setSelectedBuildId(requestedBuild);
+    }, [requestedBuild, selectedBuildIdRef]);
 
     const openRun = useCallback((buildId: string, destination: RunStage = "build") => {
         pinnedRef.current = true;
@@ -351,7 +380,8 @@ export function ReleaseStudioPanel({
         }
         setStage(destination);
         setSelectedBuildId(buildId);
-    }, [selectedBuildId]);
+        showBuildInUrl(buildId);
+    }, [selectedBuildId, showBuildInUrl]);
 
     const run = useCallback(
         async (label: string, action: () => Promise<unknown>, success = "") => {
@@ -402,6 +432,7 @@ export function ReleaseStudioPanel({
             pinnedRef.current = false;
             setDrafting(false);
             setSelectedBuildId(null);
+            showBuildInUrl(null);
             setDetail(null);
             const { job } = await api.startBuild(projectId, {
                 commit_sha: commitSha,
@@ -433,6 +464,7 @@ export function ReleaseStudioPanel({
                 pinnedRef.current = true;
                 currentBuildIdRef.current = builtId;
                 setSelectedBuildId(builtId);
+                showBuildInUrl(builtId);
             }
             setActiveJobId(null);
             if (finished.status === "completed") setStage("outputs");
@@ -525,16 +557,19 @@ export function ReleaseStudioPanel({
             setView("current");
             setStage("source");
             setSelectedBuildId(null);
+            showBuildInUrl(null);
             setDetail(null);
             return;
         }
         setDrafting(false);
         if (id === "current") {
             setSelectedBuildId(currentBuildIdRef.current);
+            showBuildInUrl(currentBuildIdRef.current);
             setStage(activeJobId ? "build" : "outputs");
         } else if (id === "history") {
             pinnedRef.current = false;
             setSelectedBuildId(null);
+            showBuildInUrl(null);
             setDetail(null);
             setStage("build");
         }

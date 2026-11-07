@@ -89,7 +89,8 @@ export function SimStudioPanel({ projectId, canMutate, active = true, headCommit
         onSimulation: openSimulation,
         onTab: setTab,
         onSelect: (node) => studio.current?.select(node),
-    }), [projectId, update, openSimulation, setTab]);
+        headCommit,
+    }), [headCommit, projectId, update, openSimulation, setTab]);
 
     const Studio = kind ? STUDIOS[kind] : undefined;
     if (Studio) {

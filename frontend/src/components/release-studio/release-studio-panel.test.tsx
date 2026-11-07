@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactElement } from "react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, useLocation, useSearchParams } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ReleaseStudioPanel } from "./ReleaseStudioPanel";
@@ -75,10 +75,23 @@ function LocationProbe() {
     return <output data-testid="router-location">{location.pathname}{location.search}</output>;
 }
 
-function renderPanel(panel: ReactElement) {
+/** The page around the panel, rebuilding its URL with no parameters (as "Reset to latest" does). */
+function PageUrlControls() {
+    const [, setSearchParams] = useSearchParams();
+    return <button type="button" onClick={() => setSearchParams({})}>page reset</button>;
+}
+
+/** A router navigation to a build the panel did not select itself. */
+function NavigateToBuild({ buildId }: { buildId: string }) {
+    const [, setSearchParams] = useSearchParams();
+    return <button type="button" onClick={() => setSearchParams({ build: buildId })}>go to {buildId}</button>;
+}
+
+function renderPanel(panel: ReactElement, extra?: ReactElement) {
     return render(
         <MemoryRouter initialEntries={[`${window.location.pathname}${window.location.search}`]}>
             <LocationProbe />
+            {extra}
             {panel}
         </MemoryRouter>,
     );
@@ -668,6 +681,35 @@ describe("ReleaseStudioPanel", () => {
         await startRun();
         await waitFor(() => expect(api.getBuild).toHaveBeenCalledWith("p1", "build-2"));
         await waitFor(() => expect(screen.getByTestId("router-location").textContent).toContain("build=build-2"));
+    });
+
+    it("leaves no build parameter when the page rebuilds its URL", async () => {
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />, <PageUrlControls />);
+        await selectHistoryRun();
+        await waitFor(() => expect(screen.getByTestId("router-location").textContent).toContain("build=build-1"));
+
+        fireEvent.click(screen.getByRole("button", { name: "page reset" }));
+
+        await waitFor(() => expect(screen.getByTestId("router-location").textContent).not.toContain("build="));
+        // The removed effect wrote the selection back on every search change;
+        // give that turn a chance to prove it is gone.
+        await new Promise((resolve) => window.setTimeout(resolve, 0));
+        expect(screen.getByTestId("router-location").textContent).not.toContain("build=");
+    });
+
+    it("selects the build a navigation names", async () => {
+        const second = { ...candidate.latest_build!, id: "build-2", job_id: "job-2" };
+        vi.mocked(api.listCandidates).mockResolvedValue([{ ...candidate, builds: [candidate.latest_build!, second] }]);
+        vi.mocked(api.getBuild).mockImplementation(async (_project, buildId) => ({
+            ...detail,
+            build: buildId === "build-2" ? second : candidate.latest_build!,
+        }));
+        renderPanel(<ReleaseStudioPanel projectId="p1" canMutate />, <NavigateToBuild buildId="build-2" />);
+        fireEvent.click(await screen.findByRole("button", { name: /go to build-2/i }));
+
+        await waitFor(() => expect(api.getBuild).toHaveBeenCalledWith("p1", "build-2"));
+        expect(screen.getByTestId("router-location").textContent).toContain("build=build-2");
+        expect(screen.getByRole("tab", { name: /^history$/i })).toHaveAttribute("aria-selected", "true");
     });
 
     it("publishes a successful build as a GitHub Release without editing identity", async () => {

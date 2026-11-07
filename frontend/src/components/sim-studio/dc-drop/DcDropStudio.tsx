@@ -95,7 +95,9 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, headC
 
     const commit = tree?.record.source.commit;
     // A setup with no pinned commit follows the branch head. Key the canvas
-    // reads by that resolved head so a moved head refetches the board index.
+    // reads by that resolved head so a moved head refetches the board index,
+    // and hold them until it is known: reading first under "" would fetch the
+    // same ~4 MB index a second time at the head and keep the empty entry.
     const boardCommit = commit ?? headCommit;
     const setTreeState = (value: TreeRecord | null) => {
         treeRef.current = value;
@@ -152,7 +154,7 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, headC
     }, [opening, projectId, setupId, reloadKey, onSetupChange]);
 
     useEffect(() => {
-        if (!tree) return;
+        if (!tree || !boardCommit) return;
         let cancelled = false;
         boardIndex(projectId, boardCommit)
             .then((value) => { if (!cancelled) setBoard(value); })
