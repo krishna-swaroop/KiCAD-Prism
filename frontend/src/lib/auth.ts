@@ -51,7 +51,11 @@ let commentLiveAvailability: Promise<boolean> | null = null;
 export function commentLiveAvailable(): Promise<boolean> {
   commentLiveAvailability ??= fetchAuthConfig().then(
     (config) => config.comment_live_enabled !== false,
-    () => true,
+    () => {
+      // Not remembered: the next caller asks again.
+      commentLiveAvailability = null;
+      return true;
+    },
   );
   return commentLiveAvailability;
 }
