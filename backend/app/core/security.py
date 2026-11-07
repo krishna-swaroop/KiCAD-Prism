@@ -225,11 +225,18 @@ def _resolve_bearer_user(token: str) -> AuthenticatedUser:
         try:
             payload = provider_auth_service.validate_access_token(token)
             scopes = str(payload.get("scope") or "").split()
+            # Provider tokens carry scopes, not identity: re-read the owner and
+            # their role now, so a role change or removed account takes effect at once.
+            email = str(payload["email"])
+            current = access_service.get_user_by_email(email)
+            role = _resolve_allowed_user_role(email)
+            if current is None or role is None:
+                raise HTTPException(status_code=401, detail="Invalid bearer token")
             return AuthenticatedUser(
-                email=str(payload["email"]),
-                name=str(payload["name"]),
-                picture=str(payload.get("picture") or ""),
-                role=normalize_role(str(payload["role"])) or "viewer",
+                email=str(current["email"]),
+                name=str(current["name"]),
+                picture=str(current.get("picture") or ""),
+                role=role,
                 auth_type="kicad_provider",
                 client_id=str(payload.get("client_id") or ""),
                 token_id=str(payload.get("jti") or ""),
