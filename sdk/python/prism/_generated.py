@@ -4856,7 +4856,7 @@ class ProjectSearchResults(TypedDict, total=True):
 
 
 class ProjectSupply(TypedDict, total=False):
-    """How a project stands in supply, from its stored BOM. Without a BOM read, only ``available``, the variants, releases and notes."""
+    """How a project stands in supply, from its stored BOM. Without parts, only ``available``, ``has_usage``, the variants, releases and notes."""
     attrition_percent: float | None
     available: bool
     build_quantity: int | None
@@ -4864,6 +4864,7 @@ class ProjectSupply(TypedDict, total=False):
     cost_history: list[CostDay] | None
     cost_history_left_out: list[CostDay] | None
     has_schematic: bool | None
+    has_usage: bool
     money: ProjectMoney | None
     notes: list[SupplyBomComment]
     parts: list[ProjectSupplyPart] | None
