@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from typing import Iterator
 
 from app.services.postgres_database import database
-from app.services.supply.schema import create_supply_tables
+from app.services.supply.schema import add_catalogue_failure_state, create_supply_tables
 
 CATALOG_SCHEMA = "catalog"
 
@@ -44,6 +44,8 @@ class SupplyStore:
                     conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{self.schema}"')
                     conn.execute(f'SET search_path TO "{self.schema}", public')
                     create_supply_tables(conn)
+                    # Later catalog ledger steps that only add to those tables, as the ledger runs them after them.
+                    add_catalogue_failure_state(conn)
                     conn.commit()
             self._initialized = True
 

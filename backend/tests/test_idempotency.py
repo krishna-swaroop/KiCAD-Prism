@@ -151,13 +151,58 @@ class IdempotencyMiddlewareTests(unittest.TestCase):
         self.insert_row(
             key,
             request_hash=self.fingerprint(body),
-            state="pending",
+            state=idempotency_store.STATE_PENDING,
             status_code=None,
         )
 
         response = self.client.post(
             "/api/write", headers={"Idempotency-Key": key}, content=body
         )
+
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(response.json()["code"], "idempotency-key-in-progress")
+        self.assertEqual(self.counter["count"], 0)
+
+    def test_a_pending_row_past_its_lease_is_reclaimed(self) -> None:
+        key = self.key()
+        body = b"left behind"
+        self.insert_row(
+            key,
+            request_hash=self.fingerprint(body),
+            state=idempotency_store.STATE_PENDING,
+            status_code=None,
+        )
+        with database.connection() as connection:
+            connection.execute("SET search_path TO workspace, public")
+            connection.execute(
+                """
+                UPDATE ws_idempotency_keys
+                SET created_at = NOW() - make_interval(secs => %s)
+                WHERE key = %s
+                """,
+                (idempotency_store.PENDING_LEASE_SECONDS + 1, key),
+            )
+            connection.commit()
+
+        self.assertIsNone(idempotency_store.read("anonymous", OPERATION, key))
+
+        response = self.client.post(
+            "/api/write", headers={"Idempotency-Key": key}, content=body
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["count"], 1)
+        self.assertNotIn("Idempotent-Replayed", response.headers)
+        self.assertEqual(self.row(key)["state"], idempotency_store.STATE_DONE)
+
+    def test_a_vanished_claim_is_a_conflict_and_the_write_does_not_run(self) -> None:
+        with (
+            patch("app.core.idempotency.idempotency_store.claim", return_value=False),
+            patch("app.core.idempotency.idempotency_store.read", return_value=None),
+        ):
+            response = self.client.post(
+                "/api/write", headers={"Idempotency-Key": self.key()}, content=b"hello"
+            )
 
         self.assertEqual(response.status_code, 409, response.text)
         self.assertEqual(response.json()["code"], "idempotency-key-in-progress")

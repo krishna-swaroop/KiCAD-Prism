@@ -627,6 +627,18 @@ def _component_parts_reviewed_against(conn: Any) -> None:
     conn.execute("ALTER TABLE component_parts ADD COLUMN IF NOT EXISTS reviewed_against TEXT")
 
 
+def _supply_catalogue_failure(conn: Any) -> None:
+    """The catalogue import's failure state, apart from a provider call's (issue IS-09).
+
+    ``last_error_code``/``last_error_at`` hold the last provider call, which a poll or push success clears. A catalogue
+    failure was stored there too, so a successful poll erased its backoff and a catalogue import cleared a poll error.
+    ``catalogue_failed_at`` and ``catalogue_error`` now hold it. A failure recorded by an older build is moved over.
+    """
+    from app.services.supply.schema import add_catalogue_failure_state
+
+    add_catalogue_failure_state(getattr(conn, "_connection", conn))
+
+
 MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (0, "baseline", _baseline),
     (1, "portable_column_types", _portable_column_types),
@@ -650,6 +662,7 @@ MIGRATIONS: tuple[tuple[int, str, Migration], ...] = (
     (19, "inventory_sources", _inventory_sources),
     (20, "supply_catalog_links", _supply_catalog_links),
     (21, "component_parts_reviewed_against", _component_parts_reviewed_against),
+    (22, "supply_catalogue_failure", _supply_catalogue_failure),
 )
 
 # Migrations that a long-lived branch database recorded under an earlier number.

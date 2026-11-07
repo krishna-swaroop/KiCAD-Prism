@@ -444,6 +444,24 @@ class McpOAuthFlowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"], "invalid_grant")
 
+    def test_a_guest_is_refused_at_the_consent_page(self) -> None:
+        """Auth off serves every request as the implicit guest, which has nothing to consent to."""
+        client = self.TestClient(self.main.app)
+        _verifier, params = self._authorize_params()
+        with patch.object(settings, "AUTH_ENABLED_OVERRIDE", False):
+            consent = client.get("/oauth/mcp/authorize", params=params)
+            self.assertEqual(consent.status_code, 400)
+            self.assertEqual(consent.json()["error"], "invalid_request")
+            self.assertIn("Sign-in is not required", consent.json()["error_description"])
+
+            submit = client.post(
+                "/oauth/mcp/authorize",
+                data={**params, "decision": "allow"},
+                follow_redirects=False,
+            )
+            self.assertEqual(submit.status_code, 400)
+            self.assertIn("Sign-in is not required", submit.json()["error_description"])
+
     def test_settings_lists_and_revokes_the_callers_clients(self) -> None:
         email = unique_email("settings")
         client = self._client_for(email, "designer")

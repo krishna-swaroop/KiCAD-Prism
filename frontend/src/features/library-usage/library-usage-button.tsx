@@ -24,6 +24,7 @@ import {
 const STATUS_BADGE: Record<PlacementStatus, { label: string; variant: "warning" | "destructive" | "outline" | "secondary" }> = {
   update_available: { label: "update", variant: "warning" },
   retired: { label: "retired", variant: "destructive" },
+  unreleased: { label: "unreleased", variant: "secondary" },
   unknown_revision: { label: "revision ?", variant: "secondary" },
   unknown_component: { label: "not in catalog", variant: "secondary" },
   current: { label: "current", variant: "outline" },

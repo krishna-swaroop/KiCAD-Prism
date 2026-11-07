@@ -14,6 +14,7 @@ from fastapi import HTTPException
 from app.core.config import settings
 from app.core.roles import Role, normalize_role
 from app.core.session import create_oidc_transaction_token, decode_oidc_transaction_token
+from app.services import access_service
 from app.services.auth_service import ResolvedSessionUser, authenticate_oidc_auth_code, build_oidc_authorization_url
 
 REMOTE_SYMBOL_SCOPE = "remote_symbols.read"
@@ -281,12 +282,18 @@ def refresh_access_token(*, refresh_token: str, client_id: str) -> dict[str, Any
     if payload.get("client_id") != client_id:
         raise HTTPException(status_code=401, detail="client_id mismatch")
 
+    email = str(payload["email"])
+    current = access_service.get_user_by_email(email)
+    role = access_service.resolve_user_role(email)
+    if current is None or role is None:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
     access_token = issue_token(
         token_type="access",
-        email=str(payload["email"]),
-        name=str(payload["name"]),
-        picture=str(payload.get("picture") or ""),
-        role=str(payload["role"]),
+        email=str(current["email"]),
+        name=str(current["name"]),
+        picture=str(current.get("picture") or ""),
+        role=role,
         scope=str(payload.get("scope") or ""),
         ttl_seconds=settings.REMOTE_PROVIDER_ACCESS_TOKEN_TTL_SECONDS,
     )
@@ -404,6 +411,6 @@ def consume_bootstrap_token(token: str) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="Invalid bootstrap token")
     token_id = str(payload.get("jti") or "")
     exp = int(payload.get("exp", 0))
-    if token_id and exp > _now():
-        _db().add_revoked_token(token_id, exp)
+    if not token_id or exp <= _now() or not _db().claim_revocation(token_id, exp):
+        raise HTTPException(status_code=401, detail="Invalid bootstrap token")
     return payload

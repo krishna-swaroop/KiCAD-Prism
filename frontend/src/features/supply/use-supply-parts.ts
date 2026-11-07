@@ -47,7 +47,9 @@ export function useSupplyPartsFeed(scope: PartsScope, query: string, only: Parts
   const list = `${scope}|${query}|${only}|${projectId}|${vendor}|${sort}`;
   const [more, setMore] = useState<MorePages>({ list, base: null, items: [], next: null, failed: false });
   const [loadingMore, setLoadingMore] = useState(false);
-  const reading = useRef<AbortController | null>(null);
+  // The next-page read and the re-read of loaded pages are separate: a refresh must not leave the paging flag set.
+  const paging = useRef<AbortController | null>(null);
+  const rereading = useRef<AbortController | null>(null);
   const base = first.data;
   const page = useCallback(
     (offset: number, limit: number, signal: AbortSignal) =>
@@ -60,13 +62,25 @@ export function useSupplyPartsFeed(scope: PartsScope, query: string, only: Parts
     () => (more.list === list && (more.base === base || more.items.length > 0) ? more : { list, base, items: [], next: base?.next_offset ?? null, failed: false }),
     [more, list, base],
   );
-  useEffect(() => () => reading.current?.abort(), [list]);
+  useEffect(() => () => {
+    paging.current?.abort();
+    paging.current = null;
+    rereading.current?.abort();
+    rereading.current = null;
+    setLoadingMore(false);
+  }, [list]);
   // The first page was read again for the same list: read again the rows loaded after it, in pages, and swap them in.
   useEffect(() => {
     if (!base || extra.base === base || extra.items.length === 0) return undefined;
     const controller = new AbortController();
-    reading.current?.abort();
-    reading.current = controller;
+    // A page being read belongs to the old first page; its rows are read again below, so paging is no longer loading.
+    paging.current?.abort();
+    paging.current = null;
+    // The replaced page's finish must not clear a later page's flag, so this read clears the flag it replaced.
+    // react-doctor-disable-next-line react-doctor/no-loading-flag-reset-outside-finally
+    setLoadingMore(false);
+    rereading.current?.abort();
+    rereading.current = controller;
     const wanted = extra.items.length;
     void (async () => {
       const items: SupplyPartRow[] = [];
@@ -81,13 +95,16 @@ export function useSupplyPartsFeed(scope: PartsScope, query: string, only: Parts
       ({ items, next }) => { if (!controller.signal.aborted) setMore({ list, base, items, next, failed: false }); },
       // The rows stay as they were; the next write or Retry reads them again.
       () => { if (!controller.signal.aborted) setMore({ ...extra, base }); },
-    );
-    return () => controller.abort();
+    ).finally(() => { if (rereading.current === controller) rereading.current = null; });
+    return () => {
+      controller.abort();
+      if (rereading.current === controller) rereading.current = null;
+    };
   }, [base, extra, list, page]);
   const loadMore = useCallback(async () => {
     if (!base || extra.next === null || loadingMore) return;
     const controller = new AbortController();
-    reading.current = controller;
+    paging.current = controller;
     setLoadingMore(true);
     try {
       const answer = await page(extra.next, FEED_PAGE, controller.signal);
@@ -96,9 +113,13 @@ export function useSupplyPartsFeed(scope: PartsScope, query: string, only: Parts
       // The rows already loaded stay; the page is read again only when asked (a Retry), not each time the end is in view.
       if (!controller.signal.aborted) setMore({ ...extra, failed: true });
     } finally {
-      if (reading.current === controller) reading.current = null;
-      // A read replaced by a newer one (another first page) leaves the flag to that one.
-      setLoadingMore(reading.current !== null);
+      // A read replaced by a newer one (another first page) leaves the flag to that one, which clears it.
+      if (paging.current === controller) {
+        paging.current = null;
+        // The flag belongs to whichever page is current; a replaced page must leave it to its replacement.
+        // react-doctor-disable-next-line react-doctor/no-loading-flag-reset-outside-finally
+        setLoadingMore(false);
+      }
     }
   }, [base, extra, list, loadingMore, page]);
   const items = base ? [...base.items, ...extra.items] : [];

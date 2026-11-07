@@ -38,6 +38,26 @@ def create_catalog_links(conn) -> None:
         conn.execute(statement, prepare=False)
 
 
+def add_catalogue_failure_state(conn) -> None:
+    """The catalogue import's own failure state (catalog ledger step ``supply_catalogue_failure``).
+
+    A catalogue failure used to be kept in ``last_error_code`` like a provider call, so a successful poll erased it.
+    These columns hold it apart. The backfill moves a failure recorded by an older build, leaving no such code behind
+    for a poll to read as its own. Tests run this after :func:`create_supply_tables`, as the ledger does.
+    """
+
+    conn.execute("ALTER TABLE supply_connectors ADD COLUMN IF NOT EXISTS catalogue_failed_at TIMESTAMPTZ", prepare=False)
+    conn.execute(
+        "ALTER TABLE supply_connectors ADD COLUMN IF NOT EXISTS catalogue_error TEXT NOT NULL DEFAULT ''",
+        prepare=False,
+    )
+    conn.execute(
+        "UPDATE supply_connectors SET catalogue_failed_at = last_error_at, last_error_code = '', "
+        "last_error_at = NULL WHERE last_error_code = 'catalogue'",
+        prepare=False,
+    )
+
+
 def seed(conn) -> None:
     """The usual manufacturer spellings and part-number suffixes in code that the tables do not have yet. A group's head
     is its first spelling. Rows a person changed are kept."""

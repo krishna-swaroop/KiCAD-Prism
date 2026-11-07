@@ -56,12 +56,34 @@ fn run_vendor(args: &Args) -> Outcome<(Value, u8)> {
     };
     let (input, config) = read_inputs(args)?;
     let variant = args.option("variant");
+    if let Some(requested) = variant {
+        check_variant(&input.occurrences, requested)?;
+    }
     let run = vendor
         .run(&input, &config, variant)
         .map_err(|error| Failure::input(error.code, error.message).argument("in"))?;
     let output = PathBuf::from(args.option("output").unwrap_or_default());
     write_files(&output, &run.files)?;
     Ok((result_document(vendor.id(), &run), 0))
+}
+
+/// Refuse `--variant` when the design defines no variant matching it, ignoring
+/// case (`default` is always accepted); the message lists the names the design
+/// does define.
+fn check_variant(occurrences: &OccurrencesA0, requested: &str) -> Outcome<()> {
+    let names = prism_vendors::design::variant_names(occurrences);
+    if prism_vendors::design::variant_known(&names, requested) {
+        return Ok(());
+    }
+    let message = if names.is_empty() {
+        format!("the design has no variant {requested:?} and defines none")
+    } else {
+        format!(
+            "the design has no variant {requested:?}; it defines {}",
+            names.join(", ")
+        )
+    };
+    Err(Failure::usage("variant-unknown", message).argument("variant"))
 }
 
 /// The bundle members, the board facts and the configuration.

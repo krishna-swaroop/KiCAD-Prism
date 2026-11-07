@@ -26,7 +26,13 @@ from pydantic import BaseModel
 
 from app.core import policy
 from app.core.policy import require_owner_or_admin
-from app.core.security import AuthenticatedUser, get_current_user, refuse_provider_token, require_viewer
+from app.core.security import (
+    AuthenticatedUser,
+    get_current_user,
+    is_guest,
+    refuse_provider_token,
+    require_viewer,
+)
 from app.services import agent_auth_service
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
@@ -92,7 +98,7 @@ async def authorize(
         return RedirectResponse(login_url, status_code=302)
     refuse_provider_token(user)
 
-    if user.auth_type == "guest":
+    if is_guest(user):
         # Auth is off; nothing to authorize.
         raise HTTPException(status_code=400, detail="Sign-in is not required on this server")
 
@@ -134,7 +140,7 @@ async def authorize_submit(
     )
     user = await get_current_user(request)
     refuse_provider_token(user)
-    if user.auth_type == "guest":
+    if is_guest(user):
         raise HTTPException(status_code=400, detail="Sign-in is not required on this server")
 
     # Storing the one-time code is a PostgreSQL write; the validation above is

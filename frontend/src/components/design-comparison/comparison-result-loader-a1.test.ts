@@ -80,6 +80,26 @@ describe("loading compare's result", () => {
         expect(fetchApi).not.toHaveBeenCalled();
     });
 
+    it("does not request a manifest's sidecars before the job completes", async () => {
+        // Sidecars are registered in the transaction that completes the job,
+        // so a manifest seen while it is still running answers 404 for every
+        // sidecar. The inline partial result is what renders until then.
+        const loaded = await hydrateDesignComparePayload(
+            manifest([...TABS, "fabrication"]),
+            { completed: false },
+        );
+
+        expect(loaded).toBeNull();
+        expect(fetchApi).not.toHaveBeenCalled();
+    });
+
+    it("still takes the inline partial result while the job runs", async () => {
+        const partial = { ...result, readiness: readiness("building") };
+        await expect(hydrateDesignComparePayload(partial, { completed: false }))
+            .resolves.toBe(partial);
+        expect(fetchApi).not.toHaveBeenCalled();
+    });
+
     it("assembles the v2 manifest's tabs, fabrication and sidecar urls", async () => {
         const fabrication = { present: true, layers: [], warnings: [] };
         const payloads: Record<string, unknown> = {
@@ -90,9 +110,9 @@ describe("loading compare's result", () => {
         vi.mocked(fetchApi).mockImplementation(async (url) =>
             response(payloads[String(url).split("/").pop()!]));
 
-        const loaded = await hydrateDesignComparePayload(
+        const loaded = (await hydrateDesignComparePayload(
             manifest([...TABS, "core", "fabrication", "fab:F.Cu:base"]),
-        );
+        ))!;
 
         expect(loaded).toEqual({
             ...result,
@@ -116,7 +136,7 @@ describe("loading compare's result", () => {
                 ? response({ detail: "gone" }, 404)
                 : response(result[name as (typeof TABS)[number]]);
         });
-        const loaded = await hydrateDesignComparePayload(manifest([...TABS, "fabrication"]));
+        const loaded = (await hydrateDesignComparePayload(manifest([...TABS, "fabrication"])))!;
         expect(loaded.fabrication).toBeUndefined();
         expect(loaded.files).toEqual(result.files);
     });

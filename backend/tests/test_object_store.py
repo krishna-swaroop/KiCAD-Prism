@@ -53,6 +53,16 @@ class ObjectStoreTests(unittest.TestCase):
         self.assertTrue(path.is_file())
         self.assertEqual(result["objects_removed"], 0)
 
+    def test_a_corrupt_object_is_replaced_by_the_next_put(self) -> None:
+        path = self._object(b"good bytes")
+        path.write_bytes(b"corrupt")
+
+        stored = self.store.put_stream(io.BytesIO(b"good bytes"), staging_dir=self.staging)
+
+        self.assertEqual(stored.path, path)
+        self.assertEqual(path.read_bytes(), b"good bytes")
+        self.assertEqual(list(self.staging.iterdir()), [])
+
     def test_rejected_stream_publishes_nothing(self) -> None:
         with self.assertRaisesRegex(ValueError, "per-file size limit"):
             self.store.put_stream(io.BytesIO(b"x" * 10), staging_dir=self.staging, max_bytes=4)

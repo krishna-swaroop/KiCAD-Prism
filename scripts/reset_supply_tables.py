@@ -3,9 +3,9 @@
 
 Prism refuses to start when the catalog ledger recorded the supply steps but the tables lack what those steps make now
 (``app/services/supply/schema/frozen.py``). This drops every ``supply_`` table and function, and ``component_parts``
-(approved alternates point at supply parts), then forgets ledger steps 17, 18, 20 and 21 so they run again. Components,
-revisions, assets and local inventory are kept. Supply history, tracking, settings, connector credentials and alternates
-are lost.
+(approved alternates point at supply parts), then forgets ledger steps 17, 18, 20, 21 and 22 so they run again.
+Components, revisions, assets and local inventory are kept. Supply history, tracking, settings, connector credentials and
+alternates are lost.
 """
 
 from __future__ import annotations
@@ -14,8 +14,9 @@ import argparse
 import os
 
 CONFIRMATION = "RESET-PRISM-SUPPLY-TABLES"
-# supply_tables, component_parts, supply_catalog_links, component_parts_reviewed_against: the steps whose tables this drops.
-STEPS = (17, 18, 20, 21)
+# supply_tables, component_parts, supply_catalog_links, component_parts_reviewed_against, supply_catalogue_failure:
+# the steps whose tables this drops or changes.
+STEPS = (17, 18, 20, 21, 22)
 
 
 def _dsn() -> str:

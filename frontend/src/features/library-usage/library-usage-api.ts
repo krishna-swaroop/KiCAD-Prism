@@ -7,6 +7,7 @@ export type PlacementStatus =
   | "current"
   | "update_available"
   | "retired"
+  | "unreleased"
   | "unknown_revision"
   | "unknown_component";
 
@@ -71,6 +72,7 @@ export function scanLibraryUsage(projectId: string, commit: string | null) {
 const STATUS_ORDER: PlacementStatus[] = [
   "update_available",
   "retired",
+  "unreleased",
   "unknown_revision",
   "unknown_component",
   "current",

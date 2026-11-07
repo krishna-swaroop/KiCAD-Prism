@@ -65,7 +65,7 @@ describe("comparison result sidecars", () => {
             sidecars,
         } as unknown as DesignCompareBundle;
 
-        const result = await hydrateDesignComparePayload(bundle);
+        const result = (await hydrateDesignComparePayload(bundle))!;
 
         expect(fetchApi).toHaveBeenCalledTimes(6);
         expect(result.schema).toBe("prism.design_compare.result.a1");
@@ -121,7 +121,7 @@ describe("comparison result sidecars", () => {
             ])),
         } as unknown as DesignCompareBundle;
 
-        const result = await hydrateDesignComparePayload(bundle);
+        const result = (await hydrateDesignComparePayload(bundle))!;
 
         expect(fetchApi).toHaveBeenCalledTimes(6);
         expect(result.fabrication).toBeUndefined();
@@ -141,7 +141,7 @@ describe("comparison result sidecars", () => {
             },
         };
 
-        const result = await hydrateDesignComparePayload(partial);
+        const result = (await hydrateDesignComparePayload(partial))!;
 
         expect(fetchApi).not.toHaveBeenCalled();
         expect(result.schema).toBe("prism.design_compare.result.a1");

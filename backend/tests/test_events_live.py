@@ -236,6 +236,28 @@ class EventLiveSocketTests(unittest.TestCase):
                 pass
         self.assertEqual(refused.exception.code, 1008)
 
+    def test_access_revoked_after_connect_closes_the_socket(self) -> None:
+        after = self._head()
+        user = _user()
+        revoked = False
+
+        async def check_socket_access(_websocket):
+            return None if revoked else user
+
+        with (
+            patch.object(self.events_live, "_ACCESS_RECHECK_SECONDS", 0.0),
+            patch.object(self.events_live, "_check_socket_access", check_socket_access),
+            self._socket() as socket,
+        ):
+            socket.send_json({"type": "subscribe", "after": after})
+            self.assertEqual(socket.receive_json()["type"], "events")
+            revoked = True
+            event_log.record("job.finished", project_id=self.project)
+            with self.assertRaises(WebSocketDisconnect) as closed:
+                socket.receive_json()
+
+        self.assertEqual(closed.exception.code, 1008)
+
 
 class EventLiveRuntimeTests(unittest.TestCase):
     def test_websockets_is_a_runtime_dependency(self) -> None:

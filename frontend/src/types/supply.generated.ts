@@ -414,6 +414,8 @@ export interface ConfirmAliasRequest {
 export interface ConnectorHealth {
   budget: number | null;
   calls_today: number;
+  catalogue_error: string;
+  catalogue_failed_at: string | null;
   connector_id: string;
   enabled: boolean;
   failing: number;
@@ -2653,6 +2655,10 @@ export interface SupplyConnector {
   /** Offers come from the provider's published catalogue (jlcparts) instead of an uploaded file. */
   catalogue: boolean;
   catalogue_available: boolean;
+  /** Why the published catalogue last could not be read. */
+  catalogue_error: string;
+  /** When the published catalogue last could not be read; the import waits a full interval from it. */
+  catalogue_failed_at: string | null;
   /** The connector rests, making no calls, until this time (after a refusal, a rate limit or errors in a row). */
   cooldown_until: string | null;
   created_at: string | null;

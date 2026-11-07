@@ -130,8 +130,13 @@ export function useDesignCompareJob(
                 const payload = (await resultResponse.json()) as
                     | DesignCompareResult
                     | DesignCompareBundle;
-                const hydrated = await hydrateDesignComparePayload(payload, signal);
-                if (signal.aborted) return;
+                const hydrated = await hydrateDesignComparePayload(payload, {
+                    signal,
+                    completed: next.status === "completed",
+                });
+                // A manifest that arrives before completion has no sidecars
+                // yet; keep the last inline result and retry after completion.
+                if (signal.aborted || hydrated === null) return;
                 resultVersionRef.current = resultVersion;
                 setResult(hydrated);
             },
