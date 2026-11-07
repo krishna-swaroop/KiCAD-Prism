@@ -821,8 +821,11 @@ def _register_planned_projects(
     checkout_root = target_path.resolve()
     imported_ids: list[str] = []
     total = len(plan.selected)
+    # No cancellation check inside this loop: rows registered before a cancel
+    # would be left pointing at a checkout the caller then removes. A cancel
+    # is honored before registration starts; one that arrives during it is
+    # settled by the runtime once every selected project has a row.
     for index, project in enumerate(plan.selected):
-        context.check_cancelled()
         if plan.import_type == "type1":
             project_root = target_path
             description = f"Project {plan.repo_name}"
@@ -916,6 +919,9 @@ def run_project_import_job_v3(context: JobContext) -> JobResult:
     )
     target_path = Path(plan.target_path)
     base_path = target_path.parent
+    # An existing repository row already points at this checkout, so it must
+    # survive even when this job cloned it (a missing checkout is re-created).
+    registered = existing_repo is not None
 
     try:
         adopted_checkout = False
@@ -986,7 +992,9 @@ def run_project_import_job_v3(context: JobContext) -> JobResult:
                 clone_path_abs=str(target_path),
                 import_type="single" if import_type == "type1" else "multi",
             )
+            registered = True
         imported_ids = _register_planned_projects(plan, target_path, repo_id, context)
+        registered = True
         # Render boards in their own jobs. The projects are registered and
         # browsable now; thumbnails fill in as each render finishes, rather than
         # holding the import open for two minutes per board.
@@ -1017,7 +1025,7 @@ def run_project_import_job_v3(context: JobContext) -> JobResult:
             },
         )
     except Exception:
-        if cloned_in_job:
+        if cloned_in_job and not registered:
             shutil.rmtree(target_path, ignore_errors=True)
         raise
 

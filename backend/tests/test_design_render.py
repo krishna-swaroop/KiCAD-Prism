@@ -11,6 +11,7 @@ import random
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from app.services import derived_assets
@@ -255,6 +256,64 @@ class StorageTests(unittest.TestCase):
 
     def test_the_default_budget_is_one_hundred(self) -> None:
         self.assertEqual(derived_assets.RENDER_BUDGET, 100)
+
+
+class RetryStateTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.enterContext(
+            mock.patch.object(derived_assets, "derived_root", return_value=self.root)
+        )
+        self.project_path = str(self.root / "board")
+        self.anchor = "plain.kicad_pro"
+        self.project = SimpleNamespace(
+            id="p1", path=self.project_path, project_file=self.anchor
+        )
+        self.row = {
+            "id": "p1",
+            "path": self.project_path,
+            "project_file_rel": self.anchor,
+        }
+        self.enterContext(
+            mock.patch.object(
+                service.workspace, "get_project_by_id", return_value=self.row
+            )
+        )
+        self.render_id = "a" * 64
+        self.payload = {
+            "project_id": "p1",
+            "project_file_rel": self.anchor,
+            "commit": "b" * 40,
+            "render_id": self.render_id,
+            "request": {"view": "pcb"},
+        }
+
+    def _context(self, job_id: str = "job-1") -> SimpleNamespace:
+        return SimpleNamespace(payload=self.payload, job_id=job_id)
+
+    def test_a_retryable_failure_leaves_the_record_retrying(self) -> None:
+        retryable = service.RetryableJobError("bundle is still building")
+        with (
+            mock.patch.object(service, "_render", side_effect=retryable),
+            self.assertRaises(service.RetryableJobError),
+        ):
+            service.run_render_view_job(self._context())
+
+        record = derived_assets.find_render(
+            self.project_path, self.render_id, anchor=self.anchor
+        )
+        self.assertEqual(record["status"], "running")
+
+        # A record written `failed` by an earlier attempt is not final while
+        # the job itself is still active.
+        record["status"] = "failed"
+        derived_assets.write_render_record(
+            self.project_path, self.render_id, record, anchor=self.anchor
+        )
+        job = SimpleNamespace(get=lambda _job_id: {"status": "retry_wait"})
+        with mock.patch("app.services.job_service.jobs", job):
+            answered = service.get_render(self.project, self.render_id)
+        self.assertEqual(answered["status"], "retry_wait")
 
 
 if __name__ == "__main__":

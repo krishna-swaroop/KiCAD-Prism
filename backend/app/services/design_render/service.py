@@ -273,7 +273,10 @@ def get_render(project: Any, render_id: str) -> dict[str, Any] | None:
         return None
     status = str(record.get("status") or "")
     job_id = str(record.get("jobId") or "")
-    if status not in TERMINAL_STATUSES and job_id:
+    # A record that says `failed` can belong to an attempt the job runtime then
+    # retried. Until the job itself ends, its row is the authority on the
+    # render's state.
+    if job_id and (status not in TERMINAL_STATUSES or status == "failed"):
         job = _jobs().get(job_id)
         if job is not None and job.get("status") != status:
             status = str(job.get("status") or status)
@@ -287,7 +290,7 @@ def get_render(project: Any, render_id: str) -> dict[str, Any] | None:
     )
     result = {
         "renderId": record.get("renderId") or render_id,
-        "status": record.get("status") or status,
+        "status": status,
         "view":record.get("view") or "",
         "commit": record.get("commit") or "",
         "sheet": record.get("sheet"),
@@ -627,6 +630,11 @@ def run_render_view_job(context: JobContext) -> JobResult:
                 "height": rendered["height"],
             },
         )
+    except RetryableJobError:
+        # The runtime may schedule another attempt. Writing `failed` here made
+        # the record terminal while the job was still retrying; the job row is
+        # the authority until it ends.
+        raise
     except Exception as error:
         record.update(status="failed", error=str(getattr(error, "code", "") or type(error).__name__))
         derived_assets.write_render_record(
