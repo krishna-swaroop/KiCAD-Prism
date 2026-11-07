@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 
 import { workspaceSessionKey } from "@/hooks/use-workspace-data";
+import { forgetModuleCaches } from "@/lib/module-caches";
 import { forgetServerState } from "@/lib/server-state";
 import type { User } from "@/types/auth";
 
@@ -17,6 +18,7 @@ export function useSignedInUser(): [User | null, (next: User | null) => void] {
     if (key !== identity.current) {
       identity.current = key;
       forgetServerState([]);
+      forgetModuleCaches();
     }
     setSignedIn(next);
   }, []);

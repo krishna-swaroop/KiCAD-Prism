@@ -122,6 +122,8 @@ type Hooks = {
     onTab?(tab: StudioTab): void;
     onSelect?(node: string | null): void;
     commit?: string;
+    /** The branch head, for a setup that follows HEAD. */
+    headCommit?: string;
 };
 
 export function createSimStudioScriptApi(projectId: string, hooks: Hooks): SimStudioScriptApi {
@@ -136,7 +138,11 @@ export function createSimStudioScriptApi(projectId: string, hooks: Hooks): SimSt
     const append = (collection: string) => (setupId: string, item: unknown) =>
         patch(setupId, [{ op: "add", path: `/${collection}/-`, value: item }]);
 
-    const commitOf = (record: SetupRecord) => record.source.commit ?? hooks.commit;
+    // A setup that follows HEAD has no commit of its own. Key its board reads
+    // by the resolved head, or a moved head leaves scripts editing against the
+    // board they first loaded.
+    const commit = hooks.commit ?? hooks.headCommit;
+    const commitOf = (record: SetupRecord) => record.source.commit ?? commit;
     /** Load the tree and board, apply one model edit, save what changed. */
     const editTree = async (
         setupId: string, change: (state: TreeState, board: BoardIndex) => TreeState | { state: TreeState; node: string },
@@ -156,7 +162,7 @@ export function createSimStudioScriptApi(projectId: string, hooks: Hooks): SimSt
         catalog: api.readCatalog,
         list: () => api.listSetups(projectId),
         draft: async (name, options = {}) =>
-            changed(await api.draftSetup(projectId, options.kind ?? "dc-drop", name, options.commit ?? hooks.commit)),
+            changed(await api.draftSetup(projectId, options.kind ?? "dc-drop", name, options.commit ?? commit)),
         read: (setupId) => api.readSetup(projectId, setupId),
         patch,
         replace: async (setupId, setup) => {
@@ -185,7 +191,7 @@ export function createSimStudioScriptApi(projectId: string, hooks: Hooks): SimSt
             ]));
         },
         pads: async (net) => {
-            const query = hooks.commit ? `?commit=${encodeURIComponent(hooks.commit)}` : "";
+            const query = commit ? `?commit=${encodeURIComponent(commit)}` : "";
             const index = await fetchJson<{ terminals?: SemanticTerminal[] }>(
                 `/api/projects/${encodeURIComponent(projectId)}/semantic-index/identity${query}`,
                 undefined,
@@ -198,11 +204,11 @@ export function createSimStudioScriptApi(projectId: string, hooks: Hooks): SimSt
         },
         open: (setupId) => hooks.onOpen(setupId),
         newSetup: async (name, options = {}) => {
-            const created = await createSetup(projectId, name, options.seed ?? "inferred", options.commit ?? hooks.commit);
+            const created = await createSetup(projectId, name, options.seed ?? "inferred", options.commit ?? commit);
             hooks.onChange(created.record.setup_id);
             return created.record;
         },
-        inferPowerTree: (commit) => api.readPowerTree(projectId, commit ?? hooks.commit),
+        inferPowerTree: (commitArg) => api.readPowerTree(projectId, commitArg ?? commit),
         applyInferred: async (setupId, mode = "add") => {
             const record = await api.readSetup(projectId, setupId);
             const inferred = await api.readPowerTree(projectId, commitOf(record));
@@ -217,7 +223,7 @@ export function createSimStudioScriptApi(projectId: string, hooks: Hooks): SimSt
         },
         addElement: async (setupId, kind, fields = {}, position) =>
             (await editTree(setupId, (state, board) => addElement(state, board, kind, fields, position))).node!,
-        candidates: (commit) => candidatesFor(projectId, commit ?? hooks.commit),
+        candidates: (commitArg) => candidatesFor(projectId, commitArg ?? commit),
         addPicked: async (setupId, pick, position) =>
             (await editTree(setupId, (state, board) => addPicked(state, board, pick, position))).node!,
         updateElement: async (setupId, node, patch) =>

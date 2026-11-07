@@ -16,6 +16,8 @@ type Props = {
     canMutate: boolean;
     /** The Studio section is on screen (keyboard shortcuts only fire then). */
     active?: boolean;
+    /** The branch head, for a studio whose setup follows HEAD. */
+    headCommit?: string;
 };
 
 const ICONS: Record<string, ComponentType<{ className?: string }>> = {
@@ -42,7 +44,7 @@ const message = (error: unknown) => (error instanceof Error ? error.message : St
  * open simulation, setup and tab live in the URL (`sim`, `setup`, `view`).
  * `window.prismSimStudio` (./script-api.ts) drives the same views.
  */
-export function SimStudioPanel({ projectId, canMutate, active = true }: Props) {
+export function SimStudioPanel({ projectId, canMutate, active = true, headCommit }: Props) {
     const [params, setParams] = useSearchParams();
     const [catalog, setCatalog] = useState<CatalogEntry[] | null>(null);
     const studio = useRef<StudioControls | null>(null);
@@ -87,7 +89,8 @@ export function SimStudioPanel({ projectId, canMutate, active = true }: Props) {
         onSimulation: openSimulation,
         onTab: setTab,
         onSelect: (node) => studio.current?.select(node),
-    }), [projectId, update, openSimulation, setTab]);
+        headCommit,
+    }), [headCommit, projectId, update, openSimulation, setTab]);
 
     const Studio = kind ? STUDIOS[kind] : undefined;
     if (Studio) {
@@ -98,6 +101,7 @@ export function SimStudioPanel({ projectId, canMutate, active = true }: Props) {
                 active={active}
                 setupId={setupId}
                 tab={tab}
+                headCommit={headCommit}
                 onSetupChange={openSetup}
                 onTabChange={setTab}
                 onBack={() => openSimulation(null)}

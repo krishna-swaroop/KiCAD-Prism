@@ -65,6 +65,27 @@ describe("window.prismSimStudio", () => {
         expect(fetchJson.mock.calls[0][0]).toBe(`/api/projects/prj%201/semantic-index/identity?commit=${"f".repeat(40)}`);
     });
 
+    it("reads a HEAD-following setup's board at the branch head", async () => {
+        const setup = {
+            schema: "prism.sim.setup", version: "a0", name: "t", bundle: { board_id: "main" }, materials: { slices: {} }, components: {},
+            rails: [{ id: "3v3", net: "main:+3V3", voltage_v: 3.3 }],
+            terminals: [{ id: "u1-t", positive: ["main:U1.1"], reference: [] }],
+            sources: [], converters: [], probes: [],
+            loads: [{ id: "u1-3v3", rail: "3v3", terminal: "u1-t", current_a: 0, distribution: "uniform", component: "main:U1" }],
+            analyses: [{ id: "dc", kind: "dc-drop", rails: ["3v3"] }],
+        };
+        const current = { ...record(3), source: { project_path: "b.kicad_pro" }, setup };
+        fetchJson
+            .mockResolvedValueOnce(current)
+            .mockResolvedValueOnce({ version: 1, positions: {}, pending: [] })
+            .mockResolvedValueOnce({ components: [], terminals: [] })
+            .mockResolvedValueOnce({ ...current, revision: 4 });
+        const head = "e".repeat(40);
+        await createSimStudioScriptApi("prj head", { ...hooks, headCommit: head })
+            .updateElement("sup_1", "load:u1-3v3", { values: { current_a: 2 } });
+        expect(fetchJson.mock.calls[2][0]).toBe(`/api/projects/prj%20head/semantic-index/identity?commit=${head}`);
+    });
+
     it("edits the power tree through the same model as the canvas", async () => {
         const setup = {
             schema: "prism.sim.setup", version: "a0", name: "t", bundle: { board_id: "main" }, materials: { slices: {} }, components: {},
