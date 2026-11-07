@@ -32,7 +32,7 @@ from app.services.design_compare_artifacts import _manifest_entry
 from app.services.job_artifact_service import job_artifacts
 from app.services.job_kinds import JobKind, JobSubject, memory_units, repository_lock
 from app.services.job_runtime import JobContext, JobResult
-from app.services.job_service import jobs as v3_jobs
+from app.services.job_service import ACTIVE_STATUSES, jobs as v3_jobs
 from app.services.workspace_service import workspace
 
 logger = logging.getLogger(__name__)
@@ -339,7 +339,7 @@ def delete_job(job_id: str) -> None:
     """Cancel the comparison if it is still running; finished results stay."""
 
     job = v3_jobs.get(job_id)
-    if job and job.get("status") in {"queued", "running", "retry_wait", "cancel_requested"}:
+    if job and job.get("status") in ACTIVE_STATUSES:
         v3_jobs.request_cancel(job_id)
 
 
