@@ -22,10 +22,11 @@ from typing import Any, Sequence
 
 from app.services.supply import clock, component_parts, parts
 from app.services.supply.audit import actor_text, write_audit
-from app.services.supply.progress import job_progress
-from app.services.supply.identity import alias_key, match_key
-from app.services.supply.providers import registry
 from app.services.supply.errors import Refused
+from app.services.supply.identity import alias_key, match_key
+from app.services.supply.poller import RESTING_STOPS
+from app.services.supply.progress import job_progress
+from app.services.supply.providers import registry
 
 MAX_PARTS = 2000
 MAX_ATTEMPTS = 5
@@ -176,8 +177,7 @@ def run(discoverer, poller, store, connector_id: str, *, limit: int = PER_RUN) -
     # What the search just read (a provider whose search answer carries the offer) is not read again.
     summary = poller.poll_connector(connector_id, only_part=part_ids, oneoff=True, fresh_since=searched_from)
     # Waiting for budget or a rest is not a failed try: the work stays for the next run.
-    waiting = {"budget", "cooling_down", "inactive"}
-    resting = search_stop in waiting or summary.stopped in waiting
+    resting = search_stop in RESTING_STOPS or summary.stopped in RESTING_STOPS
     done = 0
     with store.connection() as conn:
         for part_id in part_ids:
