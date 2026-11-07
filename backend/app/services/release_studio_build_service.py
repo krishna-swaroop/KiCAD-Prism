@@ -50,7 +50,7 @@ from app.release_studio.bundle_errors import BundleFailed, BundlePending
 from app.services.job_artifact_service import JobArtifactService
 from app.services.job_kinds import JobKind, memory_units
 from app.services.job_runtime import JobCancelled, JobContext, JobResult
-from app.services.kicad_tools import KicadTools
+from app.services.kicad_tools import KicadTools, kicad_cli
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +99,16 @@ def executor_image() -> str:
     return image
 
 
+def detected_cli_version(tools: KicadTools | None = None) -> str:
+    """The installed kicad-cli's release, or ``""`` when it cannot be read."""
+
+    tool = tools.cli if tools is not None else kicad_cli()
+    if tool is None or not tool.available():
+        return ""
+    version = tool.version()
+    return "" if version in {"unknown", "unavailable"} else version
+
+
 def toolchain_identity(
     bundle_generator: Mapping[str, Any],
     cli_version: str = "",
@@ -118,7 +128,7 @@ def toolchain_identity(
     # decide what a composed sheet contains.
     resources = renderer_resource_digest()
     record = {
-        "kicad_version": cli_version or "10.0.4",
+        "kicad_version": cli_version or "unknown",
         "executor_image": image,
         "generator_build": GENERATOR_BUILD,
         "canonicalizer_registry": f"{CANONICALIZER_REGISTRY_NAME}/{CANONICALIZER_REGISTRY_VERSION}",
@@ -243,7 +253,8 @@ def prepare_candidate(
             "Release Studio closure carries %d advisory reference(s)", len(advisory)
         )
     _toolchain, toolchain_digest = toolchain_identity(
-        bundle_generator=design.generator
+        bundle_generator=design.generator,
+        cli_version=detected_cli_version(),
     )
     model_rows = model_inputs.closure_model_rows(closure)
 
@@ -447,7 +458,8 @@ def execute_build(
         tracker.start("package", message="Canonicalizing and packaging", percent=75)
 
         toolchain, toolchain_digest = toolchain_identity(
-            bundle_generator=design.generator
+            bundle_generator=design.generator,
+            cli_version=detected_cli_version(tools),
         )
         assembled = dossier_module.assemble(
             outputs=outputs,

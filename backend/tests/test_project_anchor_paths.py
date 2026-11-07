@@ -258,5 +258,44 @@ class BackgroundJobsKeepTheAnchor(unittest.TestCase):
         )
 
 
+class CacheFollowsTheDetectedSources(unittest.TestCase):
+    """A sync runs in the worker; the API process has to see the new sources.
+
+    The cache used to be validated only by `.prism.json` and stored settings,
+    so a renamed or added source stayed invisible until restart.
+    """
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        path_config_service.clear_config_cache()
+        self.addCleanup(self._tmp.cleanup)
+        self.addCleanup(path_config_service.clear_config_cache)
+
+    def test_a_renamed_schematic_is_detected_without_an_explicit_invalidation(self) -> None:
+        (self.root / "old.kicad_sch").write_text("", encoding="utf-8")
+        first = path_config_service.get_path_config(str(self.root))
+        self.assertEqual(first.schematic, "old.kicad_sch")
+
+        (self.root / "old.kicad_sch").rename(self.root / "new.kicad_sch")
+        second = path_config_service.get_path_config(str(self.root))
+        self.assertEqual(second.schematic, "new.kicad_sch")
+
+    def test_a_new_board_is_detected_without_an_explicit_invalidation(self) -> None:
+        first = path_config_service.get_path_config(str(self.root))
+        self.assertEqual(first.pcb, path_config_service.DEFAULT_PATHS["pcb"])
+
+        (self.root / "board.kicad_pcb").write_text("", encoding="utf-8")
+        second = path_config_service.get_path_config(str(self.root))
+        self.assertEqual(second.pcb, "board.kicad_pcb")
+
+    def test_a_new_readme_is_detected_without_an_explicit_invalidation(self) -> None:
+        first = path_config_service.get_path_config(str(self.root))
+        self.assertNotEqual(first.readme, "README.rst")
+        (self.root / "README.rst").write_text("Board", encoding="utf-8")
+        second = path_config_service.get_path_config(str(self.root))
+        self.assertEqual(second.readme, "README.rst")
+
+
 if __name__ == "__main__":
     unittest.main()
