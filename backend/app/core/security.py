@@ -182,11 +182,17 @@ def _resolve_bearer_user(token: str) -> AuthenticatedUser:
             # Best-effort, throttled: keep the registry's "last used" column honest
             # without a DB write on every request. Never fails the request.
             agent_auth_service.touch_agent_token(payload)
+            # Like MCP and provider tokens: re-read the owner and their role now,
+            # so a role change or removed account takes effect at once.
+            current = access_service.get_user_by_email(str(payload["email"]))
+            role = _resolve_allowed_user_role(str(payload["email"]))
+            if current is None or role is None:
+                raise HTTPException(status_code=401, detail="Invalid bearer token")
             return AuthenticatedUser(
-                email=str(payload["email"]),
-                name=str(payload["name"]),
-                picture=str(payload.get("picture") or ""),
-                role=normalize_role(str(payload["role"])) or "viewer",
+                email=str(current["email"]),
+                name=str(current["name"]),
+                picture=str(current.get("picture") or ""),
+                role=role,
                 auth_type="agent",
                 client_id=str(payload.get("client_id") or ""),
                 token_id=str(payload.get("jti") or ""),

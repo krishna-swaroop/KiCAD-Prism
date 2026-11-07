@@ -41,13 +41,28 @@ def _reject(*_args, **_kwargs):
 class AgentTokenTests(unittest.TestCase):
     """The KiCad agent asks for a subset of {api:read, api:write}; empty means both."""
 
-    def _caller(self, requested: str):
+    def _caller(self, requested: str, *, role: str | None = "designer", current: dict | None = None):
         scope = agent_auth_service.normalize_agent_scope(requested)
         payload = {"email": "d@example.com", "name": "D", "role": "designer", "scope": scope, "client_id": "kicad-agent"}
+        if current is None:
+            current = {"user_id": "u1", "email": "d@example.com", "name": "D", "picture": ""}
         with patch.object(agent_auth_service, "validate_agent_token", return_value=payload), patch.object(
             agent_auth_service, "touch_agent_token"
-        ):
+        ), patch.object(access_service, "get_user_by_email", return_value=current), patch.object(
+            access_service, "resolve_user_role", return_value=role
+        ), patch.object(mcp_auth_service, "validate_access_token", side_effect=_reject), patch.object(
+            provider_auth_service, "validate_access_token", side_effect=_reject
+        ), patch.object(service_client_service, "validate_service_access_token", side_effect=_reject):
             return security._resolve_bearer_user("v1.agent.token")
+
+    def test_agent_token_takes_the_current_role_not_the_tokens(self) -> None:
+        caller = self._caller("api:write", role="viewer")
+        self.assertEqual(caller.role, "viewer")
+
+    def test_agent_token_of_a_user_without_a_role_is_refused(self) -> None:
+        with self.assertRaises(HTTPException) as raised:
+            self._caller("api:write", role=None)
+        self.assertEqual(raised.exception.status_code, 401)
 
     def test_every_grantable_agent_scope_set_reads(self) -> None:
         for requested in ("", "api:read", "api:write", "api:read api:write"):
