@@ -6,6 +6,28 @@
 // mounted controller, or emits ready/error events. Late results from a
 // superseded or disconnected attempt are disposed silently.
 
+/**
+ * Whether the element is shown: whether it currently intersects the viewport.
+ * Older browsers without IntersectionObserver fall back to the host's `active`
+ * attribute. A hidden section (the `hidden` attribute) never intersects.
+ */
+export function viewerIsShown({ observed, intersecting, active }) {
+  return observed ? Boolean(intersecting) : Boolean(active);
+}
+
+/**
+ * Whether a viewer element must remount because it no longer owns the
+ * page-wide viewer session. Mounting another element disposes the previous
+ * element's renderer without telling it (main.js `beginViewerSession`), so a
+ * shown element whose port is stale rebuilds through the normal reload path.
+ *
+ * `mounted` is the element's mode controller, or null between mounts;
+ * `isCurrent` is that controller's mounted port session check.
+ */
+export function shouldReloadStaleScene({ shown, mounted, isCurrent }) {
+  return Boolean(shown) && Boolean(mounted) && typeof isCurrent === "function" && !isCurrent();
+}
+
 export function createReloadOwner() {
   let current = null;
   return {
