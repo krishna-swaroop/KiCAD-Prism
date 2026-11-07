@@ -112,8 +112,9 @@ jlcparts catalogue** in the connector's **Edit settings**.
 - Prices are in US dollars. Each part keeps its Basic, Extended or Preferred
   class.
 - Each read replaces the offers, just like an upload.
-- If a read fails, the connector card shows **Last call failed** and the last
-  offers stay. The next try is 12 hours later.
+- If a read fails, the connector card shows the failure on a **Catalogue**
+  line and the last offers stay. The next try is 12 hours later, whatever the
+  connector's other calls do in between.
 - A catalogue file larger than 32 MB to download, or 256 MB unpacked, is
   refused.
 
