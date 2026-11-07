@@ -92,6 +92,29 @@ def test_an_http_error_is_an_answer_not_an_outage():
         httpd.server_close()
 
 
+@pytest.mark.parametrize("status", [502, 503, 504])
+def test_a_proxy_error_reads_as_down(status):
+    """nginx answers 502/503/504 while the backend is down: that is an outage, not "up"."""
+    import http.server
+
+    class Gateway(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(status)
+            self.end_headers()
+
+        def log_message(self, *_args):
+            pass
+
+    httpd = http.server.HTTPServer(("127.0.0.1", 0), Gateway)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        client = PrismClient(PrismConfig(base_url=f"http://127.0.0.1:{httpd.server_port}"))
+        assert client.health() == "down"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
 @pytest.mark.parametrize("status", [401, 403])
 def test_a_rejected_token_is_refused_not_unreachable(status):
     """A revoked token is not a down server: the plugin must ask for a sign-in."""

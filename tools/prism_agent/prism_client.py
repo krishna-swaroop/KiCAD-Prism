@@ -187,6 +187,10 @@ class PrismClient:
         except PrismRefused as exc:
             if exc.status in (401, 403):
                 return "refused"
+            # A 5xx is the proxy speaking for a backend that is down (nginx's
+            # 502/503/504 during an outage), not a live answer.
+            if exc.status is not None and exc.status >= 500:
+                return "down"
             # Any other HTTP status is still an answer from a live backend.
             return "up"
         except PrismUnreachable:
