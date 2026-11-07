@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { isTerminalJobStatus } from "@/lib/jobs";
 import { pollUntil, useServerState } from "@/lib/server-state";
 import {
   Archive, ArrowDown, ArrowUp, Check, Columns3, Download,
@@ -368,6 +369,9 @@ export function LibraryBulkEditWorkspace({ user }: { user: User | null }) {
   const [batch, setBatch] = useState<CatalogMetadataBatch | null>(null);
   const [changeSummary, setChangeSummary] = useState("Bulk update component metadata");
   const [busy, setBusy] = useState(false);
+  // Applying a batch polls until its job settles; leaving aborts the wait.
+  const applyJobAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => applyJobAbort.current?.abort(), []);
   const [fieldDialogOpen, setFieldDialogOpen] = useState(false);
   const [editingField, setEditingField] = useState<CatalogMetadataField | null>(null);
   const [activeCell, setActiveCell] = useState<{ row: number; column: number } | null>(null);
@@ -537,15 +541,22 @@ export function LibraryBulkEditWorkspace({ user }: { user: User | null }) {
   };
 
   const applyBatch = async (itemIds: string[]) => {
-    if (!batch) return; setBusy(true);
+    if (!batch || applyJobAbort.current) return;
+    const controller = new AbortController();
+    applyJobAbort.current = controller;
+    const { signal } = controller;
+    setBusy(true);
     try {
       const queued = await applyMetadataBatch(batch.id, itemIds);
       await pollUntil(async () => {
         const job = await getMetadataJob(queued.job_id);
-        if (job.status === "failed") throw new Error(job.error_message || "Metadata batch failed");
-        return job.status === "completed";
-      }, { intervalMs: 800 });
+        if (!isTerminalJobStatus(job.status)) return false;
+        if (job.status === "completed") return true;
+        throw new Error(job.error_message || (job.status === "cancelled" ? "Job cancelled" : "Metadata batch failed"));
+      }, { intervalMs: 800, signal });
+      if (signal.aborted) return;
       const completed = await getMetadataBatch(batch.id);
+      if (signal.aborted) return;
       const itemIdSet = new Set(itemIds);
       const appliedComponents = new Set(
         completed.items.flatMap((item) => (
@@ -558,7 +569,12 @@ export function LibraryBulkEditWorkspace({ user }: { user: User | null }) {
       resetStaged((current) => Object.fromEntries(Object.entries(current).filter(([componentId]) => !appliedComponents.has(componentId))));
       void refreshGrid();
       toast.success(`${appliedComponents.size} component revisions moved to Awaiting QA`);
-    } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to apply metadata batch"); } finally { setBusy(false); }
+    } catch (error) {
+      if (!signal.aborted) toast.error(error instanceof Error ? error.message : "Failed to apply metadata batch");
+    } finally {
+      applyJobAbort.current = null;
+      setBusy(false);
+    }
   };
 
   return <div className="flex h-full min-h-0 flex-col bg-background">

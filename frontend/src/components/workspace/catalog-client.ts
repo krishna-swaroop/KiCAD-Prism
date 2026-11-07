@@ -38,6 +38,7 @@ import type {
   ProjectComponentImportSession,
   SelectionRequiredResponse,
 } from "@/types/catalog";
+import type { PrismJobState } from "@/lib/jobs";
 import type { MatingPart } from "./library-component-mates";
 import type { CatalogModel } from "./library-component-models";
 import type { CatalogValidationJobPayload } from "./library-component-validation";
@@ -308,7 +309,7 @@ export function applyMetadataBatch(batchId: string, itemIds: string[]) {
 }
 
 export function getMetadataJob(jobId: string) {
-  return fetchJson<{ status: string; error_message?: string }>(`${CATALOG}/metadata/jobs/${jobId}`);
+  return fetchJson<{ status: PrismJobState; error_message?: string }>(`${CATALOG}/metadata/jobs/${jobId}`);
 }
 
 export function metadataBatchReportUrl(batchId: string): string {
