@@ -113,13 +113,17 @@ class _CatalogParts(unittest.TestCase):
         self.assertNotEqual(head, None)
         return released
 
-    def _released_part(self) -> dict:
+    def _draft_part(self) -> dict:
         created = self.service.create_manual_component(
             value="10k", description="usage", datasheet="https://example.com/r.pdf",
             manufacturer="Prism Usage", manufacturer_part_number=f"USE-{self.token}", actor=ACTOR,
         )
+        self.addCleanup(self.service.deactivate_component, str(created["id"]), actor="usage-test@local", reason="cleanup")
+        return created
+
+    def _released_part(self) -> dict:
+        created = self._draft_part()
         component_id = str(created["id"])
-        self.addCleanup(self.service.deactivate_component, component_id, actor="usage-test@local", reason="cleanup")
         self.service.import_symbol_library(
             component_id, upload_name="R_Usage.kicad_sym",
             # Laid out as KiCad writes it: placement rewrites one property per line, and
@@ -153,6 +157,11 @@ class _CatalogParts(unittest.TestCase):
             expected_revision_id=released["revision_id"],
         )
         return self._release(str(released["id"]))
+
+    def _stamped(self, component_id: str, revision_id: str) -> str:
+        return schematic(instance("remote_x:R", ["R1"], {
+            "Reference": "R1", "Prism_Component": component_id, "Prism_Revision": revision_id,
+        }))
 
     def _record(self, text: str, commit: str = "c1") -> dict:
         with self.service.connection() as conn:
@@ -210,6 +219,31 @@ class ProjectPlacementTests(_CatalogParts):
             (3, 0, 2, 1),
         )
         self.assertNotEqual(second["revision_id"], first["revision_id"])
+
+    def test_a_draft_part_that_never_released_is_unreleased(self) -> None:
+        draft = self._draft_part()
+
+        report = self._record(self._stamped(str(draft["id"]), str(draft["revision_id"])))
+
+        [item] = report["items"]
+        self.assertEqual((item["status"], item["latestRevisionId"]), ("unreleased", ""))
+        self.assertEqual(report["summary"]["unreleased"], 1)
+
+    def test_a_release_archived_after_release_is_retired(self) -> None:
+        released = self._released_part()
+        self.service.set_release_status(str(released["id"]), "archived", actor=ACTOR)
+
+        [item] = self._record(self._stamped(str(released["id"]), released["revision_id"]))["items"]
+
+        self.assertEqual(item["status"], "retired")
+
+    def test_an_inactive_part_is_retired(self) -> None:
+        draft = self._draft_part()
+        self.service.deactivate_component(str(draft["id"]), actor=ACTOR, reason="retired")
+
+        [item] = self._record(self._stamped(str(draft["id"]), str(draft["revision_id"])))["items"]
+
+        self.assertEqual(item["status"], "retired")
 
     def test_a_stamp_this_catalog_does_not_know_is_recorded_as_found(self) -> None:
         text = schematic(instance("remote_x:R", ["R9"], {

@@ -41,9 +41,13 @@ BASIS_IDENTITY = "identity"
 STATUS_CURRENT = "current"
 STATUS_UPDATE = "update_available"
 STATUS_RETIRED = "retired"
+STATUS_UNRELEASED = "unreleased"
 STATUS_UNKNOWN_COMPONENT = "unknown_component"
 STATUS_UNKNOWN_REVISION = "unknown_revision"
-STATUSES = (STATUS_UPDATE, STATUS_RETIRED, STATUS_UNKNOWN_REVISION, STATUS_UNKNOWN_COMPONENT, STATUS_CURRENT)
+STATUSES = (
+    STATUS_UPDATE, STATUS_RETIRED, STATUS_UNRELEASED,
+    STATUS_UNKNOWN_REVISION, STATUS_UNKNOWN_COMPONENT, STATUS_CURRENT,
+)
 
 _SYMBOL_DESCRIPTORS = tuple(descriptor for descriptor in BUILTIN_METADATA_DESCRIPTORS if descriptor.symbol_label)
 
@@ -230,6 +234,10 @@ class CatalogProjectPlacements:
             """
             SELECT placement.*, component.is_active, component.released_revision_id,
                    (component.id IS NOT NULL) AS component_known,
+                   EXISTS (
+                       SELECT 1 FROM component_release_records ever
+                       WHERE ever.component_id = component.id
+                   ) AS ever_released,
                    recorded.id AS recorded_id, recorded.version AS recorded_version,
                    latest.version AS latest_version,
                    head.name, head.manufacturer, head.mpn
@@ -287,8 +295,12 @@ class CatalogProjectPlacements:
     def _status(row: Any) -> str:
         if not row["component_known"]:
             return STATUS_UNKNOWN_COMPONENT
-        if not row["is_active"] or not row["released_revision_id"]:
+        if not row["is_active"]:
             return STATUS_RETIRED
+        if not row["released_revision_id"]:
+            # A cleared release id means a released revision was archived, unless
+            # the component never released, in which case it is still a draft.
+            return STATUS_RETIRED if row["ever_released"] else STATUS_UNRELEASED
         if not row["recorded_id"]:
             return STATUS_UNKNOWN_REVISION
         if str(row["recorded_id"]) == str(row["released_revision_id"]):

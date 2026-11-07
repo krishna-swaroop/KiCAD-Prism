@@ -21,16 +21,18 @@ function placement(overrides: Partial<LibraryPlacement>): LibraryPlacement {
 }
 
 describe("library usage helpers", () => {
-  it("puts updates and retired parts first, then sorts by name", () => {
+  it("puts updates, retired and unreleased parts first, then sorts by name", () => {
     const items = [
       placement({ name: "B", status: "current" }),
       placement({ name: "C", status: "retired" }),
       placement({ name: "A", status: "update_available" }),
+      placement({ name: "D", status: "unreleased" }),
       placement({ name: "A", status: "current" }),
     ];
     expect(sortPlacements(items).map((item) => `${item.name}:${item.status}`)).toEqual([
       "A:update_available",
       "C:retired",
+      "D:unreleased",
       "A:current",
       "B:current",
     ]);
