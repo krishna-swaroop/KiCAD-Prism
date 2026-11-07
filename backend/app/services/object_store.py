@@ -177,17 +177,14 @@ class ObjectStore:
     def _publish(self, temp: Path, sha: str, size: int) -> StoredObject:
         destination = self.path_for(sha)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        if destination.exists():
-            temp.unlink(missing_ok=True)
-            # A reused object restarts its grace period: its new owner's
-            # metadata may not be committed yet when the collector runs.
-            try:
-                os.utime(destination)
-            except OSError:
-                pass
-        else:
-            os.replace(temp, destination)
-            fsync_directory(destination.parent)
+        # Always move the copy just hashed into place, even over an existing
+        # file: one already there may be the corrupt bytes an artifact was
+        # invalidated for, and keeping it would revive that artifact pointing
+        # at them. The rename is atomic, and it also restarts the object's
+        # grace period, as its new owner's metadata may not be committed yet
+        # when the collector runs.
+        os.replace(temp, destination)
+        fsync_directory(destination.parent)
         return StoredObject(digest=sha, size_bytes=size, path=destination)
 
     # -- collect ----------------------------------------------------------

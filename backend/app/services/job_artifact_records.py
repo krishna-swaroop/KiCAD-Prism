@@ -130,7 +130,8 @@ def insert_artifact(
     """Register ``artifact``, reviving a row whose earlier copy was invalidated.
 
     A retried job may re-produce a digest that was invalidated (for a missing or
-    corrupt object); the upsert clears ``invalidated_at`` so readers serve it.
+    corrupt object). The object store has just rewritten the object from the
+    verified copy, so the upsert clears ``invalidated_at`` and readers serve it.
     """
 
     conn.execute(
