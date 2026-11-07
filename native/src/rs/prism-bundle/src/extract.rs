@@ -133,7 +133,7 @@ fn open_parent(root: &Dir, path: &str) -> Outcome<Dir> {
     Ok(dir)
 }
 
-fn write_file(dir: &Dir, path: &str, bytes: &[u8]) -> Outcome<()> {
+fn write_file(dir: &Dir, output: &Path, path: &str, bytes: &[u8]) -> Outcome<()> {
     let name = crate::paths::file_name(path);
     match dir.symlink_metadata(name) {
         Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {
@@ -150,6 +150,10 @@ fn write_file(dir: &Dir, path: &str, bytes: &[u8]) -> Outcome<()> {
     }
     let serial = TEMP_SERIAL.fetch_add(1, Ordering::Relaxed);
     let temp = format!(".{name}.prism-kicad-{}-{serial}.tmp", std::process::id());
+    let temp_path = output
+        .join(Path::new(path).parent().unwrap_or_else(|| Path::new("")))
+        .join(&temp);
+    crate::temp::register(temp_path.clone());
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
     let result = (|| -> std::io::Result<()> {
@@ -161,8 +165,10 @@ fn write_file(dir: &Dir, path: &str, bytes: &[u8]) -> Outcome<()> {
     })();
     if let Err(error) = result {
         let _ = dir.remove_file(&temp);
+        crate::temp::unregister(&temp_path);
         return Err(io_failure(path, &error));
     }
+    crate::temp::unregister(&temp_path);
     Ok(())
 }
 
@@ -196,7 +202,7 @@ pub fn extract<R: ReadAt>(
             }
         };
         let dir = open_parent(&root, path)?;
-        write_file(&dir, path, &bytes)?;
+        write_file(&dir, output, path, &bytes)?;
         extracted.push(Extracted {
             path: path.clone(),
             bytes: u64::try_from(bytes.len()).unwrap_or(u64::MAX),

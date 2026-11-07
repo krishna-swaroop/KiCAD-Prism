@@ -9,10 +9,9 @@
 //! Win32 call or for the `GlobalAlloc` contract.
 
 use std::alloc::{GlobalAlloc, Layout, System};
-use std::path::PathBuf;
 use std::process::Child;
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicUsize, Ordering};
-use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 static LIVE: AtomicUsize = AtomicUsize::new(0);
@@ -23,7 +22,6 @@ static SIGNAL: AtomicI32 = AtomicI32::new(0);
 #[cfg(unix)]
 static CHILD_GROUP: AtomicUsize = AtomicUsize::new(0);
 static STDOUT_TAKEN: AtomicBool = AtomicBool::new(false);
-static TEMP_FILE: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 /// A global allocator that counts live heap bytes and refuses to go over
 /// `max-memory-bytes`: it writes the pre-serialized `CliErrorA0` and
@@ -303,20 +301,9 @@ pub fn take_stdout() -> bool {
     !STDOUT_TAKEN.swap(true, Ordering::SeqCst)
 }
 
-/// Remember the temp file to remove on a timeout or signal.
-pub fn register_temp_file(path: Option<PathBuf>) {
-    if let Ok(mut slot) = TEMP_FILE.lock() {
-        *slot = path;
-    }
-}
-
-/// Remove the registered temp file, if any.
+/// Remove every registered temp file or directory, if any.
 pub fn remove_temp_file() {
-    if let Ok(mut slot) = TEMP_FILE.try_lock()
-        && let Some(path) = slot.take()
-    {
-        let _ = std::fs::remove_file(path);
-    }
+    prism_bundle::temp::remove_all();
 }
 
 /// Remember a running `git`, for the watchdog to kill: on Unix its process group. On Windows
@@ -427,9 +414,9 @@ pub fn install_signal_handlers() {
     }
 }
 
-/// Start the watchdog: at `deadline` it removes the temp file, kills a
-/// running `git`, writes the timeout documents and exits 5; on a signal it
-/// removes the temp file and exits 128+n without a document.
+/// Start the watchdog: at `deadline` it removes the registered temp files,
+/// kills a running `git`, writes the timeout documents and exits 5; on a
+/// signal it removes them and exits 128+n without a document.
 pub fn start_watchdog(started: Instant, timeout: Duration, stdout: Vec<u8>, stderr: Vec<u8>) {
     let deadline = started.checked_add(timeout);
     let spawned = std::thread::Builder::new()

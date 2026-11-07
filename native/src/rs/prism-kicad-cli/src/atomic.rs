@@ -4,9 +4,11 @@
 //! the directory fsynced. Any failure before the rename removes the temp
 //! file and leaves `-o` as it was.
 
+#[cfg(windows)]
 use crate::process;
 use prism_bundle::generator::{hex, sha256_hex};
 use prism_bundle::stages::Built;
+use prism_bundle::temp;
 use prism_bundle::verify::{Depth, verify};
 use prism_bundle::zip::{FileSource, ZipIndex};
 use prism_bundle::{Failure, Limits, Outcome};
@@ -91,7 +93,7 @@ impl Drop for Temp {
     fn drop(&mut self) {
         if self.armed {
             let _ = std::fs::remove_file(&self.path);
-            process::register_temp_file(None);
+            temp::unregister(&self.path);
         }
     }
 }
@@ -129,7 +131,7 @@ pub fn write(
         .open(&temp.path)
         .map_err(|error| write_failed(format!("the temp file could not be created: {error}")))?;
     temp.armed = true;
-    process::register_temp_file(Some(temp.path.clone()));
+    temp::register(temp.path.clone());
     let hashing = Hashing {
         inner: BufWriter::new(file),
         hasher: Sha256::new(),
@@ -159,7 +161,7 @@ pub fn write(
         ))
     })?;
     temp.armed = false;
-    process::register_temp_file(None);
+    temp::unregister(&temp.path);
     if let Ok(directory) = std::fs::File::open(&dir) {
         let _ = directory.sync_all();
     }

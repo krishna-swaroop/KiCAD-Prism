@@ -26,7 +26,7 @@ use prism_bundle::reader::BundleReader;
 use prism_bundle::stages::Document;
 use prism_bundle::stages::parse::{ParseOutcome, ParseRequest};
 use prism_bundle::zip::FileSource;
-use prism_bundle::{Failure, Outcome, generator, schema};
+use prism_bundle::{Failure, Outcome, generator, schema, temp};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -436,7 +436,7 @@ fn write_json(path: &Path, document: &impl serde::Serialize) -> Outcome<()> {
         .create_new(true)
         .open(&temp)
         .map_err(|error| output_failed(format!("the temp file could not be created: {error}")))?;
-    crate::process::register_temp_file(Some(temp.clone()));
+    temp::register(temp.clone());
     let mut writer = BufWriter::new(file);
     let written = serde_json::to_writer(&mut writer, document)
         .map_err(std::io::Error::other)
@@ -455,7 +455,7 @@ fn write_json(path: &Path, document: &impl serde::Serialize) -> Outcome<()> {
             "the result could not be renamed into place: {error}"
         )));
     }
-    crate::process::register_temp_file(None);
+    temp::unregister(&temp);
     if let Ok(directory) = std::fs::File::open(&dir) {
         let _ = directory.sync_all();
     }
@@ -464,7 +464,7 @@ fn write_json(path: &Path, document: &impl serde::Serialize) -> Outcome<()> {
 
 fn cleanup(temp: &Path) {
     let _ = std::fs::remove_file(temp);
-    crate::process::register_temp_file(None);
+    temp::unregister(temp);
 }
 
 fn emit_result(

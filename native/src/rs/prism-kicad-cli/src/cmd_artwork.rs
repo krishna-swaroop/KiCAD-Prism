@@ -11,7 +11,7 @@ use crate::inputs;
 use prism_artwork::{ArtworkError, ArtworkErrorKind};
 use prism_bundle::reader::BundleReader;
 use prism_bundle::zip::FileSource;
-use prism_bundle::{Category, Failure, LimitName, Outcome, schema};
+use prism_bundle::{Category, Failure, LimitName, Outcome, schema, temp};
 use prism_kicad_contracts::generated::prism_artwork_config_a0::ArtworkConfigA0;
 use prism_kicad_contracts::generated::prism_assembly_hlr_a0::AssemblyHlrA0;
 use prism_kicad_contracts::generated::prism_bundle_manifest_a3::BundleManifestStageStatus;
@@ -356,6 +356,7 @@ fn write_file(directory: &Path, name: &str, bytes: &[u8]) -> Outcome<()> {
         ".{name}.prism-kicad-{}-{serial}.tmp",
         std::process::id()
     ));
+    temp::register(temp.clone());
     let result = (|| {
         let mut output = std::fs::File::create(&temp)?;
         output.write_all(bytes)?;
@@ -364,12 +365,14 @@ fn write_file(directory: &Path, name: &str, bytes: &[u8]) -> Outcome<()> {
     })();
     if let Err(error) = result {
         let _ = std::fs::remove_file(&temp);
+        temp::unregister(&temp);
         return Err(Failure::output(
             "output-write-failed",
             format!("{name} could not be written: {error}"),
         )
         .argument("output"));
     }
+    temp::unregister(&temp);
     if let Ok(directory) = std::fs::File::open(directory) {
         let _ = directory.sync_all();
     }
