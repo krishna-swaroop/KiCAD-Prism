@@ -296,6 +296,26 @@ class PipelineTracker:
         self._progress(**kwargs)
 
 
+def settle_pipeline_steps(pipeline: Mapping[str, Any] | None, status: str) -> bool:
+    """Mark every persisted step still queued or running as ``status``; whether anything changed."""
+
+    if not isinstance(pipeline, Mapping):
+        return False
+    changed = False
+    for job in pipeline.get("jobs") or []:
+        if not isinstance(job, dict):
+            continue
+        job_changed = False
+        for step in job.get("steps") or []:
+            if isinstance(step, dict) and str(step.get("status") or "queued") in {"queued", "in_progress"}:
+                step["status"] = status
+                job_changed = True
+        if job_changed:
+            job["status"] = status
+            changed = True
+    return changed
+
+
 def _job_status(steps: Sequence[Mapping[str, Any]]) -> str:
     statuses = [str(step.get("status") or "queued") for step in steps]
     if any(status == "failure" for status in statuses):

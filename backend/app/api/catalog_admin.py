@@ -27,6 +27,7 @@ from app.core.security import (
 from app.services.component_catalog_service import catalog_service
 from app.services.catalog import workflow_policy
 from app.services.catalog_job_service import catalog_jobs
+from app.services.job_service import jobs
 from app.services.local_artifact_store import artifact_store
 from app.services.library_folder_import_service import configured_import_roots, resolve_server_import_path
 from app.services.kicad_library_discovery import discover_library
@@ -521,7 +522,9 @@ def delete_project_import_session(
     user: AuthenticatedUser = Depends(require_catalog_writer),
 ):
     _import_session_for_user(session_id, user)
-    catalog_service.delete_project_import_session(session_id)
+    job = jobs.newest_job(payload_key="session_id", payload_value=session_id)
+    terminal = bool(job and job[0].get("status") in {"completed", "failed", "cancelled"})
+    catalog_service.delete_project_import_session(session_id, job_terminal=terminal)
 
 
 @router.get("/jobs/{job_id}", response_model=models.CatalogJobWithEvents, response_model_exclude_unset=True,

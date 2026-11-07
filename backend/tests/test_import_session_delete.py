@@ -134,6 +134,17 @@ class ImportSessionDeleteTests(unittest.TestCase):
             self.service.delete_project_import_session(session_id)
         self.assertIsNotNone(self.service.get_project_import_session(session_id))
 
+    def test_a_running_session_can_be_deleted_once_its_job_is_terminal(self) -> None:
+        session_id = str(
+            self.service.create_project_import_session(
+                scope="project", project_id="proj-1", actor="tester@example.com"
+            )["id"]
+        )
+
+        self.service.delete_project_import_session(session_id, job_terminal=True)
+
+        self.assertIsNone(self.service.get_project_import_session(session_id))
+
     def test_a_session_with_a_proposal_being_accepted_cannot_be_deleted(self) -> None:
         session_id, proposals = self._staged_session()
         # An acceptance in flight, as the claim leaves it.
