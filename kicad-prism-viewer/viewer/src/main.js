@@ -19,6 +19,7 @@ import {
   isComponentHidden,
   planComponentVisibility,
 } from "./component-visibility.js";
+import { componentRetryDue, noteComponentFailure } from "./component-retry.js";
 import { escapeHtml } from "./escape-html.js";
 import { findNetByName } from "./net-emphasis.js";
 import { hasCommandModifier, isTypingTarget } from "./key-target.js";
@@ -257,8 +258,11 @@ function initialScene() {
     residentTiles: new Map(),
     componentFeatures: new Map(),
     componentModelCounts: new Map(),
-    // The component tier (SB2-26): idle → loading → loaded, and back to idle when evicted.
+    // The component tier (SB2-26): idle → loading → loaded, failed on a load
+    // error (IS-14, retried with bounded backoff), and back to idle when evicted.
     componentTier: "idle",
+    componentFailures: 0,
+    componentRetryAt: 0,
     componentEntries: [],
     componentsWantedAt: 0,
     componentEvictions: 0,
@@ -3241,15 +3245,28 @@ async function loadComponents(token = activeViewerToken, b = board) {
       zOffset: Number(b.scene.manifest?.componentsZOffsetMm || 0) / 1000,
     });
   } catch (error) {
-    if (viewerSessionActive(token)) b.scene.componentTier = "idle";
+    if (viewerSessionActive(token)) {
+      const retry = noteComponentFailure(b.scene.componentFailures, performance.now());
+      b.scene.componentFailures = retry.failures;
+      b.scene.componentRetryAt = retry.retryAt;
+      b.scene.componentTier = "failed";
+    }
     throw error;
   }
-  if (!viewerSessionActive(token) || !b.renderer) return;
+  if (!viewerSessionActive(token)) return;
+  if (!b.renderer) {
+    b.scene.componentTier = "idle";
+    return;
+  }
   const draws = componentDraws(loaded.models);
   // SB2-87: the upload waits its turn (per-frame cap); the tier stays "loading" meanwhile.
   await uploadBudget([...draws.instanced.map((draw) => draw.primitive), ...draws.baked]
     .reduce((sum, primitive) => sum + estimatePrimitiveGpuBytes(primitive), 0));
-  if (!viewerSessionActive(token) || !b.renderer) return;
+  if (!viewerSessionActive(token)) return;
+  if (!b.renderer) {
+    b.scene.componentTier = "idle";
+    return;
+  }
   b.scene.componentTier = "loaded";
   b.loadedBytes += loaded.byteLength;
   for (const model of loaded.models) {
@@ -3304,6 +3321,14 @@ function manageTiers(now, b = board) {
   const prefetch = counts.board + counts.body > 0;
   const wanted = (b.renderer.identityOnly && !b.deferComponents) || (!b.renderer.identityOnly && (counts.full > 0 || prefetch));
   if (wanted) b.scene.componentsWantedAt = now;
+  // IS-14: a failed load is eligible again only while below the cap and after
+  // its backoff; the normal idle path then retries it.
+  if (
+    b.scene.componentTier === "failed"
+    && componentRetryDue(now, b.scene.componentFailures, b.scene.componentRetryAt)
+  ) {
+    b.scene.componentTier = "idle";
+  }
   if (wanted && b.scene.componentTier === "idle" && b.semanticGeometry.assets?.components_glb) {
     void loadComponents(activeViewerToken, b)
       .catch((error) => console.warn("Failed to load components", error));
