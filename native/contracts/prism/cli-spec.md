@@ -658,7 +658,7 @@ Release Studio's assembly and testpoint views (amendment C3 §3.2), a port of Cr
 - **`vendor list`** prints `CliVendorListA0`: each vendor's `id`, name, outputs (file kind, format, version) and config schema id. The list is fixed by the binary.
 - **`vendor run <vendor-id>`** reads `projections/occurrences.json` and `projections/placements.json`; `placements` a1 provides the aux origin. It writes the vendor's files to `<dir>` atomically and prints `CliVendorRunResultA0` (files, sha256, row counts, and any components it excluded and why).
   - An unknown id is exit 2, `vendor-unknown`.
-  - `--variant` must name a variant the occurrences declare or record, ignoring case; otherwise exit 2, `variant-unknown`, naming the variants the design defines.
+  - `--variant` must be `default` or name a variant the occurrences declare or record, ignoring case; otherwise exit 2, `variant-unknown`, naming the variants the design defines. `default` applies no overrides unless the design has a variant of that name.
   - `--config` is the vendor's config schema; for JLCPCB, `VendorJlcpcbConfigA0`.
 - **JLCPCB:**
   - BOM columns `Comment, Designator, Footprint, JLCPCB Part #` and CPL columns `Designator, Layer, Mid X, Mid Y, Rotation`;

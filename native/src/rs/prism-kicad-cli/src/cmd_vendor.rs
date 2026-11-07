@@ -68,13 +68,11 @@ fn run_vendor(args: &Args) -> Outcome<(Value, u8)> {
 }
 
 /// Refuse `--variant` when the design defines no variant matching it, ignoring
-/// case; the message lists the names the design does define.
+/// case (`default` is always accepted); the message lists the names the design
+/// does define.
 fn check_variant(occurrences: &OccurrencesA0, requested: &str) -> Outcome<()> {
     let names = prism_vendors::design::variant_names(occurrences);
-    if names
-        .iter()
-        .any(|name| prism_vendors::design::variant_name_matches(name, requested))
-    {
+    if prism_vendors::design::variant_known(&names, requested) {
         return Ok(());
     }
     let message = if names.is_empty() {

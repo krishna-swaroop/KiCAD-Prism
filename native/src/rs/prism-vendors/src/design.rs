@@ -221,6 +221,19 @@ pub fn variant_name_matches(record: &str, wanted: &str) -> bool {
     record.eq_ignore_ascii_case(wanted)
 }
 
+/// Whether `requested` selects a variant of a design that defines `names`.
+///
+/// `default` (any case) always does: it is the design without overrides, the
+/// name Release Studio sends when a design has no variants, and the kicad-cli
+/// steps already treat it as no variant.
+#[must_use]
+pub fn variant_known(names: &[String], requested: &str) -> bool {
+    requested.eq_ignore_ascii_case("default")
+        || names
+            .iter()
+            .any(|name| variant_name_matches(name, requested))
+}
+
 /// Every variant name the design defines, in first-seen order: the project
 /// registries' declarations, then the records on sheets, symbols and
 /// footprints (occurrences-a0 does not repeat record-only names in
@@ -712,6 +725,16 @@ mod tests {
             }"#,
         )
         .unwrap()
+    }
+
+    #[test]
+    fn default_is_known_even_when_the_design_defines_no_variants() {
+        assert!(variant_known(&[], "default"));
+        assert!(variant_known(&[], "Default"));
+        assert!(!variant_known(&[], "pro"));
+        let names = vec!["Pro".to_string()];
+        assert!(variant_known(&names, "pro"));
+        assert!(!variant_known(&names, "lite"));
     }
 
     #[test]
