@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import { TRACKING_FILTER_KEYS } from "./parts-view";
+import { TRACKING_FILTER_KEYS } from "./tracking-filter-keys";
 
 /** Moving between Supply tabs from inside one. The URL holds the place, as everywhere else in Supply. */
 export function useSupplyNavigation() {

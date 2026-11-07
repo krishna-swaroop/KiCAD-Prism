@@ -118,7 +118,6 @@ export function ProjectSupplyTab({ projectId, user, actionsSlot }: { projectId: 
         <section aria-label="Parts" className="space-y-2">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Parts</h3>
           <ProjectPartsList
-            key={`${variant}|${boardsChoice ?? "usual"}`}
             projectId={projectId} variant={variant} boards={boardsChoice ?? undefined} currency={supply.rollup?.currency ?? ""} selectedId={searchParams.get("part")} onOpen={open}
             onAddToLibrary={canWriteCatalog(user?.role) ? setAdding : undefined}
           />

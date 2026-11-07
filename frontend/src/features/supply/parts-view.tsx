@@ -28,8 +28,6 @@ import { SearchBox } from "./search-box";
 import { ReadProjectBomsButton } from "./read-project-boms-button";
 import { WatchPartDialog } from "./watch-part-dialog";
 
-/** The Tracking list's URL filters: one list, so every navigator that opens it clears the same ones. */
-export const TRACKING_FILTER_KEYS = ["partsScope", "partsQ", "partsOnly", "partsVendor", "partsSort"] as const;
 
 const SCOPES: ReadonlyArray<{ id: PartsScope; label: string }> = [
   { id: "followed", label: "Tracked and in projects" },
