@@ -25,6 +25,9 @@ from app.services import (
 #: resolved once, by the dependency that already had to do it.
 AUTHENTICATED_USER_STATE = "authenticated_user"
 
+#: The fixed address of the implicit identity used when AUTH_ENABLED is false.
+GUEST_EMAIL = "guest@local"
+
 
 class AuthenticatedUser(BaseModel):
     email: str
@@ -43,11 +46,20 @@ class AuthenticatedUser(BaseModel):
 def guest_user() -> AuthenticatedUser:
     """The implicit identity used only when AUTH_ENABLED is explicitly false."""
     return AuthenticatedUser(
-        email="guest@local",
+        email=GUEST_EMAIL,
         name="Guest User",
         picture="",
         role=normalize_role(settings.DEV_GUEST_ROLE) or "viewer",
     )
+
+
+def is_guest(user: AuthenticatedUser) -> bool:
+    """The implicit identity of an AUTH_ENABLED=false deployment.
+
+    It shares ``auth_type="session"`` with real sign-ins; the absence of a
+    session id together with the fixed local address is what marks it.
+    """
+    return user.auth_type == "session" and not user.session_id and user.email == GUEST_EMAIL
 
 
 def _resolve_allowed_user_role(email: str) -> Role | None:
