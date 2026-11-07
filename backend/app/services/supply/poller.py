@@ -43,11 +43,12 @@ STOPPED_INACTIVE = "inactive"
 STOPPED_COOLING_DOWN = "cooling_down"
 STOPPED_NOTHING_DUE = "nothing_due"
 STOPPED_BUDGET = "budget"
-# A run that stopped for one of these rested the work instead of trying it: no part was asked about, so its attempts must not
-# grow. Polling's own reasons and the refusals ``trouble.react`` returns are the one list both callers share.
+# A run that stopped for one of these rested the work instead of trying it, so its attempts must not grow. Polling's own
+# reasons and the refusals ``trouble.react`` returns are the one list both callers share. A plain provider ``error`` is a
+# real failed try and still counts, so a provider that keeps failing ends the work after ``MAX_ATTEMPTS``.
 RESTING_STOPS = frozenset({
     STOPPED_INACTIVE, STOPPED_COOLING_DOWN, STOPPED_BUDGET,
-    trouble.RATE_LIMITED, trouble.AUTH_FAILED, trouble.BLOCKED, trouble.ERROR,
+    trouble.RATE_LIMITED, trouble.AUTH_FAILED, trouble.BLOCKED,
 })
 
 
