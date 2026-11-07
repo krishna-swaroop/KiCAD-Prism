@@ -3,7 +3,7 @@ import viewerCss from "../styles.css";
 import { AssetCache } from "./asset-cache.js";
 import { absolutizeAssetPaths, bundleIsFinal } from "./bundle-urls.js";
 import { mountStandaloneViewer, mountSystemViewer } from "./main.js";
-import { createReloadOwner, runSemanticViewerReload } from "./semantic-viewer-reload.js";
+import { createReloadOwner, runSemanticViewerReload, shouldReloadStaleScene } from "./semantic-viewer-reload.js";
 import { BoardModeController, SystemModeController, createSharedState, installModeMembers } from "./viewer-controllers.js";
 
 function shellHtml() {
@@ -180,7 +180,7 @@ async function loadBundle(bundleUrl, timings, signal) {
 
 export class PrismSemanticViewerElement extends HTMLElement {
   static get observedAttributes() {
-    return ["bundle-url", "workspace", "mode", "move-allowed"];
+    return ["bundle-url", "workspace", "mode", "move-allowed", "active"];
   }
 
   constructor() {
@@ -229,6 +229,12 @@ export class PrismSemanticViewerElement extends HTMLElement {
       this.modes.system.setMoveAllowed(newValue === "true");
       return;
     }
+    // `active` is the host's "this element is shown" signal. A scene it no
+    // longer owns must be rebuilt when it comes back (queueReload checks).
+    if (name === "active") {
+      if (newValue === "true") this.queueReload();
+      return;
+    }
     this.queueReload();
   }
 
@@ -243,7 +249,17 @@ export class PrismSemanticViewerElement extends HTMLElement {
 
   queueReload() {
     const source = this.systemMode ? "system" : this.getAttribute("bundle-url");
-    if (!source || source === this.reloadSource) return;
+    if (!source) return;
+    // A second element's mount disposes this element's renderer and takes over
+    // the page-wide session (main.js beginViewerSession). When this element is
+    // shown again it owns a dead scene, so it rebuilds even though its source
+    // is unchanged; render-on-demand then starts afresh with the new mount.
+    const stale = shouldReloadStaleScene({
+      active: this.getAttribute("active") === "true",
+      mounted: this.mounted,
+      isCurrent: () => this.mounted?.port?.isCurrent?.() ?? true,
+    });
+    if (source === this.reloadSource && !stale) return;
     this.reloadSource = source;
     if (this.reloadQueued) return;
     this.reloadQueued = true;

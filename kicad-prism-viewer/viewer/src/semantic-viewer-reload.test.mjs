@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createReloadOwner, runSemanticViewerReload } from "./semantic-viewer-reload.js";
+import { createReloadOwner, runSemanticViewerReload, shouldReloadStaleScene } from "./semantic-viewer-reload.js";
 
 function deferred() {
   let resolve;
@@ -306,4 +306,15 @@ test("a successful current reload publishes once with performance timings", asyn
   assert.ok("mount_and_first_frame_ms" in detail.timings);
   assert.ok("reload_to_visible_ms" in detail.timings);
   assert.deepEqual(host.log, ["render:loading", "load:a.json", "render:shell", "mount:A", "publish:A", "emit:ready"]);
+});
+
+test("a shown element whose viewer session was taken must remount", () => {
+  const mounted = { port: {} };
+  const current = () => true;
+  const stale = () => false;
+  assert.equal(shouldReloadStaleScene({ active: true, mounted, isCurrent: current }), false);
+  assert.equal(shouldReloadStaleScene({ active: true, mounted, isCurrent: stale }), true);
+  assert.equal(shouldReloadStaleScene({ active: false, mounted, isCurrent: stale }), false);
+  assert.equal(shouldReloadStaleScene({ active: true, mounted: null, isCurrent: stale }), false);
+  assert.equal(shouldReloadStaleScene({ active: true, mounted, isCurrent: undefined }), false);
 });
