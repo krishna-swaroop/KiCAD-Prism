@@ -6226,6 +6226,8 @@ class SupplyConnector(TypedDict, total=False):
     block_streak: int
     catalogue: bool
     catalogue_available: bool
+    catalogue_error: str
+    catalogue_failed_at: str | None
     cooldown_until: str | None
     created_at: str | None
     created_by: str

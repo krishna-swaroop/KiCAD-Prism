@@ -69,7 +69,7 @@ class FrozenSupplySchemaTests(unittest.TestCase):
 
     def test_the_reset_drops_supply_and_forgets_its_steps(self) -> None:
         frozen.build(self.conn)
-        self.recorded(16, 17, 18, 19, 20, 21)
+        self.recorded(16, 17, 18, 19, 20, 21, 22)
         self.conn.execute("CREATE TABLE inventory_sources (id TEXT)")
         tables, functions = _reset_script().reset(self.conn, self.scratch.name)
         self.assertGreater(tables, 50)

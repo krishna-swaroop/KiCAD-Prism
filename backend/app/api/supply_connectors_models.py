@@ -106,6 +106,8 @@ class SupplyConnector(SupplyModel):
     last_ok_at: Optional[str]
     last_error_code: str
     last_error_at: Optional[str]
+    catalogue_failed_at: Optional[str] = Field(description="When the published catalogue last could not be read; the import waits a full interval from it.")
+    catalogue_error: str = Field(description="Why the published catalogue last could not be read.")
     cooldown_until: Optional[str] = Field(description="The connector rests, making no calls, until this time (after a refusal, a rate limit or errors in a row).")
     block_streak: int = Field(description="Refusals in a row at a provider with no credentials; each rests longer.")
     slow_until: Optional[str] = Field(description="Calls are spaced twice as far apart until this time, after a refusal.")

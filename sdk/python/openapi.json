@@ -34022,6 +34022,23 @@
             "title": "Catalogue Available",
             "type": "boolean"
           },
+          "catalogue_error": {
+            "description": "Why the published catalogue last could not be read.",
+            "title": "Catalogue Error",
+            "type": "string"
+          },
+          "catalogue_failed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the published catalogue last could not be read; the import waits a full interval from it.",
+            "title": "Catalogue Failed At"
+          },
           "cooldown_until": {
             "anyOf": [
               {
@@ -34301,6 +34318,8 @@
           "last_ok_at",
           "last_error_code",
           "last_error_at",
+          "catalogue_failed_at",
+          "catalogue_error",
           "cooldown_until",
           "block_streak",
           "slow_until",
