@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Mapping
 from datetime import datetime, timedelta, timezone
 
 from app.core.config import settings
@@ -20,6 +20,7 @@ from app.services.job_runtime import (
     RetryableJobError,
 )
 from app.services.catalog.conflicts import CatalogConflict
+from app.services.catalog.project_import_sessions import IMPORT_JOB_KINDS, RUNNING_STATUSES, CatalogProjectImportSessions
 from app.services.catalog.step_quarantine import StepQuarantine
 from app.services.project_component_import_service import run_project_import_session
 from app.services.library_folder_import_service import run_folder_import_session
@@ -165,6 +166,45 @@ def run_folder_import(context: JobContext) -> dict[str, Any]:
     session = catalog_service.get_project_import_session(session_id)
     _step(context, progress=100, message="Folder import proposals staged")
     return {"session_id": session_id, "proposal_count": int((session or {}).get("proposal_count") or 0)}
+
+
+IMPORT_JOB_TYPES = IMPORT_JOB_KINDS
+
+
+def settle_import_job(job: Mapping[str, Any]) -> bool:
+    """End hook: a running import session whose job ended without success fails."""
+
+    if str(job.get("status") or "") not in {"failed", "cancelled"}:
+        return False
+    session_id = str((job.get("payload") or {}).get("session_id") or "")
+    if not session_id:
+        return False
+    session = catalog_service.get_project_import_session(session_id)
+    if not session or str(session.get("status") or "") not in RUNNING_STATUSES:
+        return False
+    reason = str(job.get("error_message") or job.get("message") or "The import did not finish")
+    catalog_service.update_project_import_session(session_id, status="failed", error_message=reason)
+    return True
+
+
+def _running_import_session_ids(session_ids: list[str]) -> set[str]:
+    if not session_ids:
+        return set()
+    with catalog_service.connection() as conn:
+        return CatalogProjectImportSessions().running_session_ids(conn, session_ids)
+
+
+def _unsettled_import_job_ids(kind: str) -> list[str]:
+    from app.services.job_queries import newest_jobs
+
+    ended = newest_jobs(kind=kind, statuses=("failed", "cancelled"), limit=100)
+    session_ids = [str((job.get("payload") or {}).get("session_id") or "") for job in ended]
+    running = _running_import_session_ids([session_id for session_id in session_ids if session_id])
+    return [
+        str(job["job_id"])
+        for job, session_id in zip(ended, session_ids)
+        if session_id and session_id in running
+    ]
 
 
 def purge_superseded_step_files(*, job_id: str = "", pinned_revision_ids: Iterable[str] = ()) -> dict[str, Any]:
@@ -417,6 +457,14 @@ CATALOG_JOB_KINDS = {
             {"catalog_worker": 1, "catalog_kicad": 1}
             if job_type in KICAD_HEAVY_JOB_TYPES
             else {"catalog_worker": 1}
+        ),
+        **(
+            {
+                "settle": settle_import_job,
+                "orphans": lambda kind=job_type: _unsettled_import_job_ids(kind),
+            }
+            if job_type in IMPORT_JOB_TYPES
+            else {}
         ),
     )
     for job_type in HANDLERS

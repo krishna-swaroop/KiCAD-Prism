@@ -136,6 +136,21 @@ def health_verdict(health: dict | None) -> tuple[str, str]:
     return server_verdict(health.get("server_plugin"))
 
 
+def backend_state(health: dict | None) -> str:
+    """The backend's state from one agent /health payload.
+
+    Returns ``"unknown"`` (the agent hasn't finished its first check), ``"up"``,
+    ``"down"`` (nothing answered) or ``"refused"`` (it answered 401/403, usually a
+    revoked token). An agent from before the field existed only has the boolean, so
+    that is the fallback.
+    """
+    health = health if isinstance(health, dict) else {}
+    state = health.get("backend")
+    if state in ("unknown", "up", "down", "refused"):
+        return state
+    return "up" if health.get("backend_reachable") else "down"
+
+
 def usable(verdict: str) -> bool:
     """Can the plugin go on to load the project under this verdict?"""
     return verdict in ("ok", "update")

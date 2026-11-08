@@ -414,6 +414,8 @@ export interface ConfirmAliasRequest {
 export interface ConnectorHealth {
   budget: number | null;
   calls_today: number;
+  catalogue_error: string;
+  catalogue_failed_at: string | null;
   connector_id: string;
   enabled: boolean;
   failing: number;
@@ -1757,7 +1759,7 @@ export interface ProjectPartsPage {
   unmatched: ProjectSupplyPart[];
 }
 
-/** How a project stands in supply, from its stored BOM. Without a BOM read, only ``available``, the variants, releases and notes. */
+/** How a project stands in supply, from its stored BOM. Without parts, only ``available``, ``has_usage``, the variants, releases and notes. */
 export interface ProjectSupply {
   /** The spares, in percent; null is by kind of part. */
   attrition_percent?: number | null;
@@ -1772,6 +1774,8 @@ export interface ProjectSupply {
   cost_history_left_out?: CostDay[] | null;
   /** Without a BOM read: whether the project has a schematic to read it from. */
   has_schematic?: boolean | null;
+  /** Whether the project's BOM has been read, even when it has no fitted parts. */
+  has_usage: boolean;
   money?: ProjectMoney | null;
   notes: SupplyBomComment[];
   parts?: ProjectSupplyPart[] | null;
@@ -2653,6 +2657,10 @@ export interface SupplyConnector {
   /** Offers come from the provider's published catalogue (jlcparts) instead of an uploaded file. */
   catalogue: boolean;
   catalogue_available: boolean;
+  /** Why the published catalogue last could not be read. */
+  catalogue_error: string;
+  /** When the published catalogue last could not be read; the import waits a full interval from it. */
+  catalogue_failed_at: string | null;
   /** The connector rests, making no calls, until this time (after a refusal, a rate limit or errors in a row). */
   cooldown_until: string | null;
   created_at: string | null;

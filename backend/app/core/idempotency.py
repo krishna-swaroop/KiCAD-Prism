@@ -311,9 +311,15 @@ class IdempotencyMiddleware:
             return
 
         if row is None:
-            # The claim vanished between the insert and this read. Run the write
-            # rather than inventing an answer; a later retry can claim it again.
-            await self.app(scope, receive, send)
+            # The claim vanished between the insert and this read, or its lease
+            # expired. Answer as for any in-progress claim so the client retries
+            # and claims the key normally rather than writing unclaimed.
+            await error_response(
+                Conflict(
+                    "A request with this Idempotency-Key is still in progress",
+                    code="idempotency-key-in-progress",
+                )
+            )(scope, receive, send)
             return
 
         if row["request_hash"] != fingerprint:
@@ -325,7 +331,7 @@ class IdempotencyMiddleware:
             )(scope, receive, send)
             return
 
-        if row["state"] != "done":
+        if row["state"] != idempotency_store.STATE_DONE:
             await error_response(
                 Conflict(
                     "A request with this Idempotency-Key is still in progress",

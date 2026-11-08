@@ -222,8 +222,83 @@ class HardeningTests(unittest.TestCase):
 
         with self.store.connection() as conn:
             self.assertEqual(csv_import_service.refresh_catalogues(conn, START + timedelta(hours=13), fetch_for=broken), 0)
-        self.assertEqual(self.connectors.get(jlc)["last_error_code"], "catalogue")
+        failed = self.connectors.get(jlc)
+        self.assertEqual(failed["last_error_code"], "", "a catalogue failure is not a provider call's")
+        self.assertEqual(failed["catalogue_failed_at"], (START + timedelta(hours=13)).isoformat())
+        self.assertEqual(failed["catalogue_error"], "The catalogue could not be read.")
         self.assertEqual(len(self.rows("SELECT 1 FROM supply_csv_offers WHERE connector_id = %s", jlc)), 1, "the old offers stand")
+
+    def test_a_poll_success_keeps_a_catalogue_failure_and_its_backoff(self) -> None:
+        from app.services.supply import csv_import_service, watches
+        from test_supply_jlc_catalogue import files
+
+        jlc = self.connector("jlcpcb")
+        self.connectors.update(jlc, actor=ACTOR, catalogue=True)
+        with self.store.connection() as conn:
+            watches.add_watch(conn, "Acme", "NE555DR", ACTOR, tier=1)
+            conn.commit()
+
+        def broken(base):
+            def fetch(name):
+                raise RuntimeError("offline")
+            return fetch
+
+        with self.store.connection() as conn:
+            self.assertEqual(csv_import_service.refresh_catalogues(conn, START, fetch_for=broken), 0)
+        self.assertEqual(self.connectors.get(jlc)["catalogue_failed_at"], START.isoformat())
+
+        self.connectors.record_result(jlc)  # a poll succeeded after the catalogue failed
+        self.assertEqual(self.connectors.get(jlc)["catalogue_failed_at"], START.isoformat())
+        self.assertEqual(self.connectors.get(jlc)["last_error_code"], "")
+
+        published = files()
+        asked: list[str] = []
+
+        def fetch_for(base):
+            def fetch(name):
+                asked.append(name)
+                return published[name]
+            return fetch
+
+        with self.store.connection() as conn:
+            self.assertEqual(
+                csv_import_service.refresh_catalogues(conn, START + timedelta(hours=1), fetch_for=fetch_for), 0,
+                "the catalogue still waits its interval after the failure",
+            )
+        self.assertEqual(asked, [], "a poll success must not make the catalogue due again")
+
+    def test_a_catalogue_success_does_not_clear_a_poll_error(self) -> None:
+        from app.services.supply import csv_import_service, watches
+        from test_supply_jlc_catalogue import files
+
+        jlc = self.connector("jlcpcb")
+        self.connectors.update(jlc, actor=ACTOR, catalogue=True)
+        with self.store.connection() as conn:
+            watches.add_watch(conn, "Acme", "NE555DR", ACTOR, tier=1)
+            conn.commit()
+        with self.store.connection() as conn:  # a poll succeeded, then failed an hour later
+            conn.execute(
+                "UPDATE supply_connectors SET last_ok_at = %s, last_error_code = 'rate_limited', last_error_at = %s WHERE id = %s",
+                (START, START + timedelta(hours=1), jlc),
+            )
+        ok_at = self.connectors.get(jlc)["last_ok_at"]
+
+        published = files()
+
+        def fetch_for(base):
+            return published.__getitem__
+
+        with self.store.connection() as conn:
+            self.assertEqual(csv_import_service.refresh_catalogues(conn, START + timedelta(hours=2), fetch_for=fetch_for), 1)
+        shown = self.connectors.get(jlc)
+        self.assertEqual(shown["last_error_code"], "rate_limited", "the poll's error stands")
+        self.assertEqual(shown["last_ok_at"], ok_at, "a catalogue import is not a provider call's success")
+        self.assertGreater(
+            datetime.fromisoformat(shown["last_error_at"]), datetime.fromisoformat(shown["last_ok_at"]),
+            "the poll failure still reads as the last call",
+        )
+        self.assertIsNone(shown["catalogue_failed_at"])
+        self.assertEqual(shown["catalogue_error"], "")
 
     # --- budget and cooldown ----------------------------------------------
 

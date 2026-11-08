@@ -5,6 +5,9 @@ import type { Comment } from "@/types/comments";
 const api = vi.hoisted(() => ({ fetchApi: vi.fn() }));
 vi.mock("@/lib/api", () => api);
 
+const auth = vi.hoisted(() => ({ commentLiveAvailable: vi.fn(async () => true) }));
+vi.mock("@/lib/auth", () => auth);
+
 import { useLiveComments } from "./use-live-comments";
 
 class FakeWebSocket {
@@ -63,6 +66,8 @@ beforeEach(() => {
     FakeWebSocket.instances = [];
     vi.stubGlobal("WebSocket", FakeWebSocket);
     api.fetchApi.mockReset();
+    auth.commentLiveAvailable.mockReset();
+    auth.commentLiveAvailable.mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -95,6 +100,29 @@ describe("useLiveComments", () => {
         act(() => vi.advanceTimersByTime(1_000));
         expect(FakeWebSocket.instances).toHaveLength(2);
         expect(FakeWebSocket.instances[1].url).toContain("/comments/live?after=5");
+    });
+
+    it("reports connecting before the first socket opens, and reconnecting only after a close", async () => {
+        api.fetchApi.mockResolvedValueOnce(snapshot([comment("comment-1")], 4));
+        const { result } = renderHook(() => useLiveComments("project-1", { kind: "canvas" }));
+        await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+        expect(result.current.status).toBe("connecting");
+
+        api.fetchApi.mockResolvedValueOnce(snapshot([comment("comment-1")], 4));
+        act(() => FakeWebSocket.instances[0].open());
+        await waitFor(() => expect(result.current.status).toBe("live"));
+
+        act(() => FakeWebSocket.instances[0].close());
+        await waitFor(() => expect(result.current.status).toBe("reconnecting"));
+    });
+
+    it("polls without opening a socket when live comments are off", async () => {
+        auth.commentLiveAvailable.mockResolvedValue(false);
+        api.fetchApi.mockResolvedValueOnce(snapshot([comment("comment-1")], 4));
+        const { result } = renderHook(() => useLiveComments("project-1", { kind: "canvas" }));
+        await waitFor(() => expect(result.current.status).toBe("polling"));
+        expect(result.current.hasLoaded).toBe(true);
+        expect(FakeWebSocket.instances).toHaveLength(0);
     });
 
     it("retains last good comments and reports a read failure", async () => {

@@ -384,32 +384,21 @@ def refresh_access_token(
 
 # ── Validation ───────────────────────────────────────────────────────────
 
-_grant_state: dict[str, tuple[float, bool]] = {}
-_grant_state_lock = threading.Lock()
-GRANT_STATE_TTL_SECONDS = 30
-
-
-def _forget_grant(grant_id: str) -> None:
-    with _grant_state_lock:
-        _grant_state.pop(grant_id, None)
-
-
 def _grant_is_live(grant_id: str) -> bool:
-    now = time.monotonic()
-    with _grant_state_lock:
-        cached = _grant_state.get(grant_id)
-        if cached is not None and now - cached[0] < GRANT_STATE_TTL_SECONDS:
-            return cached[1]
+    """Read the grant's ``revoked_at`` on every validation.
+
+    A grant is revoked through one worker, so a process-local cache of the
+    live answer left every other worker accepting the revoked token until its
+    TTL expired. The primary-key lookup is cheap enough to run per request.
+    """
+
     with database.connection() as connection:
         connection.execute("SET search_path TO workspace, public")
         row = connection.execute(
             "SELECT revoked_at FROM ws_mcp_grants WHERE id = %s",
             (grant_id,),
         ).fetchone()
-    live = row is not None and row["revoked_at"] is None
-    with _grant_state_lock:
-        _grant_state[grant_id] = (now, live)
-    return live
+    return row is not None and row["revoked_at"] is None
 
 
 def validate_access_token(token: str) -> dict[str, Any]:
@@ -502,7 +491,6 @@ def revoke_token(token: str, client_id: str) -> None:
             (grant_id, client_id),
         )
         connection.commit()
-    _forget_grant(grant_id)
 
 
 def _grant_rows(email: str) -> list[dict[str, Any]]:
@@ -565,5 +553,4 @@ def revoke_grant(grant_id: str, *, by_email: str, is_admin: bool) -> dict[str, A
             (grant_id,),
         ).fetchone()
         connection.commit()
-    _forget_grant(grant_id)
     return dict(updated)

@@ -21,6 +21,8 @@ class ConnectorHealth(SupplyModel):
     last_ok_at: Optional[str]
     last_error_code: str
     last_error_at: Optional[str]
+    catalogue_failed_at: Optional[str]
+    catalogue_error: str
     listings: int
     late: int
     failing: int

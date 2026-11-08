@@ -172,9 +172,31 @@ class PrismClient:
 
     # -- API --------------------------------------------------------------
 
-    def health(self) -> bool:
-        """Is the backend reachable (and are we authenticated)?"""
-        return self._request("GET", "/api/projects") is not None
+    def health(self) -> str:
+        """How the backend answers: ``"up"``, ``"down"`` or ``"refused"``.
+
+        ``"refused"`` is an answer too: the backend is up but rejected this token
+        (401/403), which usually means it was revoked. Collapsing that into
+        ``"down"`` made the plugin tell the user to check the server address when
+        the actual fix was to sign in.
+        """
+        if not self.config.configured or self.known_down:
+            return "down"
+        try:
+            self._send("GET", "/api/projects")
+        except PrismRefused as exc:
+            if exc.status in (401, 403):
+                return "refused"
+            # A 5xx is the proxy speaking for a backend that is down (nginx's
+            # 502/503/504 during an outage), not a live answer.
+            if exc.status is not None and exc.status >= 500:
+                return "down"
+            # Any other HTTP status is still an answer from a live backend.
+            return "up"
+        except PrismUnreachable:
+            self._down_until = time.monotonic() + DOWN_FOR
+            return "down"
+        return "up"
 
     def plugin_version(self) -> dict | None:
         """The plugin version this server expects, and where to get it.

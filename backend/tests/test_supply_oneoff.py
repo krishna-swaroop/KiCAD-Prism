@@ -71,6 +71,10 @@ class OneOffTests(unittest.TestCase):
         with self.store.connection() as conn:
             return self.oneoff.progress(conn, request_id)
 
+    def settle(self) -> int:
+        with self.store.connection() as conn:
+            return self.oneoff.settle_unrunnable(conn)
+
     def rows(self, sql: str):
         with self.store.connection() as conn:
             return conn.execute(sql).fetchall()
@@ -155,6 +159,60 @@ class OneOffTests(unittest.TestCase):
         self.assertEqual(self.progress(made["id"])["state"], "done")
         self.assertIn("oneoff", {r["purpose"] for r in self.rows("SELECT purpose FROM supply_call_counts")})
 
+    def test_a_refusal_during_the_poll_is_not_a_failed_try(self) -> None:
+        from app.services.supply.providers.base import RateLimited
+
+        cid = self.connector()
+        made = self.ask([("Acme", "ABC123"), ("Acme", "DEF456")])
+        clock = lambda: self.now  # noqa: E731
+        inner = self.FakeProvider(self.ProviderConfig(connector_id=cid, currency="EUR"), clock=clock)
+
+        class Refusing:
+            def lookup_mpn(self, mpn, manufacturer=None):
+                return inner.lookup_mpn(mpn, manufacturer)
+
+            def get_offers(self, skus):
+                raise RateLimited("slow down", retry_after_seconds=600)
+
+        provider = lambda _cid: Refusing()  # noqa: E731
+        discoverer = self.discoverer.Discoverer(self.connectors, store=self.store, provider_for=provider, clock=clock)
+        poller = self.poller.Poller(self.connectors, store=self.store, provider_for=provider, clock=clock)
+        from app.services.supply import jobs
+
+        with self.store.connection() as conn:
+            jobs.refresh_scheduled(conn, cid, self.now)
+        self.oneoff.run(discoverer, poller, self.store, cid)
+        self.assertEqual(self.rows("SELECT MAX(attempts) AS n FROM supply_read_request_work")[0]["n"], 0,
+                         "a refusal the provider is responsible for is a rest, not a failed try")
+        self.assertEqual(self.rows("SELECT COUNT(*) AS n FROM supply_read_request_work WHERE state = 'failed'")[0]["n"], 0)
+        self.assertEqual(self.progress(made["id"])["state"], "running")
+
+    def test_a_plain_provider_error_during_the_poll_is_a_failed_try(self) -> None:
+        from app.services.supply.providers.base import ProviderError
+
+        cid = self.connector()
+        self.ask([("Acme", "ABC123")])
+        clock = lambda: self.now  # noqa: E731
+        inner = self.FakeProvider(self.ProviderConfig(connector_id=cid, currency="EUR"), clock=clock)
+
+        class Failing:
+            def lookup_mpn(self, mpn, manufacturer=None):
+                return inner.lookup_mpn(mpn, manufacturer)
+
+            def get_offers(self, skus):
+                raise ProviderError("upstream 500")
+
+        provider = lambda _cid: Failing()  # noqa: E731
+        discoverer = self.discoverer.Discoverer(self.connectors, store=self.store, provider_for=provider, clock=clock)
+        poller = self.poller.Poller(self.connectors, store=self.store, provider_for=provider, clock=clock)
+        from app.services.supply import jobs
+
+        with self.store.connection() as conn:
+            jobs.refresh_scheduled(conn, cid, self.now)
+        self.oneoff.run(discoverer, poller, self.store, cid)
+        self.assertEqual(self.rows("SELECT MAX(attempts) AS n FROM supply_read_request_work")[0]["n"], 1,
+                         "a provider that fails is a failed try, so it ends after MAX_ATTEMPTS")
+
     def test_a_large_check_stops_at_half_the_pool_and_leaves_the_rest_to_people(self) -> None:
         cid = self.connector(daily_budget=100)  # a pool of 10 calls
         self.ask([("Acme", f"P{n}") for n in range(20)])
@@ -174,6 +232,43 @@ class OneOffTests(unittest.TestCase):
     def test_progress_for_an_unknown_request_is_a_key_error(self) -> None:
         with self.store.connection() as conn, self.assertRaises(KeyError):
             self.oneoff.progress(conn, "nope")
+
+    def test_a_paused_connector_settles_its_open_work_and_finishes_the_request(self) -> None:
+        first = self.connector()
+        second = self.connector(provider="lcsc", currency="EUR")
+        made = self.ask([("Acme", "ABC123")])
+        self.served(first)
+        self.assertEqual(self.progress(made["id"])["state"], "running", "the other connector still has work")
+        self.connectors.pause(second, actor=ACTOR, reason="The provider rejected the credentials.")
+        with self.store.connection() as conn:
+            self.assertNotIn(second, self.oneoff.pending_connectors(conn), "a paused connector is not asked again")
+        self.assertEqual(self.settle(), 1)
+        shown = self.progress(made["id"])
+        self.assertEqual((shown["state"], shown["done"]), ("done", 1))
+        with self.store.connection() as conn:
+            state = conn.execute("SELECT state FROM supply_read_request_work WHERE connector_id = %s", (second,)).fetchone()["state"]
+        self.assertEqual(state, "failed")
+
+    def test_a_deleted_connector_finishes_the_request(self) -> None:
+        first = self.connector()
+        second = self.connector(provider="lcsc", currency="EUR")
+        made = self.ask([("Acme", "ABC123")])
+        self.served(first)
+        self.connectors.delete(second, actor=ACTOR)
+        self.settle()
+        self.assertEqual(self.progress(made["id"])["state"], "done")
+
+    def test_a_run_with_no_work_at_its_connector_finishes_the_request(self) -> None:
+        cid = self.connector()
+        request_id = uuid.uuid4().hex
+        with self.store.connection() as conn:
+            conn.execute(
+                "INSERT INTO supply_read_requests (id, kind, requested_by, created_at) VALUES (%s, 'bom', %s, %s)",
+                (request_id, ACTOR, self.now),
+            )
+        self.assertEqual(self.progress(request_id)["state"], "running")
+        self.served(cid)
+        self.assertEqual(self.progress(request_id)["state"], "done")
 
 
 if __name__ == "__main__":

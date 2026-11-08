@@ -66,6 +66,17 @@ describe("a project's parts list", () => {
     expect(screen.getByRole("button", { name: /Out of stock/ }).textContent).toContain("1");
   });
 
+  it("starts again at the first page when a page past the end comes back empty", async () => {
+    mocked.getProjectParts
+      .mockResolvedValueOnce(page({ total: 250, next_offset: 100 }))
+      .mockResolvedValueOnce(page({ items: [], unmatched: [], total: 250, offset: 100, next_offset: null }));
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Next" }));
+    await waitFor(() => expect(mocked.getProjectParts).toHaveBeenLastCalledWith("prj", expect.objectContaining({ offset: 100 }), expect.anything()));
+    expect(await screen.findByText("RISKY-1")).toBeTruthy();
+    expect(screen.queryByText("No part of this BOM is known to Prism yet")).toBeNull();
+  });
+
   it("lists the lines no part matches after the parts", async () => {
     show();
     expect(await screen.findByText("NOPN")).toBeTruthy();

@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 
 import { PanelApp } from "./PanelApp";
 import { sendRpcCommand, uninstallBridge } from "./lib/kicad-bridge";
+import { getCategories } from "./lib/panel-api";
 
 vi.mock("./lib/panel-api", async (importOriginal) => ({
   ...await importOriginal<typeof import("./lib/panel-api")>(),
@@ -50,6 +51,19 @@ it("opens the component named in the address, the one whose part page in Prism w
   const { unmount } = render(<StrictMode><PanelApp /></StrictMode>);
   expect(await screen.findByText("Detail cmp-7")).toBeTruthy();
   expect(window.location.search).toBe("");
+  unmount();
+});
+
+it("shows a checking screen until the session check settles", async () => {
+  let settle!: (value: Awaited<ReturnType<typeof getCategories>>) => void;
+  vi.mocked(getCategories).mockImplementationOnce(
+    () => new Promise((resolve) => { settle = resolve; }),
+  );
+  const { unmount } = render(<PanelApp />);
+  expect(screen.getByRole("status")).toBeTruthy();
+  expect(screen.queryByText("Finder")).toBeNull();
+  await act(async () => { settle([]); });
+  expect(await screen.findByText("Finder")).toBeTruthy();
   unmount();
 });
 

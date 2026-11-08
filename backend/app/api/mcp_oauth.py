@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from app.core.config import settings
-from app.core.security import get_current_user, refuse_provider_token
+from app.core.security import get_current_user, is_guest, refuse_provider_token
 from app.services import mcp_auth_service, mcp_clients
 
 
@@ -185,7 +185,7 @@ async def authorize(
         login_url = f"{base}/?next={quote(next_url, safe='')}"
         return RedirectResponse(login_url, status_code=302)
     refuse_provider_token(user)
-    if user.auth_type == "guest":
+    if is_guest(user):
         return _oauth_error("invalid_request", "Sign-in is not required on this server")
 
     granted_scope, dropped = mcp_auth_service.scope_for_user(normalized_scope, str(user.role))
@@ -247,7 +247,7 @@ async def authorize_submit(
 
     user = await get_current_user(request)
     refuse_provider_token(user)
-    if user.auth_type == "guest":
+    if is_guest(user):
         return _oauth_error("invalid_request", "Sign-in is not required on this server")
 
     if decision != "allow":

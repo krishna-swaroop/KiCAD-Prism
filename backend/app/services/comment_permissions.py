@@ -28,7 +28,7 @@ from typing import Optional, Protocol
 from app.core.roles import Role, role_meets_minimum
 from app.core import errors
 from app.core.policy import MCP_AUTH_TYPE, has_scope
-from app.core.security import AuthenticatedUser
+from app.core.security import AuthenticatedUser, is_guest
 from app.services import access_service
 
 DEFAULT_PROMOTE_MIN_ROLE: Role = "designer"
@@ -111,15 +111,6 @@ class Authored(Protocol):
 class AuthoredObject:
     author_user_id: Optional[str]
     author_kind: str
-
-
-def is_guest(user: AuthenticatedUser) -> bool:
-    """The implicit identity of an AUTH_ENABLED=false deployment.
-
-    It shares ``auth_type="session"`` with real sign-ins; the absence of a
-    session id together with the fixed local address is what marks it.
-    """
-    return user.auth_type == "session" and not user.session_id and user.email == "guest@local"
 
 
 def resolve_actor(user: AuthenticatedUser) -> ActorIdentity:

@@ -658,6 +658,7 @@ Release Studio's assembly and testpoint views (amendment C3 §3.2), a port of Cr
 - **`vendor list`** prints `CliVendorListA0`: each vendor's `id`, name, outputs (file kind, format, version) and config schema id. The list is fixed by the binary.
 - **`vendor run <vendor-id>`** reads `projections/occurrences.json` and `projections/placements.json`; `placements` a1 provides the aux origin. It writes the vendor's files to `<dir>` atomically and prints `CliVendorRunResultA0` (files, sha256, row counts, and any components it excluded and why).
   - An unknown id is exit 2, `vendor-unknown`.
+  - `--variant` must be `default` or name a variant the occurrences declare or record, ignoring case; otherwise exit 2, `variant-unknown`, naming the variants the design defines. `default` applies no overrides unless the design has a variant of that name.
   - `--config` is the vendor's config schema; for JLCPCB, `VendorJlcpcbConfigA0`.
 - **JLCPCB:**
   - BOM columns `Comment, Designator, Footprint, JLCPCB Part #` and CPL columns `Designator, Layer, Mid X, Mid Y, Rotation`;
@@ -866,7 +867,7 @@ Codes are `DiagnosticCode` (kebab-case). A code never changes meaning; a new mea
 | `output-changed` | error | precondition / 7 | `-o` changed between reading `--in` and the rename (§5.2.5) |
 | `member-not-found` | error | precondition / 7 | an `extract` `<member>` selects nothing; for `compare`, a bundle has no `projections/board-objects.json` (§5.6) |
 | `anchor-mismatch` | error | precondition / 7 | `compare`: the two bundles' project files are in different directories (§5.6) |
-| `view-unknown`, `vendor-unknown` | error | usage / 2 | `artwork --view` names no view of the config; `vendor run` names no registered vendor (§5.7, §5.8) |
+| `view-unknown`, `vendor-unknown`, `variant-unknown` | error | usage / 2 | `artwork --view` names no view of the config; `vendor run` names no registered vendor or no variant the design defines (§5.7, §5.8) |
 | `geometer-version-mismatch` | error | precondition / 7 | stage `models`: `--geometer` is not the runtime `hlr_procedure` names (§5.2.4) |
 | `geometer-unavailable` | error | internal / 1 | stage `models`: the Geometer runtime could not be started; K retries (§5.2.4) |
 | `model-not-step`, `projection-failed` | `models/assembly-hlr.json` per footprint | — | the footprint's first model is not STEP, or Geometer could not project it (§5.2.4); with `model-unavailable`, these are recorded, not failures |

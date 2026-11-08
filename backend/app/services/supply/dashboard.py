@@ -116,7 +116,9 @@ def failing_feeds(conn) -> list[dict[str, Any]]:
     for row in conn.execute(
         """
         SELECT display_name, last_ok_at FROM supply_connectors
-        WHERE enabled AND (paused_reason <> '' OR (last_error_at IS NOT NULL AND (last_ok_at IS NULL OR last_error_at > last_ok_at)))
+        WHERE enabled AND (paused_reason <> ''
+                           OR (last_error_at IS NOT NULL AND (last_ok_at IS NULL OR last_error_at > last_ok_at))
+                           OR (catalogue AND catalogue_failed_at IS NOT NULL))
         ORDER BY lower(display_name)
         """
     ).fetchall():

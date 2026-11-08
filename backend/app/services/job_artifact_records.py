@@ -127,6 +127,13 @@ def insert_artifact(
     job_id: str,
     fence: int,
 ) -> None:
+    """Register ``artifact``, reviving a row whose earlier copy was invalidated.
+
+    A retried job may re-produce a digest that was invalidated (for a missing or
+    corrupt object). The object store has just rewritten the object from the
+    verified copy, so the upsert clears ``invalidated_at`` and readers serve it.
+    """
+
     conn.execute(
         """
         INSERT INTO ws_artifacts (
@@ -136,7 +143,13 @@ def insert_artifact(
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (kind, artifact_key, digest)
         DO UPDATE SET last_accessed_at = NOW(),
+            invalidated_at = NULL,
             readiness = EXCLUDED.readiness,
+            object_path = EXCLUDED.object_path,
+            size_bytes = EXCLUDED.size_bytes,
+            media_type = EXCLUDED.media_type,
+            schema_version = EXCLUDED.schema_version,
+            generator_version = EXCLUDED.generator_version,
             source_job_id = EXCLUDED.source_job_id,
             source_fence = EXCLUDED.source_fence
         """,

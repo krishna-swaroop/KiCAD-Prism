@@ -41,7 +41,6 @@ class CatalogHealth:
             )
         }
         place_ready = 0
-        released = 0
         missing_files = 0
         total_components = 0
         page = 1
@@ -59,11 +58,15 @@ class CatalogHealth:
                     place_ready += 1
                 else:
                     missing_files += 1
-                if component["release_status"] == "released":
-                    released += 1
             if page >= int(result["pages"]):
                 break
             page += 1
+        # Released is the pointer's state, not the head revision's stage: a
+        # component with an open draft still has a released revision.
+        released_row = conn.execute(
+            "SELECT COUNT(*) AS count FROM components WHERE is_active = 1 AND released_revision_id <> ''"
+        ).fetchone()
+        released = int(released_row["count"] if released_row else 0)
         preview_failed_row = conn.execute(
             """
             SELECT COUNT(*) AS count

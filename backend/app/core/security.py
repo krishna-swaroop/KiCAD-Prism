@@ -25,6 +25,9 @@ from app.services import (
 #: resolved once, by the dependency that already had to do it.
 AUTHENTICATED_USER_STATE = "authenticated_user"
 
+#: The fixed address of the implicit identity used when AUTH_ENABLED is false.
+GUEST_EMAIL = "guest@local"
+
 
 class AuthenticatedUser(BaseModel):
     email: str
@@ -43,11 +46,20 @@ class AuthenticatedUser(BaseModel):
 def guest_user() -> AuthenticatedUser:
     """The implicit identity used only when AUTH_ENABLED is explicitly false."""
     return AuthenticatedUser(
-        email="guest@local",
+        email=GUEST_EMAIL,
         name="Guest User",
         picture="",
         role=normalize_role(settings.DEV_GUEST_ROLE) or "viewer",
     )
+
+
+def is_guest(user: AuthenticatedUser) -> bool:
+    """The implicit identity of an AUTH_ENABLED=false deployment.
+
+    It shares ``auth_type="session"`` with real sign-ins; the absence of a
+    session id together with the fixed local address is what marks it.
+    """
+    return user.auth_type == "session" and not user.session_id and user.email == GUEST_EMAIL
 
 
 def _resolve_allowed_user_role(email: str) -> Role | None:
@@ -170,11 +182,17 @@ def _resolve_bearer_user(token: str) -> AuthenticatedUser:
             # Best-effort, throttled: keep the registry's "last used" column honest
             # without a DB write on every request. Never fails the request.
             agent_auth_service.touch_agent_token(payload)
+            # Like MCP and provider tokens: re-read the owner and their role now,
+            # so a role change or removed account takes effect at once.
+            current = access_service.get_user_by_email(str(payload["email"]))
+            role = _resolve_allowed_user_role(str(payload["email"]))
+            if current is None or role is None:
+                raise HTTPException(status_code=401, detail="Invalid bearer token")
             return AuthenticatedUser(
-                email=str(payload["email"]),
-                name=str(payload["name"]),
-                picture=str(payload.get("picture") or ""),
-                role=normalize_role(str(payload["role"])) or "viewer",
+                email=str(current["email"]),
+                name=str(current["name"]),
+                picture=str(current.get("picture") or ""),
+                role=role,
                 auth_type="agent",
                 client_id=str(payload.get("client_id") or ""),
                 token_id=str(payload.get("jti") or ""),
@@ -213,11 +231,18 @@ def _resolve_bearer_user(token: str) -> AuthenticatedUser:
         try:
             payload = provider_auth_service.validate_access_token(token)
             scopes = str(payload.get("scope") or "").split()
+            # Provider tokens carry scopes, not identity: re-read the owner and
+            # their role now, so a role change or removed account takes effect at once.
+            email = str(payload["email"])
+            current = access_service.get_user_by_email(email)
+            role = _resolve_allowed_user_role(email)
+            if current is None or role is None:
+                raise HTTPException(status_code=401, detail="Invalid bearer token")
             return AuthenticatedUser(
-                email=str(payload["email"]),
-                name=str(payload["name"]),
-                picture=str(payload.get("picture") or ""),
-                role=normalize_role(str(payload["role"])) or "viewer",
+                email=str(current["email"]),
+                name=str(current["name"]),
+                picture=str(current.get("picture") or ""),
+                role=role,
                 auth_type="kicad_provider",
                 client_id=str(payload.get("client_id") or ""),
                 token_id=str(payload.get("jti") or ""),

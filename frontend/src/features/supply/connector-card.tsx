@@ -83,6 +83,12 @@ export function ConnectorCard({ connector, budget, isAdmin, onAction }: Connecto
           <dt className="text-muted-foreground">Last call</dt>
           <dd>{lastCallText(connector)}</dd>
         </div>
+        {connector.catalogue && connector.catalogue_failed_at ? (
+          <div className="flex gap-1.5">
+            <dt className="text-muted-foreground">Catalogue</dt>
+            <dd>{connector.catalogue_error || "Failed"} {formatDateTime(connector.catalogue_failed_at)}</dd>
+          </div>
+        ) : null}
         {slowedText(connector) ? (
           <div className="flex gap-1.5">
             <dt className="text-muted-foreground">Pacing</dt>

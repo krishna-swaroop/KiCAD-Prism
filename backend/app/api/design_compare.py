@@ -19,6 +19,7 @@ from app.core.errors import caller_errors
 from app.core.security import AuthenticatedUser, require_viewer
 from app.services import design_compare_service
 from app.services.job_artifact_service import job_artifacts
+from app.services.job_service import ACTIVE_STATUSES
 
 router = APIRouter(dependencies=[Depends(require_viewer)])
 
@@ -275,4 +276,4 @@ async def delete_design_compare(
     if not status or status.get("project_id") != project_id:
         raise HTTPException(status_code=404, detail="Job not found")
     await asyncio.to_thread(design_compare_service.delete_job, job_id)
-    return {"status": "cancel_requested" if status.get("status") in {"queued", "running", "retry_wait", "cancel_requested"} else "retained"}
+    return {"status": "cancel_requested" if status.get("status") in ACTIVE_STATUSES else "retained"}

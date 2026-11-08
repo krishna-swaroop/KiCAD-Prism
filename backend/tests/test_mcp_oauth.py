@@ -33,6 +33,7 @@ from app.services import (  # noqa: E402
     mcp_clients,
     provider_auth_service,
 )
+from app.services.postgres_database import database  # noqa: E402
 
 DATABASE_URL = os.environ.get("PRISM_DATABASE_URL", "").strip()
 
@@ -177,11 +178,7 @@ class McpOAuthFlowTests(unittest.TestCase):
 
     def setUp(self) -> None:
         mcp_clients.clear_cache()
-        mcp_auth_service._grant_state.clear()
         mcp_auth_service._last_touched.clear()
-        self._ttl = patch.object(mcp_auth_service, "GRANT_STATE_TTL_SECONDS", 0)
-        self._ttl.start()
-        self.addCleanup(self._ttl.stop)
         self.resolver = fake_resolver
         self._resolver = patch.object(mcp_clients, "_RESOLVER", lambda *a, **k: self.resolver(*a, **k))
         self._fetcher = patch.object(mcp_clients, "_FETCHER", fake_fetch)
@@ -297,6 +294,29 @@ class McpOAuthFlowTests(unittest.TestCase):
             headers={"Authorization": f"Bearer {rotated_body['access_token']}"},
         )
         self.assertEqual(after.status_code, 401)
+
+    def test_a_grant_revoked_in_another_process_is_refused_at_once(self) -> None:
+        email = unique_email("cross-process")
+        client = self._client_for(email, "designer")
+        code, verifier, params = self._code(client)
+        tokens = self._tokens(code, verifier, params)
+        bearer = self.TestClient(self.main.app)
+        headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
+        # The first request proved the grant live in this process.
+        self.assertEqual(bearer.get("/api/v1/events", headers=headers).status_code, 200)
+
+        # Another worker revokes it; this process's cache is never told.
+        grant_id = str(provider_auth_service._decode_payload(tokens["access_token"])["grant"])
+        with database.connection() as connection:
+            connection.execute("SET search_path TO workspace, public")
+            connection.execute(
+                "UPDATE ws_mcp_grants SET revoked_at = NOW() WHERE id = %s",
+                (grant_id,),
+            )
+            connection.commit()
+
+        self.assertEqual(bearer.get("/api/v1/events", headers=headers).status_code, 401)
 
     def test_the_consent_page_names_the_client_account_and_scopes(self) -> None:
         email = unique_email("consent")
@@ -443,6 +463,24 @@ class McpOAuthFlowTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"], "invalid_grant")
+
+    def test_a_guest_is_refused_at_the_consent_page(self) -> None:
+        """Auth off serves every request as the implicit guest, which has nothing to consent to."""
+        client = self.TestClient(self.main.app)
+        _verifier, params = self._authorize_params()
+        with patch.object(settings, "AUTH_ENABLED_OVERRIDE", False):
+            consent = client.get("/oauth/mcp/authorize", params=params)
+            self.assertEqual(consent.status_code, 400)
+            self.assertEqual(consent.json()["error"], "invalid_request")
+            self.assertIn("Sign-in is not required", consent.json()["error_description"])
+
+            submit = client.post(
+                "/oauth/mcp/authorize",
+                data={**params, "decision": "allow"},
+                follow_redirects=False,
+            )
+            self.assertEqual(submit.status_code, 400)
+            self.assertIn("Sign-in is not required", submit.json()["error_description"])
 
     def test_settings_lists_and_revokes_the_callers_clients(self) -> None:
         email = unique_email("settings")

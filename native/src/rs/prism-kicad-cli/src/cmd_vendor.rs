@@ -13,7 +13,7 @@ use crate::inputs;
 use crate::output::Stderr;
 use prism_bundle::reader::BundleReader;
 use prism_bundle::zip::FileSource;
-use prism_bundle::{Failure, Outcome};
+use prism_bundle::{Failure, Outcome, temp};
 use prism_kicad_contracts::generated::prism_occurrences_a0::OccurrencesA0;
 use prism_kicad_contracts::generated::prism_placements_a1::PlacementsA1;
 use prism_vendors::design::BoardFacts;
@@ -56,12 +56,34 @@ fn run_vendor(args: &Args) -> Outcome<(Value, u8)> {
     };
     let (input, config) = read_inputs(args)?;
     let variant = args.option("variant");
+    if let Some(requested) = variant {
+        check_variant(&input.occurrences, requested)?;
+    }
     let run = vendor
         .run(&input, &config, variant)
         .map_err(|error| Failure::input(error.code, error.message).argument("in"))?;
     let output = PathBuf::from(args.option("output").unwrap_or_default());
     write_files(&output, &run.files)?;
     Ok((result_document(vendor.id(), &run), 0))
+}
+
+/// Refuse `--variant` when the design defines no variant matching it, ignoring
+/// case (`default` is always accepted); the message lists the names the design
+/// does define.
+fn check_variant(occurrences: &OccurrencesA0, requested: &str) -> Outcome<()> {
+    let names = prism_vendors::design::variant_names(occurrences);
+    if prism_vendors::design::variant_known(&names, requested) {
+        return Ok(());
+    }
+    let message = if names.is_empty() {
+        format!("the design has no variant {requested:?} and defines none")
+    } else {
+        format!(
+            "the design has no variant {requested:?}; it defines {}",
+            names.join(", ")
+        )
+    };
+    Err(Failure::usage("variant-unknown", message).argument("variant"))
 }
 
 /// The bundle members, the board facts and the configuration.
@@ -231,6 +253,7 @@ fn write_files(directory: &Path, files: &[prism_vendors::VendorFile]) -> Outcome
             ".{name}.prism-kicad-{}-{serial}.tmp",
             std::process::id()
         ));
+        temp::register(temp.clone());
         let result = (|| {
             let mut output = std::fs::File::create(&temp)?;
             output.write_all(&file.bytes)?;
@@ -239,12 +262,14 @@ fn write_files(directory: &Path, files: &[prism_vendors::VendorFile]) -> Outcome
         })();
         if let Err(error) = result {
             let _ = std::fs::remove_file(&temp);
+            temp::unregister(&temp);
             return Err(Failure::output(
                 "output-write-failed",
                 format!("{} could not be written: {error}", file.path),
             )
             .argument("output"));
         }
+        temp::unregister(&temp);
     }
     if let Ok(directory) = std::fs::File::open(directory) {
         let _ = directory.sync_all();

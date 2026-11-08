@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createReloadOwner, runSemanticViewerReload } from "./semantic-viewer-reload.js";
+import { createReloadOwner, runSemanticViewerReload, shouldReloadStaleScene, viewerIsShown } from "./semantic-viewer-reload.js";
 
 function deferred() {
   let resolve;
@@ -306,4 +306,27 @@ test("a successful current reload publishes once with performance timings", asyn
   assert.ok("mount_and_first_frame_ms" in detail.timings);
   assert.ok("reload_to_visible_ms" in detail.timings);
   assert.deepEqual(host.log, ["render:loading", "load:a.json", "render:shell", "mount:A", "publish:A", "emit:ready"]);
+});
+
+test("a shown element whose viewer session was taken must remount", () => {
+  const mounted = { port: {} };
+  const current = () => true;
+  const stale = () => false;
+  assert.equal(shouldReloadStaleScene({ shown: true, mounted, isCurrent: current }), false);
+  assert.equal(shouldReloadStaleScene({ shown: true, mounted, isCurrent: stale }), true);
+  assert.equal(shouldReloadStaleScene({ shown: false, mounted, isCurrent: stale }), false);
+  assert.equal(shouldReloadStaleScene({ shown: true, mounted: null, isCurrent: stale }), false);
+  assert.equal(shouldReloadStaleScene({ shown: true, mounted, isCurrent: undefined }), false);
+});
+
+test("shown is the element's own intersection, and the active attribute only without an observer", () => {
+  // A visible element whose host never sets active (the Sim Studio board pane
+  // and the 3D Stackup tab) still counts as shown.
+  assert.equal(viewerIsShown({ observed: true, intersecting: true, active: false }), true);
+  assert.equal(viewerIsShown({ observed: true, intersecting: false, active: true }), false);
+  // No IntersectionObserver: fall back to the host's signal.
+  assert.equal(viewerIsShown({ observed: false, intersecting: false, active: true }), true);
+  assert.equal(viewerIsShown({ observed: false, intersecting: true, active: false }), false);
+  // An element that never reported intersection is not shown.
+  assert.equal(viewerIsShown({ observed: true, intersecting: undefined, active: true }), false);
 });

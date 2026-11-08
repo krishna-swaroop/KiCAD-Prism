@@ -26,7 +26,7 @@ from typing import Any, Mapping, Optional
 from app.core import errors
 from app.core.config import settings
 from app.services.job_kinds import JobKind, JobSubject, memory_units
-from app.services.job_runtime import JobContext, JobResult
+from app.services.job_runtime import JobCancelled, JobContext, JobResult
 from app.sim_studio import board_source, validation
 from app.sim_studio.run_store import TERMINAL, RunStore, public
 from app.sim_studio.service import canonical_sha256, parse_setup
@@ -287,6 +287,11 @@ def run_sim_job(context: JobContext, runs: RunStore | None = None) -> JobResult:
         if not succeeded:
             raise RuntimeError(message)
         return JobResult(message="Simulation completed", details={"run_id": run["run_id"], "logs": log[-40:]})
+    except JobCancelled:
+        # A cancelled job must not settle the run as failed: settling never
+        # rewrites a terminal row, so the run would read "failed" forever.
+        runs.update(run["run_id"], status="cancelled", message="Cancelled")
+        raise
     except Exception as exc:
         runs.update(run["run_id"], status="failed", message=str(exc)[:500])
         raise

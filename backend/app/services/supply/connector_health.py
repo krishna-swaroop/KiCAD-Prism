@@ -24,7 +24,8 @@ def connector_health(conn, now: datetime | None = None) -> list[dict[str, Any]]:
     rows = [dict(row) for row in conn.execute(
         """
         SELECT c.id, c.display_name, c.provider, c.enabled, c.paused_reason, a.daily_budget, c.last_ok_at,
-               c.last_error_code, c.last_error_at, c.account_id, a.reset_time, a.reset_tz
+               c.last_error_code, c.last_error_at, c.catalogue_failed_at, c.catalogue_error,
+               c.account_id, a.reset_time, a.reset_tz
         FROM supply_connectors c JOIN supply_accounts a ON a.id = c.account_id
         ORDER BY lower(c.display_name), c.id
         """
@@ -76,6 +77,8 @@ def connector_health(conn, now: datetime | None = None) -> list[dict[str, Any]]:
             "last_ok_at": _iso(row["last_ok_at"]),
             "last_error_code": row["last_error_code"],
             "last_error_at": _iso(row["last_error_at"]),
+            "catalogue_failed_at": _iso(row["catalogue_failed_at"]),
+            "catalogue_error": row["catalogue_error"],
             "listings": int(stats["listings"]) if stats else 0,
             "late": int(stats["late"]) if stats else 0,
             "failing": int(stats["failing"]) if stats else 0,

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Loader2 } from "lucide-react";
 
 import { LogTerminal } from "@/panel/components/LogTerminal";
 import {
@@ -29,6 +30,7 @@ type DetailReturnTarget =
   | { kind: "category"; name: string };
 
 type Screen =
+  | { kind: "checking" }
   | { kind: "login" }
   | { kind: "finder" }
   | { kind: "category"; name: string }
@@ -56,7 +58,7 @@ export function PanelApp() {
   const [componentToOpen] = useState(componentInAddress);
   // Taken by the first successful sign-in check only: a later one (KiCad handing over a token) leaves the screen alone.
   const componentOpened = useRef(false);
-  const [screen, setScreen] = useState<Screen>({ kind: "login" });
+  const [screen, setScreen] = useState<Screen>({ kind: "checking" });
   const [finderView, setFinderView] = useState(emptyFinderView);
   const [categoryView, setCategoryView] = useState<CategoryBrowseState>(
     () => emptyCategoryBrowse(""),
@@ -84,7 +86,7 @@ export function PanelApp() {
       forgetComponentInAddress();
       setScreen((current) => {
         if (opened) return { kind: "detail", componentId: opened, prefetched: null, returnTo: { kind: "finder" } };
-        return current.kind === "login" ? { kind: "finder" } : current;
+        return current.kind === "login" || current.kind === "checking" ? { kind: "finder" } : current;
       });
     } catch (err) {
       if (signal?.aborted) return;
@@ -238,6 +240,16 @@ export function PanelApp() {
     <div className="mx-auto flex min-h-screen w-full max-w-[460px] flex-col">
       {/* Main content area */}
       <main className="flex flex-1 flex-col px-3 py-3">
+        {screen.kind === "checking" && (
+          <div
+            role="status"
+            aria-label="Checking session"
+            className="flex min-h-[calc(100vh-3rem)] items-center justify-center"
+          >
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        )}
+
         {screen.kind === "login" && (
           <PanelLoginScreen
             onLogin={handleLogin}

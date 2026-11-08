@@ -945,7 +945,7 @@ export function DesignComparisonWorkspace({
                                             }
                                                     discussion={(
                                                         <>
-                                                        {(commentConnection.error || !commentConnection.hasLoaded || commentConnection.status !== "live") && (
+                                                        {(commentConnection.error || !commentConnection.hasLoaded || commentConnection.status === "reconnecting") && (
                                                             <div className="border-b px-3 py-2 text-xs text-muted-foreground" aria-live="polite">
                                                                 {commentConnection.error
                                                                     ? `${commentConnection.error}${commentConnection.hasLoaded ? " Showing the last loaded comments." : ""}`

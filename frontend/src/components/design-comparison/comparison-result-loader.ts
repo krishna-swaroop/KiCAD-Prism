@@ -143,17 +143,28 @@ async function hydrateLegacyManifest(
     return readLegacyResult(legacy, { sidecarUrls: sidecarUrls(manifest.sidecars) });
 }
 
+export type HydrateOptions = {
+    signal?: AbortSignal;
+    /**
+     * Whether the job has completed. A manifest's sidecars are registered in
+     * the transaction that completes the job, so before then they do not exist
+     * and must not be requested. The running job's result is the inline
+     * partial document, which hydrates without sidecars.
+     */
+    completed?: boolean;
+};
+
 export async function hydrateDesignComparePayload(
     payload: DesignComparePayload,
-    signal?: AbortSignal,
-): Promise<DesignCompareResult> {
+    { signal, completed = true }: HydrateOptions = {},
+): Promise<DesignCompareResult | null> {
     switch (payload.schema) {
         case DESIGN_COMPARE_RESULT_SCHEMA:
             return payload as DesignCompareResult;
         case "prism.design_compare_bundle_v2":
-            return hydrateManifest(payload as DesignCompareBundleV2, signal);
+            return completed ? hydrateManifest(payload as DesignCompareBundleV2, signal) : null;
         case "prism.design_compare_bundle_v1":
-            return hydrateLegacyManifest(payload as DesignCompareBundle, signal);
+            return completed ? hydrateLegacyManifest(payload as DesignCompareBundle, signal) : null;
         default:
             if (isLegacyResult(payload)) return readLegacyResult(payload as LegacyResult);
             throw new Error(`Unknown comparison result schema: ${String(payload.schema)}`);

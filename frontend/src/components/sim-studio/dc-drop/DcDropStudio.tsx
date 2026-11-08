@@ -49,6 +49,8 @@ export type StudioProps = {
     active: boolean;
     setupId: string | null;
     tab: StudioTab;
+    /** The branch head, so a setup that follows HEAD reads (and caches) its resolved revision. */
+    headCommit?: string;
     onSetupChange: (setupId: string | null) => void;
     onTabChange: (tab: StudioTab) => void;
     onBack: () => void;
@@ -69,7 +71,7 @@ type Checked = { report: SetupReport; revision: number };
  * setup's current revision.
  */
 // react-doctor-disable-next-line no-giant-component - the studio's orchestrator: tree, checks and runs share one setup record and its save queue
-export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSetupChange, onTabChange, onBack, controls }: StudioProps) {
+export function DcDropStudio({ projectId, canMutate, active, setupId, tab, headCommit, onSetupChange, onTabChange, onBack, controls }: StudioProps) {
     // Tagged with the project it was listed for, so a list from the project the
     // reviewer just left is never shown or auto-opened here.
     const [listing, setListing] = useState<{ projectId: string; items: SetupRecordSummary[] } | null>(null);
@@ -92,6 +94,11 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSet
     const [resultsViewer, setResultsViewer] = useState<PrismSemanticViewerElement | null>(null);
 
     const commit = tree?.record.source.commit;
+    // A setup with no pinned commit follows the branch head. Key the canvas
+    // reads by that resolved head so a moved head refetches the board index.
+    // Before the branch list loads it is unknown and the reads go to HEAD; a
+    // missing branch list must never leave the canvas without a board.
+    const boardCommit = commit ?? headCommit;
     const setTreeState = (value: TreeRecord | null) => {
         treeRef.current = value;
         setTree(value);
@@ -149,18 +156,18 @@ export function DcDropStudio({ projectId, canMutate, active, setupId, tab, onSet
     useEffect(() => {
         if (!tree) return;
         let cancelled = false;
-        boardIndex(projectId, commit)
+        boardIndex(projectId, boardCommit)
             .then((value) => { if (!cancelled) setBoard(value); })
             .catch((error) => toast.error(message(error)));
         // Suggestions only: the canvas works without them.
-        candidatesFor(projectId, commit)
+        candidatesFor(projectId, boardCommit)
             .then((value) => { if (!cancelled) setCandidates(value); })
             .catch(() => undefined);
-        semanticIndexFor(projectId, commit)
+        semanticIndexFor(projectId, boardCommit)
             .then((value) => { if (!cancelled) setSemanticIndex(value); })
             .catch(() => undefined);
         return () => { cancelled = true; };
-    }, [projectId, commit, tree === null]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [projectId, boardCommit, tree === null]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const running = runs.some((run) => run.status === "queued" || run.status === "running");
     useEffect(() => {

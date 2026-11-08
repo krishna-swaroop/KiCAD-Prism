@@ -91,6 +91,30 @@ fn an_unknown_vendor_is_vendor_unknown() {
 }
 
 #[test]
+fn an_unknown_variant_is_variant_unknown() {
+    let run = support::run(&[
+        "vendor",
+        "run",
+        "jlcpcb",
+        "--in",
+        support::s(&bundle()),
+        "--config",
+        support::s(&config()),
+        "-o",
+        support::s(&support::scratch("vendor-variant-unknown")),
+        "--variant",
+        "not-a-variant",
+    ]);
+    assert_eq!(run.code, 2);
+    assert_eq!(run.code_field(), "variant-unknown");
+    let message = run.document["message"].as_str().unwrap_or_default();
+    assert!(message.contains("not-a-variant"), "{message}");
+    assert!(message.contains("default"), "{message}");
+    assert!(message.contains("dnp-led"), "{message}");
+    assert!(message.contains("assembly-reduced"), "{message}");
+}
+
+#[test]
 fn vendor_list_names_the_registered_vendors() {
     let run = support::run(&["vendor", "list"]);
     assert_eq!(run.code, 0);

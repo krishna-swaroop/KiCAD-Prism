@@ -21,6 +21,7 @@ from app.sim_studio.run_store import RunStore
 from app.sim_studio.service import SimStudioService
 from app.sim_studio.store import SetupStore
 from app.services.design_bundle.manifest import Readiness
+from app.services.job_runtime import JobCancelled
 from support.postgres import requires_scratch_postgres, scratch_schema, seed_project, seed_repository
 from test_sim_studio_api import PROJECT, SETUPS, _app, _visible
 from test_sim_studio_setup import facts, single_net_setup
@@ -180,6 +181,16 @@ class RunPipelineTest(unittest.TestCase):
             self.assertTrue(runs_module.settle_run({"job_id": "job-1", "status": "cancelled"}))
             self.assertFalse(runs_module.settle_run({"job_id": "job-1", "status": "running"}))
         self.assertEqual(self.runs.read(other["run_id"])["status"], "cancelled")
+
+    def test_a_cancelled_run_is_recorded_cancelled_not_failed(self) -> None:
+        row = self._setup(single_net_setup())
+        run = self.service.submit(PROJECT, row["setup_id"], 1, "dc", "d@example.com")
+        with mock.patch.object(runs_module, "_run_engine", side_effect=JobCancelled("Cancellation requested")), \
+                self.assertRaises(JobCancelled):
+            runs_module.run_sim_job(FakeContext({"run_id": run["run_id"]}), runs=self.runs)
+        stored = self.runs.read(run["run_id"])
+        self.assertEqual((stored["status"], stored["message"]), ("cancelled", "Cancelled"))
+        self.assertNotIn("job-1", self.runs.unsettled_job_ids())
 
     def test_the_run_exists_before_its_job_can_be_claimed(self) -> None:
         row = self._setup(single_net_setup())

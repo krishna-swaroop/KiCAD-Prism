@@ -1548,7 +1548,7 @@ export function Visualizer({ projectId, user, commit, active: viewerActive = tru
                     >
                         {rightRailTab === "comments" ? (
                             <div className="flex h-full min-h-0 flex-col">
-                            {(commentsError || !commentsLoaded || commentConnectionStatus !== "live") && (
+                            {(commentsError || !commentsLoaded || commentConnectionStatus === "reconnecting") && (
                                 <div className="border-b px-3 py-2 text-xs text-muted-foreground" aria-live="polite">
                                     {commentsError
                                         ? `${commentsError}${commentsLoaded ? " Showing the last loaded comments." : ""}`

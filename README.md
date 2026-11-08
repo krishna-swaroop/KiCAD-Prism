@@ -132,6 +132,7 @@ design. All rights stay with the authors under the projects' own terms.
 | USB-PD-Trigger-Board | Krishna Swaroop (Prism maintainer) | [krishna-swaroop/USB-PD-Trigger-Board](https://github.com/krishna-swaroop/USB-PD-Trigger-Board) | MIT |
 | ThunderScope | EEVengers | [EEVengers/ThunderScope](https://github.com/EEVengers/ThunderScope) | MIT |
 | Jetson AGX Thor baseboard | Antmicro | [antmicro/jetson-agx-thor-baseboard](https://github.com/antmicro/jetson-agx-thor-baseboard) | Apache-2.0 |
+| SatNOGS COMMS | Libre Space Foundation | [librespacefoundation/satnogs-comms/satnogs-comms-hardware](https://gitlab.com/librespacefoundation/satnogs-comms/satnogs-comms-hardware) | CERN-OHL v1.2 |
 
 The component catalog in the Library Manager screenshot is CERN's public
 KiCad database library. If you are an author of one of these designs and would

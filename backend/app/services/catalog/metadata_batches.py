@@ -145,6 +145,18 @@ class CatalogMetadataBatches:
         ).fetchone()
 
     @staticmethod
+    def lock_batch_for_apply(conn: Any, batch_id: str) -> Any:
+        """Read the batch and hold its row for the rest of the transaction.
+
+        ``apply`` keeps the transaction open for the whole run, so a second
+        apply on the same batch waits and then sees the items the first one
+        committed instead of reading them as still valid.
+        """
+        return conn.execute(
+            "SELECT * FROM catalog_metadata_batches WHERE id = %s FOR NO KEY UPDATE", (batch_id,)
+        ).fetchone()
+
+    @staticmethod
     def fetch_valid_item_rows(conn: Any, batch_id: str) -> list[Any]:
         return conn.execute(
             "SELECT id FROM catalog_metadata_batch_items WHERE batch_id = %s AND validation_status = 'valid' ORDER BY id",
@@ -156,7 +168,8 @@ class CatalogMetadataBatches:
         conn: Any, item_id: str, error_message: str, updated_at: str
     ) -> None:
         conn.execute(
-            "UPDATE catalog_metadata_batch_items SET validation_status = 'conflict', error_message = %s, updated_at = %s WHERE id = %s",
+            "UPDATE catalog_metadata_batch_items SET validation_status = 'conflict', error_message = %s, updated_at = %s "
+            "WHERE id = %s AND validation_status <> 'applied'",
             (error_message, updated_at, item_id),
         )
 
