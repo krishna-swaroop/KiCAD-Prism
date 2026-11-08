@@ -24,7 +24,7 @@ from typing import Any, Iterable, Mapping
 
 from app.services.ops import stats as ops_stats
 from app.core.errors import Invalid
-from app.services import derived_assets, kicad_tools
+from app.services import derived_assets, kicad_libraries, kicad_tools
 from app.services.design_bundle import consumer
 from app.services.design_bundle.errors import DesignDataFailed, DesignDataPending
 from app.services.design_query import index as design_index
@@ -150,14 +150,31 @@ def normalize_request(request: Mapping[str, Any] | None) -> dict[str, Any]:
     }
 
 
-def render_id(project_id: str, commit: str, request: Mapping[str, Any]) -> str:
-    """The stable id of one project's resolved request."""
+def library_fingerprints(request: Mapping[str, Any]) -> dict[str, str]:
+    """What the bound KiCad path libraries are, for a request whose picture depends on them.
 
-    identity = {
+    A 3D render shows the board's models, which come from those libraries; a
+    2D plot draws no model. Empty (so the id is what it always was) when no
+    library is bound.
+    """
+
+    if request.get("view") != "3d":
+        return {}
+    return {name: binding.fingerprint for name, binding in kicad_libraries.current().bindings.items()}
+
+
+def render_id(
+    project_id: str, commit: str, request: Mapping[str, Any], libraries: Mapping[str, str] | None = None
+) -> str:
+    """The stable id of one project's resolved request (and, for a 3D view, of the libraries it was drawn with)."""
+
+    identity: dict[str, Any] = {
         "project": project_id,
         "commit": commit,
         "request": normalize_request(request),
     }
+    if libraries:
+        identity["libraries"] = sorted(libraries.items())
     encoded = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
@@ -223,7 +240,7 @@ def start_render(project: Any, request: Mapping[str, Any], *, requested_by: str 
     anchor = str(row.get("project_file_rel") or "") or None
     commit = design_revision.resolve(project, request.get("revision"))
     normalized = normalize_request(request)
-    identity = render_id(str(project.id), commit, normalized)
+    identity = render_id(str(project.id), commit, normalized, library_fingerprints(normalized))
     existing = derived_assets.find_render(getattr(project, "path", ""), identity, anchor=anchor)
     if existing is not None:
         status = str(existing.get("status") or "")

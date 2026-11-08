@@ -58,6 +58,8 @@ _CAPACITIES: Mapping[str, Callable[[], int]] = {
     "sim": lambda: settings.PRISM_SIM_CONCURRENCY,
     "catalog_worker": lambda: settings.CATALOG_WORKER_CONCURRENCY,
     "catalog_kicad": lambda: settings.CATALOG_KICAD_CONCURRENCY,
+    # One multi-GB library fetch at a time, so it never takes more than one worker's attention.
+    "kicad_library": lambda: 1,
     TRACKER_RESOURCE: lambda: min(2, max(1, settings.PRISM_WORKER_CONCURRENCY - 1)),
     SUPPLY_RESOURCE: lambda: min(2, max(1, settings.PRISM_WORKER_CONCURRENCY - 1)),
     MEMORY_RESOURCE: lambda: max(

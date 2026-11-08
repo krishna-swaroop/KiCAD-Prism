@@ -26,6 +26,7 @@ import { dnpVisibilityNotice } from "./design-variants/dnp-visibility";
 import { Semantic3dControls } from "./semantic-3d-controls";
 import type { User } from "@/types/auth";
 import type { PrismSelection } from "@/types/prism-selection";
+import { LibraryVariablesNote, type VariableCount } from "@/features/kicad-libraries/library-variables-note";
 import type { HighlightedNet } from "@/lib/net-highlights";
 import type { PrismInsetScene3D } from "@/lib/inset-scene-3d";
 import type {
@@ -57,6 +58,12 @@ interface WebGpu3dStatus {
     readiness?: WebGpu3dReadiness;
     /** The design bundle's build while one is queued or running (bundle mode). */
     job_id?: string | null;
+    /** The parts are being exported again because a KiCad library the board uses changed. */
+    refreshing?: boolean;
+    /** KiCad path variables the board's models use that this server does not define. */
+    unresolvedVariables?: VariableCount[];
+    /** Models a defined variable points to that are not in its library. */
+    missingModels?: VariableCount[];
 }
 
 /** How often the tab asks again while the revision's 3D data is still being built. */
@@ -222,7 +229,7 @@ export function WebGpu3dTab({
     // V2a: while the design bundle builds (no board yet) or its parts are
     // still exporting, ask again; each new stage changes the readiness
     // revision, which remounts the viewer with what is now stored.
-    const statusPending = status?.status === "building" || status?.readiness?.stage === "board-ready";
+    const statusPending = status?.status === "building" || status?.readiness?.stage === "board-ready" || Boolean(status?.refreshing);
     useEffect(() => {
         if (!statusPending || jobId) return;
         const timer = window.setInterval(() => void refreshStatus(true), STATUS_POLL_MS);
@@ -625,6 +632,12 @@ export function WebGpu3dTab({
                         {stageLabel}
                     </Badge>
                 )}
+                {readinessStage === "semantic-ready" && status?.refreshing && (
+                    <Badge variant="secondary" className="pointer-events-auto gap-1 shadow-sm">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Updating models: a KiCad library changed
+                    </Badge>
+                )}
                 {!isStackup && onShowDnpChange && (
                     <Button
                         className="pointer-events-auto shadow-sm"
@@ -675,6 +688,15 @@ export function WebGpu3dTab({
                     </Button>
                 )}
             </div>
+            {!isStackup && status && (
+                <LibraryVariablesNote
+                    unresolved={status.unresolvedVariables ?? []}
+                    missing={status.missingModels ?? []}
+                    canConfigure={user?.role === "admin"}
+                    search={window.location.search}
+                    leftInset={leftInset}
+                />
+            )}
             {(jobId || status?.status === "building") && (
                 <div className="pointer-events-none absolute bottom-3 left-3 right-3 mx-auto max-w-xl border bg-background/95 p-3 shadow-sm backdrop-blur-sm">
                     <div className="mb-2 flex items-center justify-between gap-3 text-xs">

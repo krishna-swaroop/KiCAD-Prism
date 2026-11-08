@@ -35,6 +35,7 @@ from app.services.catalog.revision_finalization import CatalogRevisionFinalizer
 from app.services.catalog.revision_kernel import CatalogRevisionKernel
 from app.services.catalog.preview_pipeline import run_kicad_for_catalog
 from app.services.catalog.runtime import CatalogRuntime
+from app.services.kicad_libraries import NO_LIBRARIES
 from app.services.kicad_tools import KicadTool, kicad_cli
 
 
@@ -65,7 +66,7 @@ class CatalogAssetImports:
         asset_registry: CatalogAssetRegistry | None = None,
         kicad: KicadTool | None = None,
     ) -> None:
-        self._kicad = kicad or kicad_cli()
+        self._kicad = kicad or kicad_cli(libraries=NO_LIBRARIES)
         self._revision_kernel = revision_kernel
         self._asset_links = asset_links
         self._finalizer = finalizer

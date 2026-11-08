@@ -34,6 +34,7 @@ from app.services.catalog.asset_files import CatalogAssetFiles
 from app.services.catalog.draft_checks import check_draft
 from app.services.catalog.staged_uploads import UPLOAD_MAX_BYTES, StagedUploads
 from app.services.component_catalog_service import catalog_service
+from app.services.kicad_libraries import NO_LIBRARIES
 from app.services.kicad_tools import kicad_cli
 
 router = APIRouter(prefix="/api/catalog", tags=["catalog"])
@@ -194,7 +195,7 @@ async def check_catalog_draft(
     with value_errors_as(400):
         return await asyncio.to_thread(
             check_draft,
-            kicad_cli(),
+            kicad_cli(libraries=NO_LIBRARIES),
             asset_type=payload.asset_type,
             file_name=file_name,
             payload=data,

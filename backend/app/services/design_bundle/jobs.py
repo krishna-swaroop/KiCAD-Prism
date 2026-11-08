@@ -43,7 +43,7 @@ from typing import Any, Callable, Mapping
 
 from app.services.ops import stats as ops_stats
 from app.core.config import settings
-from app.services import event_log, kicad_tools, project_revision
+from app.services import event_log, kicad_libraries, kicad_library_store, kicad_tools, project_revision
 from app.services.design_bundle import (
     cli,
     design_keys,
@@ -161,6 +161,7 @@ def start_design_bundle_job(
     head: bool = False,
     force: bool = False,
     retry_failed: bool = False,
+    refresh_models: bool = False,
 ) -> str | None:
     """Queue the bundle of ``project_id`` at ``commit`` (default ``HEAD``) on demand.
 
@@ -168,7 +169,10 @@ def start_design_bundle_job(
     its bundle is already complete or served through an alias, or its last
     build failed and no retry is due (``retry_failed`` is a deliberate retry).
     A complete row or alias whose archive is gone is rebuilt. ``force``
-    queues a build that skips reuse (a regenerate). Raises
+    queues a build that skips reuse (a regenerate). ``refresh_models`` queues
+    the models stage alone over a stored bundle, because a KiCad library its
+    board uses changed; it leaves the rest of the archive and keeps serving
+    it, and a recent failure still holds it back. Raises
     ``cli.CliUnavailable`` when ``prism-kicad`` is not installed.
     """
 
@@ -183,13 +187,14 @@ def start_design_bundle_job(
     revision_key = key.key.revision_key  # type: ignore[union-attr]
     bundle_key = generator.bundle_key(revision_key)
     if not force:
-        if bundle_ready(project_id, bundle_key):
-            return None
-        alias = rows.get_alias(project_id, revision_key, generator.digest)
-        if alias is not None:
-            if _alias_serves(project_id, alias):
+        if not refresh_models:
+            if bundle_ready(project_id, bundle_key):
                 return None
-            rows.delete_aliases(project_id, revision_keys=[revision_key])
+            alias = rows.get_alias(project_id, revision_key, generator.digest)
+            if alias is not None:
+                if _alias_serves(project_id, alias):
+                    return None
+                rows.delete_aliases(project_id, revision_keys=[revision_key])
         if not retry_failed and _failure_holds(rows.get_bundle(project_id, bundle_key)):
             return None
     queued = DESIGN_BUNDLE.enqueue(
@@ -201,6 +206,7 @@ def start_design_bundle_job(
             "project_file_rel": str(row.get("project_file_rel") or ""),
             "head": bool(head or commit is None),
             "force": bool(force),
+            "refresh_models": bool(refresh_models),
         },
         subject=JobSubject.of_project(row, project_id),
         artifact_key=artifact_key(project_id, bundle_key),
@@ -504,23 +510,49 @@ class _Run:
     def models(self, archive: Archive) -> Archive:
         sources = self._sources(archive, ["sources/"])
         self.context.progress(stage="bundle-glb", message="Exporting component models", percent=85, force=True)
-        try:
-            with kicad_tools.recording() as runs:
-                try:
-                    glb, hit = stage_models.export_components_glb(
-                        sources, self.key.record(), self.generator, self.work, cancel=self.cancel
-                    )
-                finally:
-                    self._kicad_step("glb", runs)
-        except kicad_steps.KicadStepFailed as error:
-            raise RetryableJobError(str(error), code="glb-export-failed", retry_after_seconds=30) from error
-        self.details["models_cache_hit"] = hit
-        ops_stats.incr("bundle.models_cache.hit" if hit else "bundle.models_cache.miss")
-        args = ["bundle", "build", "--stage", "models", "--in", str(self.archive_path), "-o", str(self.archive_path),
-                "--models-glb", str(glb), "--models-tool", self._tool_version(), "--revision-key", self.revision_key,
-                *stage_models.hlr_args(), *cli.limits("models")]
-        self.cli(args, "models")
+        # One answer to "which library is behind each path variable" for the whole stage: the key,
+        # the export, prism-kicad's --model-dir and the record all read it, so a library that
+        # publishes meanwhile is seen as a change by the next read and never half-applied here.
+        with kicad_libraries.pinned(kicad_libraries.current()) as libraries:
+            found = stage_models.referenced_variables(archive)
+            fingerprints = libraries.fingerprints(found.variables)
+            try:
+                with kicad_tools.recording() as runs:
+                    try:
+                        glb, hit = stage_models.export_components_glb(
+                            sources, self.key.record(), self.generator, self.work, cancel=self.cancel,
+                            libraries=fingerprints,
+                        )
+                    finally:
+                        self._kicad_step("glb", runs)
+            except kicad_steps.KicadStepFailed as error:
+                raise RetryableJobError(str(error), code="glb-export-failed", retry_after_seconds=30) from error
+            self.details["models_cache_hit"] = hit
+            ops_stats.incr("bundle.models_cache.hit" if hit else "bundle.models_cache.miss")
+            args = ["bundle", "build", "--stage", "models", "--in", str(self.archive_path), "-o", str(self.archive_path),
+                    "--models-glb", str(glb), "--models-tool", self._tool_version(), "--revision-key", self.revision_key,
+                    *stage_models.hlr_args(), *cli.limits("models")]
+            self.cli(args, "models")
+            store.write_models_record(self.project_id, self.revision_key, self.generator.digest, {
+                "variables": fingerprints,
+                "sheets": libraries.fingerprints(found.sheets),
+                "models": dict(found.models),
+                "sheetRefs": dict(found.sheets),
+                "missing": stage_models.missing_models(archive, libraries),
+            })
+        self._record_variable_usage(found)
         return self._reopen("models")
+
+    def _record_variable_usage(self, found: Any) -> None:
+        """What this project's boards need from KiCad path variables, for the libraries console.
+
+        A hint for administrators, never an input to a rebuild: failing to write it changes nothing.
+        """
+
+        try:
+            kicad_library_store.replace_usage(self.project_id, self.revision_key, dict(found.models), dict(found.sheets))
+        except Exception:  # noqa: BLE001 - a console hint must not fail a build
+            logger.warning("Could not record the path variables project %s uses", self.project_id, exc_info=True)
 
     def _tool_version(self) -> str:
         try:
@@ -586,6 +618,8 @@ def run_design_bundle_job(context: JobContext) -> JobResult:
         if archive is None:  # the CLI found the project absent: the key and the tree disagree
             raise PermanentJobError("prism-kicad reported the project absent although the key selected it", code="project-absent")
     _remove_superseded(run)
+    if payload.get("refresh_models") and manifest_rules.models_built(archive.manifest):
+        archive = run.models(archive)  # a library changed: the models stage again, nothing else
     while (stage := manifest_rules.next_stage(archive.manifest)) is not None:
         archive = run.board(archive) if stage == "board" else run.models(archive)
     run.publish(archive, "models")
