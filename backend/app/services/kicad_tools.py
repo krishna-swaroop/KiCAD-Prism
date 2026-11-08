@@ -265,7 +265,11 @@ class LocalTool:
         return LocalTool(self.name, self._locate, isolate=self._isolate, cancel=cancel)
 
     def version(self) -> str:
-        """``--version`` output; ``unavailable`` (not cached) when not installed."""
+        """``--version`` output; ``unavailable``/``unknown`` when it cannot be read.
+
+        Only a resolved release is cached: a transient probe failure must not
+        pin ``unknown`` for the life of the process.
+        """
 
         path = self._locate()
         if not path:
@@ -285,8 +289,9 @@ class LocalTool:
             version = "unknown"
         finally:
             _recorded.reset(token)
-        with _versions_lock:
-            _versions[path] = version
+        if version != "unknown":
+            with _versions_lock:
+                _versions[path] = version
         return version
 
     def run(

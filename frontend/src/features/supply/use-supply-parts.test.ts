@@ -83,4 +83,50 @@ describe("the parts feed", () => {
     await waitFor(() => expect(result.current.items[99].mpn).toBe("B99"));
     expect(result.current.hasMore).toBe(true);
   });
+
+  it("clears loadingMore when a refresh cancels a pending next page", async () => {
+    mocked.listSupplyParts.mockReset();
+    const pendingPage = deferred<SupplyPartsPage>();
+    const refreshed = deferred<SupplyPartsPage>();
+    const reread = deferred<SupplyPartsPage>();
+    mocked.listSupplyParts
+      .mockResolvedValueOnce(answer(rows("A", 0, 50), 0, 50))
+      .mockResolvedValueOnce(answer(rows("A", 50, 50), 50, 100))
+      .mockReturnValueOnce(pendingPage.promise)
+      .mockReturnValueOnce(refreshed.promise)
+      .mockReturnValueOnce(reread.promise)
+      .mockResolvedValueOnce(answer(rows("C", 100, 50), 100, null));
+    const { result } = renderHook(() => useSupplyPartsFeed("watched", ""));
+    await waitFor(() => expect(result.current.items).toHaveLength(50));
+    await act(async () => { await result.current.loadMore(); });
+    expect(result.current.items).toHaveLength(100);
+
+    // The next page is still being read when a write reads the first page again.
+    let pending!: Promise<void>;
+    act(() => { pending = result.current.loadMore(); });
+    await waitFor(() => expect(result.current.loadingMore).toBe(true));
+
+    let refreshing!: Promise<void>;
+    act(() => { refreshing = result.current.refresh(); });
+    await act(async () => {
+      refreshed.resolve(answer(rows("B", 0, 50), 0, 50));
+      await refreshing;
+    });
+    await act(async () => {
+      reread.resolve(answer(rows("B", 50, 50), 50, 100));
+    });
+    // The pending read was aborted by the re-read; settling it must not leave `loadingMore` set.
+    await act(async () => {
+      pendingPage.resolve(answer(rows("A", 100, 50), 100, 150));
+      await pending;
+    });
+
+    expect(result.current.loadingMore).toBe(false);
+    expect(result.current.items).toHaveLength(100);
+
+    // Paging resumes from the pages the re-read kept.
+    await act(async () => { await result.current.loadMore(); });
+    expect(result.current.items).toHaveLength(150);
+    expect(result.current.items[149].mpn).toBe("C149");
+  });
 });

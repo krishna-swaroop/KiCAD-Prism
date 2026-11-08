@@ -1765,6 +1765,11 @@
             "title": "Auth Enabled",
             "type": "boolean"
           },
+          "comment_live_enabled": {
+            "default": true,
+            "title": "Comment Live Enabled",
+            "type": "boolean"
+          },
           "dev_mode": {
             "title": "Dev Mode",
             "type": "boolean"
@@ -9044,6 +9049,21 @@
             "title": "Calls Today",
             "type": "integer"
           },
+          "catalogue_error": {
+            "title": "Catalogue Error",
+            "type": "string"
+          },
+          "catalogue_failed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalogue Failed At"
+          },
           "connector_id": {
             "title": "Connector Id",
             "type": "string"
@@ -9141,6 +9161,8 @@
           "last_ok_at",
           "last_error_code",
           "last_error_at",
+          "catalogue_failed_at",
+          "catalogue_error",
           "listings",
           "late",
           "failing",
@@ -26503,7 +26525,7 @@
       },
       "ProjectSupply": {
         "additionalProperties": true,
-        "description": "How a project stands in supply, from its stored BOM. Without a BOM read, only ``available``, the variants, releases and notes.",
+        "description": "How a project stands in supply, from its stored BOM. Without parts, only ``available``, ``has_usage``, the variants, releases and notes.",
         "properties": {
           "attrition_percent": {
             "anyOf": [
@@ -26589,6 +26611,11 @@
             ],
             "description": "Without a BOM read: whether the project has a schematic to read it from.",
             "title": "Has Schematic"
+          },
+          "has_usage": {
+            "description": "Whether the project's BOM has been read, even when it has no fitted parts.",
+            "title": "Has Usage",
+            "type": "boolean"
           },
           "money": {
             "anyOf": [
@@ -26676,6 +26703,7 @@
         },
         "required": [
           "available",
+          "has_usage",
           "variant",
           "variants",
           "releases",
@@ -34022,6 +34050,23 @@
             "title": "Catalogue Available",
             "type": "boolean"
           },
+          "catalogue_error": {
+            "description": "Why the published catalogue last could not be read.",
+            "title": "Catalogue Error",
+            "type": "string"
+          },
+          "catalogue_failed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the published catalogue last could not be read; the import waits a full interval from it.",
+            "title": "Catalogue Failed At"
+          },
           "cooldown_until": {
             "anyOf": [
               {
@@ -34301,6 +34346,8 @@
           "last_ok_at",
           "last_error_code",
           "last_error_at",
+          "catalogue_failed_at",
+          "catalogue_error",
           "cooldown_until",
           "block_streak",
           "slow_until",

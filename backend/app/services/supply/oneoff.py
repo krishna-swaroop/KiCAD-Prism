@@ -22,15 +22,20 @@ from typing import Any, Sequence
 
 from app.services.supply import clock, component_parts, parts
 from app.services.supply.audit import actor_text, write_audit
-from app.services.supply.progress import job_progress
-from app.services.supply.identity import alias_key, match_key
-from app.services.supply.providers import registry
 from app.services.supply.errors import Refused
+from app.services.supply.identity import alias_key, match_key
+from app.services.supply.poller import RESTING_STOPS
+from app.services.supply.progress import job_progress
+from app.services.supply.providers import registry
 
 MAX_PARTS = 2000
 MAX_ATTEMPTS = 5
 PER_RUN = 20
 KEEP_DAYS = 7
+# The connectors the scanner queues work for (``jobs.connectors_with_work``): a disabled or paused one runs nothing.
+RUNNABLE_CONNECTOR = (
+    "EXISTS (SELECT 1 FROM supply_connectors c WHERE c.id = w.connector_id AND c.enabled AND c.paused_reason = '')"
+)
 
 
 class RequestError(Refused):
@@ -124,11 +129,11 @@ def progress(conn, request_id: str) -> dict[str, Any]:
 
 
 def pending_connectors(conn) -> list[str]:
-    """Connectors with a part still to read for an open request."""
+    """Connectors with a part still to read for an open request, that can still run it."""
 
     return [r["connector_id"] for r in conn.execute(
         "SELECT DISTINCT w.connector_id FROM supply_read_request_work w JOIN supply_read_requests q ON q.id = w.request_id "
-        "WHERE w.state = 'pending' AND q.finished_at IS NULL").fetchall()]
+        f"WHERE w.state = 'pending' AND q.finished_at IS NULL AND {RUNNABLE_CONNECTOR}").fetchall()]
 
 
 def _finish(conn) -> None:
@@ -137,6 +142,19 @@ def _finish(conn) -> None:
         "AND NOT EXISTS (SELECT 1 FROM supply_read_request_work w WHERE w.request_id = q.id AND w.state = 'pending')",
         (clock.now(),),
     )
+
+
+def settle_unrunnable(conn) -> int:
+    """Fail the pending work of an open request at a connector that can no longer run it, then finish every open request with
+    nothing pending. Returns how many work rows were failed."""
+
+    failed = conn.execute(
+        "UPDATE supply_read_request_work w SET state = 'failed' WHERE w.state = 'pending' "
+        "AND EXISTS (SELECT 1 FROM supply_read_requests q WHERE q.id = w.request_id AND q.finished_at IS NULL) "
+        f"AND NOT {RUNNABLE_CONNECTOR}"
+    ).rowcount
+    _finish(conn)
+    return failed
 
 
 def run(discoverer, poller, store, connector_id: str, *, limit: int = PER_RUN) -> dict[str, int]:
@@ -148,8 +166,10 @@ def run(discoverer, poller, store, connector_id: str, *, limit: int = PER_RUN) -
             "WHERE w.connector_id = %s AND w.state = 'pending' AND q.finished_at IS NULL ORDER BY q.created_at, w.part_id LIMIT %s",
             (connector_id, limit),
         ).fetchall()
-    if not rows:
-        return {"parts": 0, "done": 0}
+        if not rows:
+            # Nothing at this connector, but the request may be finished elsewhere (a connector that went away).
+            _finish(conn)
+            return {"parts": 0, "done": 0}
     part_ids = list(dict.fromkeys(r["part_id"] for r in rows))
     # On the poller's clock, the one offers are dated by: the request's own time is the database's.
     searched_from = poller.now()
@@ -157,8 +177,7 @@ def run(discoverer, poller, store, connector_id: str, *, limit: int = PER_RUN) -
     # What the search just read (a provider whose search answer carries the offer) is not read again.
     summary = poller.poll_connector(connector_id, only_part=part_ids, oneoff=True, fresh_since=searched_from)
     # Waiting for budget or a rest is not a failed try: the work stays for the next run.
-    waiting = {"budget", "cooling_down", "inactive"}
-    resting = search_stop in waiting or summary.stopped in waiting
+    resting = search_stop in RESTING_STOPS or summary.stopped in RESTING_STOPS
     done = 0
     with store.connection() as conn:
         for part_id in part_ids:

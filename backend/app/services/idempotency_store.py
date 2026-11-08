@@ -3,8 +3,10 @@
 One row per ``(caller, operation, key)``. A request first claims a ``pending``
 row; the winner runs the write and records the response, while a loser either
 rejects a different request (422), waits (409), or replays the stored response.
-Rows older than 24 hours count as absent and are swept, so a key becomes usable
-again after the retention window.
+A pending row is held for ``PENDING_LEASE_SECONDS``; one that outlives it lost
+its worker and counts as absent, so a retry claims the key again. Rows older
+than 24 hours count as absent and are swept, so a key becomes usable again after
+the retention window.
 """
 
 from __future__ import annotations
@@ -15,18 +17,28 @@ from psycopg.types.json import Jsonb
 
 from app.services.postgres_database import database
 
+STATE_PENDING = "pending"
+STATE_DONE = "done"
 RETENTION_SECONDS = 24 * 60 * 60
+# Counted from the claim, with no heartbeat or owner: a write running longer than this could be
+# retried while it runs, and its later complete/release would act on the retry's claim.
+PENDING_LEASE_SECONDS = 10 * 60
 
 
 def _delete_expired(connection: Any, caller: str, operation: str, key: str) -> None:
+    """Drop rows past retention, and pending claims whose worker never answered."""
+
     connection.execute("SET search_path TO workspace, public")
     connection.execute(
         """
         DELETE FROM ws_idempotency_keys
         WHERE caller = %s AND operation = %s AND key = %s
-          AND created_at < NOW() - make_interval(secs => %s)
+          AND (
+            created_at < NOW() - make_interval(secs => %s)
+            OR (state = %s AND created_at < NOW() - make_interval(secs => %s))
+          )
         """,
-        (caller, operation, key, RETENTION_SECONDS),
+        (caller, operation, key, RETENTION_SECONDS, STATE_PENDING, PENDING_LEASE_SECONDS),
     )
 
 
@@ -38,18 +50,18 @@ def claim(caller: str, operation: str, key: str, request_hash: str) -> bool:
         row = connection.execute(
             """
             INSERT INTO ws_idempotency_keys (caller, operation, key, request_hash, state)
-            VALUES (%s, %s, %s, %s, 'pending')
+            VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT (caller, operation, key) DO NOTHING
             RETURNING 1
             """,
-            (caller, operation, key, request_hash),
+            (caller, operation, key, request_hash, STATE_PENDING),
         ).fetchone()
         connection.commit()
         return row is not None
 
 
 def read(caller: str, operation: str, key: str) -> dict[str, Any] | None:
-    """The live row for a key, or ``None`` when it is absent or past retention."""
+    """The live row for a key, or ``None`` when it is absent or past its hold."""
 
     with database.connection() as connection:
         connection.execute("SET search_path TO workspace, public")
@@ -59,8 +71,16 @@ def read(caller: str, operation: str, key: str) -> dict[str, Any] | None:
             FROM ws_idempotency_keys
             WHERE caller = %s AND operation = %s AND key = %s
               AND created_at >= NOW() - make_interval(secs => %s)
+              AND (state <> %s OR created_at >= NOW() - make_interval(secs => %s))
             """,
-            (caller, operation, key, RETENTION_SECONDS),
+            (
+                caller,
+                operation,
+                key,
+                RETENTION_SECONDS,
+                STATE_PENDING,
+                PENDING_LEASE_SECONDS,
+            ),
         ).fetchone()
 
 
@@ -79,10 +99,19 @@ def complete(
         connection.execute(
             """
             UPDATE ws_idempotency_keys
-            SET state = 'done', status_code = %s, headers = %s, body = %s
-            WHERE caller = %s AND operation = %s AND key = %s AND state = 'pending'
+            SET state = %s, status_code = %s, headers = %s, body = %s
+            WHERE caller = %s AND operation = %s AND key = %s AND state = %s
             """,
-            (status_code, Jsonb(headers), body, caller, operation, key),
+            (
+                STATE_DONE,
+                status_code,
+                Jsonb(headers),
+                body,
+                caller,
+                operation,
+                key,
+                STATE_PENDING,
+            ),
         )
         connection.commit()
 

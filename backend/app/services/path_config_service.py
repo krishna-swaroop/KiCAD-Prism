@@ -206,6 +206,29 @@ def _get_prism_mtime(project_path: str) -> Optional[float]:
         return None
 
 
+def _design_source_mtimes(project_path: str) -> tuple[tuple[str, int], ...]:
+    """Names and mtimes of every entry in the project root, files and directories.
+
+    Detection reads root files (schematic, board, project, README, jobset) and
+    root subdirectories (sheets, docs, outputs, thumbnail). A sync that changes
+    any of them runs in the worker process; signing the root listing means
+    every process notices it without a process-local invalidation. A
+    directory's mtime changes when an entry is added to or removed from it.
+    """
+
+    try:
+        entries = list(Path(project_path).iterdir())
+    except OSError:
+        return ()
+    sources: list[tuple[str, int]] = []
+    for entry in entries:
+        try:
+            sources.append((entry.name, entry.stat().st_mtime_ns))
+        except OSError:
+            continue
+    return tuple(sorted(sources))
+
+
 def _flatten_prism_config(config: Dict[str, Any]) -> Dict[str, Any]:
     """Flatten one `.prism.json` object into a single mapping of settings."""
     result: Dict[str, Any] = {}
@@ -556,11 +579,16 @@ def get_path_config(
     cache_key = _cache_key(project_path, anchor)
     prism_mtime = _get_prism_mtime(project_path)
     stored = _stored_settings(project_path, anchor)
+    source_mtimes = _design_source_mtimes(project_path)
 
     # Check cache
     if use_cache and cache_key in _config_cache:
         cached_entry = _config_cache[cache_key]
-        if cached_entry.get("prism_mtime") == prism_mtime and cached_entry.get("stored") == stored:
+        if (
+            cached_entry.get("prism_mtime") == prism_mtime
+            and cached_entry.get("stored") == stored
+            and cached_entry.get("source_mtimes") == source_mtimes
+        ):
             return PathConfig(**cached_entry["config"])
 
     project_dir = Path(project_path)
@@ -585,6 +613,7 @@ def get_path_config(
             "config": merged.dict(),
             "prism_mtime": prism_mtime,
             "stored": stored,
+            "source_mtimes": source_mtimes,
         }
     return merged
 

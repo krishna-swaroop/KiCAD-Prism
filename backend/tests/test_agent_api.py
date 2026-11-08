@@ -187,6 +187,36 @@ class AgentApiTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+    def test_a_guest_is_refused_at_the_consent_page(self) -> None:
+        """Auth off serves every request as the implicit guest, so the flow is a no-op.
+
+        The earlier "sign-in unavailable" guard already refuses when auth is off;
+        keep it out of the way so the guest check itself is what answers.
+        """
+        from app.services import agent_auth_service
+
+        _verifier, challenge = _pkce()
+        form = {
+            "redirect_uri": self.REDIRECT,
+            "state": "state-xyz",
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+            "label": "guest-agent",
+            "scope": "api:read",
+        }
+        client = self.TestClient(self.main.app)
+        with (
+            patch.object(settings, "AUTH_ENABLED_OVERRIDE", False),
+            patch.object(agent_auth_service, "agent_auth_enabled", lambda: True),
+        ):
+            consent = client.get("/api/agent/authorize", params=form)
+            self.assertEqual(consent.status_code, 400)
+            self.assertEqual(consent.json()["detail"], "Sign-in is not required on this server")
+
+            submit = client.post("/api/agent/authorize", data=form, follow_redirects=False)
+            self.assertEqual(submit.status_code, 400)
+            self.assertEqual(submit.json()["detail"], "Sign-in is not required on this server")
+
     def test_revoking_an_unknown_token_is_404(self) -> None:
         client = self._client_for("api-owner5@example.com", "designer")
         self.assertEqual(client.delete("/api/agent/tokens/nope").status_code, 404)

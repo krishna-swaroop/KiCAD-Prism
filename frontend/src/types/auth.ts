@@ -17,6 +17,8 @@ export interface AuthConfig {
     password_auth_enabled?: boolean;
     workspace_name: string;
     sim_studio_enabled?: boolean;
+    /** Whether comment changes stream over a socket (PRISM_COMMENT_LIVE_ENABLED); absent means on. */
+    comment_live_enabled?: boolean;
     /** Whether Supply is on (PRISM_SUPPLY_ENABLED); absent from an older backend, which always had it. */
     supply_enabled?: boolean;
 }

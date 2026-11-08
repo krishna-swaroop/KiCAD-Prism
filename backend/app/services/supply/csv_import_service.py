@@ -13,6 +13,7 @@ from app.services.supply.csv_format import ParsedCsv, parse_offers_csv
 from app.services.supply.csv_offers import CsvImportInfo, CsvOfferStore
 from app.services.supply.http_client import SafeHttpClient
 from app.services.supply.providers import registry
+from app.services.supply.providers.base import ProviderError
 from app.services.supply.push import read_again
 from app.services.supply.store import SupplyStore, supply_store
 
@@ -79,7 +80,7 @@ def refresh_catalogues(conn, now: datetime, *, fetch_for=_fetcher) -> int:
 
     done = 0
     for row in conn.execute(
-        "SELECT c.id, c.provider, i.imported_at, CASE WHEN c.last_error_code = 'catalogue' THEN c.last_error_at END AS failed_at "
+        "SELECT c.id, c.provider, i.imported_at, c.catalogue_failed_at AS failed_at "
         "FROM supply_connectors c LEFT JOIN supply_csv_imports i ON i.connector_id = c.id "
         "WHERE c.catalogue AND c.enabled ORDER BY c.id"
     ).fetchall():
@@ -93,16 +94,26 @@ def refresh_catalogues(conn, now: datetime, *, fetch_for=_fetcher) -> int:
             wanted = {r["match_key"] for r in conn.execute("SELECT DISTINCT match_key FROM supply_parts WHERE match_key <> ''").fetchall()}
             conn.commit()  # no transaction stays open across the download
             created, rows = jlc_catalogue.read(fetch_for(base), wanted)
-        except Exception:  # noqa: BLE001 - the card shows it; the old offers stand
+        except Exception as exc:  # the card shows it; the old offers stand
             logging.getLogger(__name__).info("Catalogue not read for %s", row["id"], exc_info=True)
-            conn.execute("UPDATE supply_connectors SET last_error_code = 'catalogue', last_error_at = %s WHERE id = %s", (now, row["id"]))
+            # A provider's own words are written for a person; anything else could carry request detail.
+            message = str(exc) if isinstance(exc, ProviderError) else "The catalogue could not be read."
+            conn.execute(
+                "UPDATE supply_connectors SET catalogue_failed_at = %s, catalogue_error = %s WHERE id = %s",
+                (now, message[:500], row["id"]),
+            )
             conn.commit()
             continue
         CsvOfferStore().replace_all(conn, row["id"], rows, filename=f"jlcparts {created}"[:200], actor="system")
         # On the caller's clock, which ``due`` compares it with.
         conn.execute("UPDATE supply_csv_imports SET imported_at = %s WHERE connector_id = %s", (now, row["id"]))
         conn.execute("UPDATE supply_csv_offers SET fetched_at = %s WHERE connector_id = %s", (now, row["id"]))
-        conn.execute("UPDATE supply_connectors SET last_ok_at = %s, last_error_code = '' WHERE id = %s", (now, row["id"]))
+        # A catalogue import says nothing about a provider call's error, and a poll says nothing about this. The import
+        # time is kept in ``supply_csv_imports.imported_at``; ``last_ok_at`` stays a provider call's.
+        conn.execute(
+            "UPDATE supply_connectors SET catalogue_failed_at = NULL, catalogue_error = '' WHERE id = %s",
+            (row["id"],),
+        )
         conn.execute("DELETE FROM supply_discovery_runs WHERE connector_id = %s", (row["id"],))
         read_again(conn, row["id"], now)
         write_audit(conn, "system", "connector.catalogue_import", row["id"], {"rows": len(rows), "built": created})

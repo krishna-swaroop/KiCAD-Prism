@@ -541,6 +541,8 @@ class ConnectorService:
             "last_ok_at": _iso(row["last_ok_at"]),
             "last_error_code": row["last_error_code"],
             "last_error_at": _iso(row["last_error_at"]),
+            "catalogue_failed_at": _iso(row["catalogue_failed_at"]),
+            "catalogue_error": row["catalogue_error"],
             # Resting until this time after a refusal or a run of errors, and slowed until this time after a refusal.
             "cooldown_until": _iso(row["cooldown_until"]),
             "block_streak": int(row["block_streak"]),

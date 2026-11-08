@@ -41,6 +41,8 @@ export function connectorFixture(overrides: Partial<SupplyConnector> = {}): Supp
     last_ok_at: null,
     last_error_code: "",
     last_error_at: null,
+    catalogue_failed_at: null,
+    catalogue_error: "",
     created_by: "admin@example.com",
     created_at: "2026-03-01T10:00:00Z",
     updated_at: "2026-03-01T10:00:00Z",

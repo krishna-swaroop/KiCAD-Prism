@@ -208,6 +208,17 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(sum(item["count"] for item in result["statuses"]), 3)
         self.assertEqual(sum(result["runway"].values()), 3)
 
+    def test_a_broken_catalogue_shows_among_the_failing_feeds(self) -> None:
+        with self.store.connection() as conn:
+            conn.execute(
+                "UPDATE supply_connectors SET display_name = 'JLCPCB', catalogue = TRUE, "
+                "catalogue_failed_at = %s, catalogue_error = 'The catalogue could not be read.' WHERE id = 'c1'",
+                (NOW,),
+            )
+            conn.execute("UPDATE supply_connectors SET display_name = 'Other' WHERE id = 'c2'")
+            feeds = self.dashboard.failing_feeds(conn)
+        self.assertEqual([(feed["kind"], feed["name"]) for feed in feeds], [("connector", "JLCPCB")])
+
     def test_a_kept_status_follows_the_threshold_set_on_the_watch(self) -> None:
         part_id = self.follow("THR-1", [500] * 3)
         with self.store.connection() as conn:

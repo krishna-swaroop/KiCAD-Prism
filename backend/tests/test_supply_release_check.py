@@ -244,7 +244,7 @@ class ReleaseCheckTests(unittest.TestCase):
         project = SimpleNamespace(id="prj_9")
         with mock.patch("app.api.supply_release.get_project_for_role_or_404", return_value=project):
             unread = self.request("prj_9/supply").json
-            self.assertEqual((unread["available"], unread["has_schematic"]), (False, True))
+            self.assertEqual((unread["available"], unread["has_usage"], unread["has_schematic"]), (False, False, True))
             self.has_schematic.return_value = False
             self.assertFalse(self.request("prj_9/supply").json["has_schematic"], "a board on its own has no schematic to read")
             with self.store.connection() as conn:
@@ -264,6 +264,15 @@ class ReleaseCheckTests(unittest.TestCase):
             nothing = self.request("prj_9/supply", query="variant=Nope").json
         self.assertEqual((lite["available"], lite["variant"], lite["variants"], lite["rollup"]["lines"]), (True, "Lite", ["Lite"], 1))
         self.assertFalse(nothing["available"])
+
+    def test_a_read_bom_with_no_fitted_parts_still_says_it_was_read(self) -> None:
+        from app.services.supply import usage
+
+        with self.store.connection() as conn:
+            usage.store_project(conn, "prj_zero", "Zero", "rev1", [], NOW)
+        with mock.patch("app.api.supply_release.get_project_for_role_or_404", return_value=SimpleNamespace(id="prj_zero")):
+            body = self.request("prj_zero/supply").json
+        self.assertEqual((body["available"], body["has_usage"], body["has_schematic"]), (False, True, True))
 
     def test_the_project_page_lists_parts_releases_and_what_changed_since(self) -> None:
         from app.services.supply import usage
@@ -722,6 +731,29 @@ class ReleaseCheckTests(unittest.TestCase):
             broken.enqueue.side_effect = RuntimeError("down")
             self.assertFalse(release_snapshot.queue("prj_1", "bld_q", "vq", "d" * 40, "qa@example.com", job_service=broken))
             self.assertEqual(self.status_of("prj_1", "bld_q")["state"], "failed")
+
+    def test_a_snapshot_job_that_ended_without_success_reports_failed(self) -> None:
+        from app.services.supply import release_snapshot
+
+        with self.store.connection() as conn:
+            conn.execute(
+                "INSERT INTO supply_release_snapshot_jobs (build_id, project_id, state) VALUES ('bld_dead', 'prj_1', 'queued')"
+            )
+        with mock.patch.object(
+            release_snapshot,
+            "_ended_job",
+            return_value={"status": "failed", "error_message": "The worker running the snapshot died"},
+        ):
+            self.assertEqual(
+                self.status_of("prj_1", "bld_dead"),
+                {
+                    "state": "failed",
+                    "done": 0,
+                    "total": 1,
+                    "failed": 1,
+                    "reason": "The worker running the snapshot died",
+                },
+            )
 
     def status_of(self, project_id: str, build_id: str) -> dict:
         from app.services.supply import release_snapshot

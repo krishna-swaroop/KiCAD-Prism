@@ -8,11 +8,10 @@ import { followPart, getPartTracking, previewFollow, stopTrackingPart, type Tier
 import { ReadFailed } from "./read-failed";
 import { useLoaded } from "./use-loaded";
 
-const CHOICES: ReadonlyArray<{ value: string; label: string; choice: TierChoice | null }> = [
+const CHOICES: ReadonlyArray<{ value: string; label: string; choice: TierChoice }> = [
   { value: "1", label: "Tier 1: daily", choice: { tier: 1, rate: "weekly" } },
   { value: "2w", label: "Tier 2: weekly", choice: { tier: 2, rate: "weekly" } },
   { value: "2m", label: "Tier 2: monthly", choice: { tier: 2, rate: "monthly" } },
-  { value: "none", label: "Not tracked by choice", choice: null },
 ];
 
 const REASON_TEXT: Record<string, string> = {
@@ -44,9 +43,9 @@ export function TrackingControl({
   const choose = (value: string) => {
     const entry = CHOICES.find((item) => item.value === value);
     setError("");
-    if (!entry?.choice) { setPending(null); return; }
+    if (!entry) { setPending(null); return; }
     previewFollow(partId, entry.choice)
-      .then((preview) => setPending({ value, choice: entry.choice as TierChoice, preview }))
+      .then((preview) => setPending({ value, choice: entry.choice, preview }))
       .catch((caught: Error) => setError(caught.message));
   };
   const finish = (action: Promise<unknown>) => {
@@ -68,6 +67,7 @@ export function TrackingControl({
             value={pending?.value ?? valueOf(tracking)}
             onChange={(event) => choose(event.target.value)}
           >
+            {tracking ? null : <option value="none" disabled>Not followed</option>}
             {CHOICES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
           </select>
           {pending ? <Button size="sm" onClick={() => finish(followPart(partId, pending.choice))}>Apply</Button> : null}

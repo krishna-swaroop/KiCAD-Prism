@@ -482,7 +482,7 @@ class PrismDialog(wx.Dialog):
         self.agent_icon.set("success", "Prism agent %s is running" % (running or "?"))
         # The agent answered, so the only question left is whether IT can reach the
         # backend. The icon says which, and stays out of the way otherwise.
-        self._set_server_icon(bool(health.get("backend_reachable")))
+        self._set_server_icon(version.backend_state(health))
 
         # Computed once, on the worker, from the same /health payload.
         verdict, download_url = payload["verdict"]
@@ -675,15 +675,20 @@ class PrismDialog(wx.Dialog):
         else:
             self.library_icon.set("muted_fg", "Prism library not linked")
 
-    def _set_server_icon(self, reachable: bool) -> None:
-        """Green when Prism is reachable, amber when it is not.
+    def _set_server_icon(self, state: str) -> None:
+        """Green when Prism is reachable, muted while unknown, amber when unhappy.
 
-        Never red: an unreachable server is a normal, temporary state (laptop offline,
-        backend restarting), and the plugin's local features keep working. Red would be
-        crying wolf.
+        "refused" is a distinct state: the server answered and rejected the token, so
+        the fix is to sign in, not to check the address. Never red: an unreachable
+        server is a normal, temporary state (laptop offline, backend restarting), and
+        the plugin's local features keep working. Red would be crying wolf.
         """
-        if reachable:
+        if state == "up":
             self.server_icon.set("success", "Connected to Prism")
+        elif state == "refused":
+            self.server_icon.set("warning", "Sign in to Prism")
+        elif state == "unknown":
+            self.server_icon.set("muted_fg", "Checking the Prism server")
         else:
             self.server_icon.set("warning", "Can't reach the Prism server")
 

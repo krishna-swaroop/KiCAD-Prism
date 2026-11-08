@@ -3,7 +3,7 @@ import viewerCss from "../styles.css";
 import { AssetCache } from "./asset-cache.js";
 import { absolutizeAssetPaths, bundleIsFinal } from "./bundle-urls.js";
 import { mountStandaloneViewer, mountSystemViewer } from "./main.js";
-import { createReloadOwner, runSemanticViewerReload } from "./semantic-viewer-reload.js";
+import { createReloadOwner, runSemanticViewerReload, shouldReloadStaleScene, viewerIsShown } from "./semantic-viewer-reload.js";
 import { BoardModeController, SystemModeController, createSharedState, installModeMembers } from "./viewer-controllers.js";
 
 function shellHtml() {
@@ -180,7 +180,7 @@ async function loadBundle(bundleUrl, timings, signal) {
 
 export class PrismSemanticViewerElement extends HTMLElement {
   static get observedAttributes() {
-    return ["bundle-url", "workspace", "mode", "move-allowed"];
+    return ["bundle-url", "workspace", "mode", "move-allowed", "active"];
   }
 
   constructor() {
@@ -195,6 +195,10 @@ export class PrismSemanticViewerElement extends HTMLElement {
     this.modes = Object.freeze({ board: new BoardModeController(shared), system: new SystemModeController(shared) });
     /** The controller with a mounted scene, or null between mounts. */
     this.mounted = null;
+    /** Whether the element currently intersects the viewport (see `visibilityObserver`). */
+    this.intersecting = false;
+    /** Answers "is this element shown"; null when the browser has no IntersectionObserver. */
+    this.visibilityObserver = null;
   }
 
   /** The controller common members go to: the mounted one, else the one the `mode` attribute names. */
@@ -209,13 +213,42 @@ export class PrismSemanticViewerElement extends HTMLElement {
   }
 
   connectedCallback() {
+    this.#observeVisibility();
     this.queueReload();
   }
 
   disconnectedCallback() {
+    this.visibilityObserver?.disconnect();
+    this.visibilityObserver = null;
+    this.intersecting = false;
     this.reloadOwner.cancel();
     this.detachModes();
     this.reloadSource = null;
+  }
+
+  /**
+   * Watch this element's own visibility. A host that shows it again without
+   * touching `active` (a section switch) leaves a scene that another element
+   * has since taken, so becoming visible is the reload trigger.
+   */
+  #observeVisibility() {
+    if (this.visibilityObserver || typeof IntersectionObserver !== "function") return;
+    this.visibilityObserver = new IntersectionObserver((entries) => {
+      const entry = entries[entries.length - 1];
+      if (!entry) return;
+      this.intersecting = entry.isIntersecting;
+      if (entry.isIntersecting) this.queueReload();
+    });
+    this.visibilityObserver.observe(this);
+  }
+
+  /** Whether this element is shown (intersecting, or the host's `active` attribute on older browsers). */
+  get shown() {
+    return viewerIsShown({
+      observed: Boolean(this.visibilityObserver),
+      intersecting: this.intersecting,
+      active: this.getAttribute("active") === "true",
+    });
   }
 
   attributeChangedCallback(name, oldValue, newValue) {
@@ -227,6 +260,13 @@ export class PrismSemanticViewerElement extends HTMLElement {
     // mode="system": whether this reader may move boards (the host sets it for editors).
     if (name === "move-allowed") {
       this.modes.system.setMoveAllowed(newValue === "true");
+      return;
+    }
+    // `active` is the host's "this element is shown" signal on browsers without
+    // IntersectionObserver; it stays a trigger everywhere. A scene it no longer
+    // owns must be rebuilt when it comes back (queueReload checks).
+    if (name === "active") {
+      if (newValue === "true") this.queueReload();
       return;
     }
     this.queueReload();
@@ -243,7 +283,17 @@ export class PrismSemanticViewerElement extends HTMLElement {
 
   queueReload() {
     const source = this.systemMode ? "system" : this.getAttribute("bundle-url");
-    if (!source || source === this.reloadSource) return;
+    if (!source) return;
+    // A second element's mount disposes this element's renderer and takes over
+    // the page-wide session (main.js beginViewerSession). When this element is
+    // shown again it owns a dead scene, so it rebuilds even though its source
+    // is unchanged; render-on-demand then starts afresh with the new mount.
+    const stale = shouldReloadStaleScene({
+      shown: this.shown,
+      mounted: this.mounted,
+      isCurrent: () => this.mounted?.attachedPort?.isCurrent?.() ?? true,
+    });
+    if (source === this.reloadSource && !stale) return;
     this.reloadSource = source;
     if (this.reloadQueued) return;
     this.reloadQueued = true;

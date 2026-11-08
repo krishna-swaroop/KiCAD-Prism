@@ -27,6 +27,8 @@ from app.services.supply import quota
 from app.services.supply.vocabulary import ENDING_LIFECYCLES, Lifecycle
 
 SCHEDULES = ("daily", "weekly", "monthly")
+# The schedule of a part nothing tracks (a one-off check): the slowest one.
+DEFAULT_RATE = "monthly"
 INTERVAL = {"daily": timedelta(days=1), "weekly": timedelta(days=7), "monthly": timedelta(days=30)}
 # A weekly read waits at least this long before its day slot comes round (so 4 to 10 days, a week on average), a monthly one
 # the same over 30 slots (15 to 44 days).

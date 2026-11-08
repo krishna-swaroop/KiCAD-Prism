@@ -231,7 +231,7 @@ class Writer:
             return 1
         # Asking again soon does not change how urgent the listing is or how often it is read.
         current = loaded.states.get(row.id)
-        schedule = current["tier"] if current else loaded.rates.get(row.part_id, "monthly")
+        schedule = current["tier"] if current else loaded.rates.get(row.part_id, tiers.DEFAULT_RATE)
         urgency = tiers.Urgency(current["urgency"]) if current else tiers.Urgency.NORMAL
         loaded.missing.append((row, schedule, urgency, misses))
         return 0
@@ -275,7 +275,7 @@ class Writer:
             if row.part_id not in stock_of:
                 stock_of[row.part_id] = stock.part_stock(conn, row.part_id).total
             urgency = self._urgency(conn, loaded, row, lifecycle, last_change, stock_of[row.part_id], now)
-            states.append(self._state(row, loaded.rates.get(row.part_id, "monthly"), urgency, now, last_change, 0))
+            states.append(self._state(row, loaded.rates.get(row.part_id, tiers.DEFAULT_RATE), urgency, now, last_change, 0))
         states += [self._state(row, schedule, urgency, now, row.last_change_at, misses) for row, schedule, urgency, misses in loaded.missing]
         # --- schedule ---
         if states:

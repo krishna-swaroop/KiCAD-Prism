@@ -666,6 +666,16 @@ class PollingTests(unittest.TestCase):
         self.provider_behaviour = None
         self.assertEqual(self.poller().poll_connector(cid).polled, 1)
 
+    def test_a_first_failed_read_keeps_the_part_rate(self) -> None:
+        from app.services.supply.providers.base import Unavailable
+
+        cid = self.connector()
+        watch = self.watch(tier=2, rate="weekly")
+        self.add_listing(watch.part_id, cid, "FAKE-ABC123-CT")
+        self._failing(Unavailable("down"))
+        self.poller().poll_connector(cid)
+        self.assertEqual(self.state_of("FAKE-ABC123-CT")["tier"], "weekly", "the failure does not reschedule a weekly part as daily")
+
     def test_a_rate_limit_without_a_retry_time_waits_fifteen_minutes(self) -> None:
         from app.services.supply.providers.base import RateLimited
 

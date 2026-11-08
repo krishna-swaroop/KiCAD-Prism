@@ -249,6 +249,7 @@ def schedule_due_supply_jobs(
     store.initialize()
     moment = now or clock.now()
     with store.connection() as conn:
+        oneoff.settle_unrunnable(conn)
         connector_ids = connectors_with_work(conn, moment)
         tasks_due = bool(tasks.due(conn, moment))
     queued = []

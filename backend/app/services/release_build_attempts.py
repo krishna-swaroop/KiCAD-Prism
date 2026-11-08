@@ -19,6 +19,7 @@ import json
 from typing import Any, Mapping, Sequence
 
 from app.release_studio.canonical import sha256_canonical
+from app.release_studio.pipeline import settle_pipeline_steps
 from app.services import event_log
 from app.services.release_studio_service import (
     ReleaseStudioError,
@@ -503,6 +504,22 @@ def _record_candidate_built(job: Mapping[str, Any]) -> None:
     )
 
 
+def _persist_settled_pipeline(job: Mapping[str, Any], status: str) -> bool:
+    """Rewrite every step a dead build left queued/running, in the job payload the UI reads."""
+
+    pipeline = (job.get("payload") or {}).get("pipeline")
+    job_id = str(job.get("job_id") or job.get("id") or "")
+    if not isinstance(pipeline, dict) or not job_id or not settle_pipeline_steps(pipeline, status):
+        return False
+    with connect() as conn:
+        conn.execute(
+            "UPDATE ws_jobs SET payload = payload || %s::jsonb WHERE id = %s",
+            (json.dumps({"pipeline": pipeline}), job_id),
+        )
+        conn.commit()
+    return True
+
+
 def settle_build_job(job: Mapping[str, Any]) -> int:
     """End every attempt of ``job`` whose execution is over, as the job ended.
 
@@ -520,6 +537,8 @@ def settle_build_job(job: Mapping[str, Any]) -> int:
     _record_candidate_built(job)
     job_status = str(job.get("status") or "")
     job_fence = int(job.get("fence") or 0)
+    if job_status in {"failed", "cancelled"}:
+        _persist_settled_pipeline(job, "cancelled" if job_status == "cancelled" else "failure")
     settled = 0
     for build in running_builds_for_job(str(job["job_id"])):
         same_fence = int(build.get("fence") or 0) == job_fence

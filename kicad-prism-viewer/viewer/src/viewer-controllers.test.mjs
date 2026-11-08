@@ -34,6 +34,7 @@ function fakeScene(overrides = {}) {
   const calls = [];
   const scene = { nets: NETS, lit: false, isolating: false, quiet: false, sceneListeners: new Set() };
   const own = {
+    isCurrent: () => true,
     nets: () => scene.nets,
     anyEmphasis: () => scene.lit,
     isolating: () => scene.isolating,
@@ -380,6 +381,22 @@ test("detach disposes the scene and keeps the host's state for the next mount", 
   board.attach(second.port);
   assert.deepEqual(second.names(), ["setWorkspace", "setHiddenComponents"]);
   assert.throws(() => board.attach(null), TypeError);
+});
+
+test("a controller whose scene lost the page session stops forwarding host state to it", () => {
+  let current = true;
+  const board = new BoardModeController();
+  const { port, calls } = fakeScene({ isCurrent: () => current });
+  board.attach(port);
+  board.setHiddenComponents(["R1"]);
+  assert.deepEqual(calls.filter((call) => call[0] === "setHiddenComponents"), [["setHiddenComponents", ["R1"]]]);
+  current = false;
+  calls.length = 0;
+  board.setHiddenComponents(["R2"]);
+  board.setSelection({ netName: "GND" });
+  assert.deepEqual(calls, [], "the dead scene is not written to");
+  assert.equal(board.port, null, "a stale scene is not the controller's live port");
+  assert.equal(board.attachedPort, port, "but it stays attached, so the element can see it is stale");
 });
 
 test("the GPU budget falls back to 1.5 GB for anything that is not a positive number", () => {

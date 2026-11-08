@@ -211,6 +211,66 @@ impl Component {
     }
 }
 
+/// Whether a variant record's name selects `wanted`, ignoring ASCII case.
+///
+/// Footprints, artwork and the semantic index already match this way; symbols
+/// use the same rule here so a mixed-case `--variant` applies both halves of
+/// one component.
+#[must_use]
+pub fn variant_name_matches(record: &str, wanted: &str) -> bool {
+    record.eq_ignore_ascii_case(wanted)
+}
+
+/// Whether `requested` selects a variant of a design that defines `names`.
+///
+/// `default` (any case) always does: it is the design without overrides, the
+/// name Release Studio sends when a design has no variants, and the kicad-cli
+/// steps already treat it as no variant.
+#[must_use]
+pub fn variant_known(names: &[String], requested: &str) -> bool {
+    requested.eq_ignore_ascii_case("default")
+        || names
+            .iter()
+            .any(|name| variant_name_matches(name, requested))
+}
+
+/// Every variant name the design defines, in first-seen order: the project
+/// registries' declarations, then the records on sheets, symbols and
+/// footprints (occurrences-a0 does not repeat record-only names in
+/// `variantDeclarations`). Names that differ only in case collapse to the
+/// first one seen.
+#[must_use]
+pub fn variant_names(occurrences: &OccurrencesA0) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    let mut push = |name: &str| {
+        if !names
+            .iter()
+            .any(|existing| variant_name_matches(existing, name))
+        {
+            names.push(name.to_string());
+        }
+    };
+    for declaration in &occurrences.variant_declarations {
+        push(&declaration.name);
+    }
+    for sheet in &occurrences.sheets {
+        for record in &sheet.variants {
+            push(&record.name);
+        }
+    }
+    for symbol in &occurrences.symbols {
+        for record in &symbol.variants {
+            push(&record.name);
+        }
+    }
+    for footprint in &occurrences.footprints {
+        for record in &footprint.variants {
+            push(&record.name);
+        }
+    }
+    names
+}
+
 /// The normalised design view of one bundle at one variant.
 #[derive(Clone, Debug)]
 pub struct Design {
@@ -307,7 +367,7 @@ fn footprint_variant_facts(
         footprint?
             .variants
             .iter()
-            .find(|record| record.name.eq_ignore_ascii_case(name))
+            .find(|record| variant_name_matches(&record.name, name))
     }) else {
         return Some(facts);
     };
@@ -441,7 +501,7 @@ fn resolve_symbol(symbol: Option<&OccurrencesSymbol>, variant: Option<&str>) -> 
         symbol
             .variants
             .iter()
-            .find(|record| record.name.as_str() == name)
+            .find(|record| variant_name_matches(&record.name, name))
     });
     ResolvedSymbol {
         properties: apply_fields(&symbol.properties, record),
@@ -474,7 +534,7 @@ fn resolve_footprint(
         footprint
             .variants
             .iter()
-            .find(|record| record.name.eq_ignore_ascii_case(name))
+            .find(|record| variant_name_matches(&record.name, name))
     });
     Some(ResolvedFootprint {
         dnp: record
@@ -611,4 +671,118 @@ fn resolve_one(
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn symbol_with_variant() -> OccurrencesSymbol {
+        serde_json::from_str(
+            r#"{
+                "kiidPath": "/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002",
+                "sheetPath": "/00000000-0000-0000-0000-000000000001",
+                "symbolUuid": "00000000-0000-0000-0000-000000000002",
+                "documentPath": "board.kicad_sch",
+                "libId": "Device:R",
+                "reference": "R1",
+                "instanceMatched": true,
+                "unit": 1,
+                "dnp": false,
+                "excludeFromBom": false,
+                "excludeFromBoard": false,
+                "excludeFromSim": false,
+                "excludeFromPosFiles": false,
+                "properties": {"Reference": "R1", "Value": "10k"},
+                "bomFields": {},
+                "variants": [{
+                    "name": "Pro",
+                    "dnp": true,
+                    "excludeFromBom": true,
+                    "fields": {"Value": "22k"}
+                }]
+            }"#,
+        )
+        .unwrap()
+    }
+
+    fn footprint_with_variant() -> OccurrencesFootprint {
+        serde_json::from_str(
+            r#"{
+                "uuid": "00000000-0000-0000-0000-000000000003",
+                "documentPath": "board.kicad_pcb",
+                "reference": "R1",
+                "dnp": false,
+                "excludeFromBom": false,
+                "excludeFromPosFiles": false,
+                "variants": [{
+                    "name": "Pro",
+                    "dnp": true,
+                    "excludeFromBom": true,
+                    "excludeFromPosFiles": true,
+                    "fields": {"Tolerance": "1%"}
+                }]
+            }"#,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn default_is_known_even_when_the_design_defines_no_variants() {
+        assert!(variant_known(&[], "default"));
+        assert!(variant_known(&[], "Default"));
+        assert!(!variant_known(&[], "pro"));
+        let names = vec!["Pro".to_string()];
+        assert!(variant_known(&names, "pro"));
+        assert!(!variant_known(&names, "lite"));
+    }
+
+    #[test]
+    fn a_mixed_case_variant_applies_symbol_and_footprint_overrides() {
+        let symbol = symbol_with_variant();
+        let resolved = resolve_symbol(Some(&symbol), Some("pro"));
+        assert!(resolved.dnp);
+        assert!(resolved.exclude_from_bom);
+        assert!(
+            resolved
+                .properties
+                .iter()
+                .any(|(name, value)| name == "Value" && value == "22k")
+        );
+
+        let footprint = footprint_with_variant();
+        let resolved_footprint = resolve_footprint(Some(&footprint), Some("pro")).unwrap();
+        assert!(resolved_footprint.dnp);
+        assert!(resolved_footprint.exclude_from_bom);
+        assert!(resolved_footprint.exclude_from_pos_files);
+
+        let facts = footprint_variant_facts(
+            Some(FootprintFacts {
+                properties: vec![("Value".to_string(), "10k".to_string())],
+            }),
+            Some(&footprint),
+            Some("pro"),
+        )
+        .unwrap();
+        assert_eq!(facts.property("Tolerance"), Some("1%"));
+    }
+
+    #[test]
+    fn variant_names_collapse_names_that_differ_only_in_case() {
+        let occurrences: OccurrencesA0 = serde_json::from_str(
+            r#"{
+                "schema": "prism.occurrences.a0",
+                "sheets": [],
+                "symbols": [],
+                "footprints": [],
+                "references": [],
+                "variantDeclarations": [
+                    {"name": "Pro", "source": "project"},
+                    {"name": "pro", "source": "pcb"}
+                ]
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(variant_names(&occurrences), vec!["Pro".to_string()]);
+    }
 }

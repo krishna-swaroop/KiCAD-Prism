@@ -459,10 +459,10 @@ class ComponentCatalogDomainService:
             conn.commit()
         return self.get_project_import_proposal(proposal_id) or {}
 
-    def delete_project_import_session(self, session_id: str) -> None:
+    def delete_project_import_session(self, session_id: str, *, job_terminal: bool = False) -> None:
         self.initialize()
         with self._connect() as conn:
-            self._project_import_sessions.delete_session(conn, session_id)
+            self._project_import_sessions.delete_session(conn, session_id, allow_running=job_terminal)
             conn.commit()
         self._project_import_sessions.remove_staging_directories(store_root=self.store_root, session_ids=[session_id])
 
@@ -1175,31 +1175,27 @@ class ComponentCatalogDomainService:
             asset_id, revision_id, expires_at, signature, representation_id
         )
 
-    def store_auth_code(self, code: str, grant: dict[str, Any], exp: int) -> None:
+    def _provider_token_write(self, action: Any) -> Any:
         self.initialize()
         with self._connect() as conn:
-            self._provider_tokens.store_auth_code(conn, code, grant, exp)
+            result = action(conn)
             conn.commit()
+        return result
+
+    def store_auth_code(self, code: str, grant: dict[str, Any], exp: int) -> None:
+        self._provider_token_write(lambda conn: self._provider_tokens.store_auth_code(conn, code, grant, exp))
 
     def consume_auth_code(self, code: str) -> dict[str, Any] | None:
-        self.initialize()
-        with self._connect() as conn:
-            grant = self._provider_tokens.consume_auth_code(conn, code, now=int(time.time()))
-            conn.commit()
-        return grant
+        return self._provider_token_write(lambda conn: self._provider_tokens.consume_auth_code(conn, code, now=int(time.time())))
 
     def add_revoked_token(self, jti: str, exp: int) -> None:
-        self.initialize()
-        with self._connect() as conn:
-            self._provider_tokens.add_revoked_token(conn, jti, exp)
-            conn.commit()
+        self._provider_token_write(lambda conn: self._provider_tokens.add_revoked_token(conn, jti, exp))
+
+    def claim_revocation(self, jti: str, exp: int) -> bool:
+        return bool(self._provider_token_write(lambda conn: self._provider_tokens.claim_revocation(conn, jti, exp)))
 
     def is_token_revoked(self, jti: str) -> bool:
-        self.initialize()
-        with self._connect() as conn:
-            revoked = self._provider_tokens.is_token_revoked(conn, jti, now=int(time.time()))
-            conn.commit()
-        return revoked
+        return bool(self._provider_token_write(lambda conn: self._provider_tokens.is_token_revoked(conn, jti, now=int(time.time()))))
 
     def export_kicad_dbl_bundle(self) -> dict[str, Any]:
         self.initialize()

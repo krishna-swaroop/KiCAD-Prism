@@ -134,6 +134,12 @@ class ReplayedReleaseBuildTests(unittest.TestCase):
             completed["warnings"],
         )
 
+    def test_the_toolchain_records_the_cli_version_that_ran(self) -> None:
+        result, _, _ = self._build()
+        self.assertEqual(
+            result["dossier"].manifest["toolchain"]["kicad_version"], "10.0.7"
+        )
+
     def test_two_replayed_builds_have_the_same_dossier_digest(self) -> None:
         first, _, _ = self._build()
         second, _, _ = self._build()

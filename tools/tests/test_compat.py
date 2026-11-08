@@ -102,3 +102,23 @@ def test_no_server_answer_is_ok():
 )
 def test_only_ok_and_update_load_the_project(verdict, ok):
     assert version.usable(verdict) is ok
+
+
+# -- the plugin's backend state from one /health payload -----------------------
+
+
+@pytest.mark.parametrize("state", ["unknown", "up", "down", "refused"])
+def test_a_known_backend_state_is_passed_through(state):
+    assert version.backend_state({"backend": state}) == state
+
+
+def test_an_older_agent_falls_back_to_its_boolean():
+    """Agents from before the tri-state only report whether it answered."""
+    assert version.backend_state({"backend_reachable": True}) == "up"
+    assert version.backend_state({"backend_reachable": False}) == "down"
+    assert version.backend_state({}) == "down"
+    assert version.backend_state(None) == "down"
+
+
+def test_an_unknown_backend_state_does_not_read_as_unreachable():
+    assert version.backend_state({"backend": "unknown"}) == "unknown"

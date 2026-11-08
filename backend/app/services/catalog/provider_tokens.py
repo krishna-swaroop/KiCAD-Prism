@@ -28,13 +28,36 @@ class CatalogProviderTokens:
 
     @staticmethod
     def consume_auth_code(conn: Any, code: str, *, now: int) -> dict[str, Any] | None:
-        """Delete the code on read so it can only ever be exchanged once."""
-        row = conn.execute("SELECT grant_json, exp FROM oauth_auth_codes WHERE code = %s", (code,)).fetchone()
-        conn.execute("DELETE FROM oauth_auth_codes WHERE code = %s", (code,))
+        """Delete the code on read so it can only ever be exchanged once.
+
+        The delete and the read are one statement: two concurrent exchanges
+        cannot both see the grant.
+        """
+        row = conn.execute(
+            "DELETE FROM oauth_auth_codes WHERE code = %s RETURNING grant_json, exp", (code,)
+        ).fetchone()
         conn.execute("DELETE FROM oauth_auth_codes WHERE exp <= %s", (now,))
         if not row or int(row["exp"]) <= now:
             return None
         return dict(json_loads(row["grant_json"], {}))
+
+    @staticmethod
+    def claim_revocation(conn: Any, jti: str, exp: int) -> bool:
+        """Claim a jti for the revocation list; True when this call inserted it.
+
+        ``ON CONFLICT DO NOTHING`` makes the claim atomic, so of two concurrent
+        consumers at most one inserts a row and only that one may proceed.
+        """
+        row = conn.execute(
+            """
+            INSERT INTO oauth_revoked_tokens (jti, exp)
+            VALUES (%s, %s)
+            ON CONFLICT (jti) DO NOTHING
+            RETURNING 1
+            """,
+            (jti, exp),
+        ).fetchone()
+        return row is not None
 
     @staticmethod
     def add_revoked_token(conn: Any, jti: str, exp: int) -> None:

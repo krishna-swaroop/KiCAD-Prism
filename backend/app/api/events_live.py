@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 _BATCH_SIZE = 200
 _HEARTBEAT_SECONDS = 25.0
+_ACCESS_RECHECK_SECONDS = 60.0
 _SEND_TIMEOUT_SECONDS = 10.0
 _PROJECT_PREFIX = "project:"
 
@@ -175,10 +176,32 @@ async def live_events(websocket: WebSocket) -> None:
     queue = broker.subscribe()
     await websocket.accept()
     topics: list[str] | None = None
+    raw_topics: Any = None
     cursor = 0
     # Nothing is delivered before the first subscribe frame: it carries the
     # client's cursor, and reading from 0 would replay the whole retained log.
     subscribed = False
+    access_checked_at = time.monotonic()
+
+    async def refresh_access() -> bool:
+        """False when this socket must close because access was revoked."""
+        nonlocal user, topics, access_checked_at
+        now = time.monotonic()
+        if now - access_checked_at < _ACCESS_RECHECK_SECONDS:
+            return True
+        fresh = await _check_socket_access(websocket)
+        if fresh is None:
+            return False
+        user = fresh
+        if raw_topics is not None:
+            previous = set(topics or [])
+            topics, forbidden = await _visible_topics(raw_topics, user)
+            for topic in forbidden:
+                if topic in previous:
+                    await _send_error(websocket, "topic-forbidden", topic=topic)
+        access_checked_at = now
+        return True
+
     try:
         heartbeat_at = time.monotonic() + _HEARTBEAT_SECONDS
         while True:
@@ -209,7 +232,11 @@ async def live_events(websocket: WebSocket) -> None:
                     frame = json.loads(message["text"])
                     if not isinstance(frame, dict):
                         raise BadSubscribe("a frame must be a JSON object")
+                    if not await refresh_access():
+                        await websocket.close(code=1008)
+                        return
                     cursor, topics = await _subscribe(websocket, frame, user, cursor)
+                    raw_topics = frame.get("topics")
                     subscribed = True
                 except (BadSubscribe, json.JSONDecodeError):
                     await _send_error(websocket, "invalid-subscribe")
@@ -222,12 +249,18 @@ async def live_events(websocket: WebSocket) -> None:
                 while not queue.empty():
                     queue.get_nowait()
                 if subscribed:
+                    if not await refresh_access():
+                        await websocket.close(code=1008)
+                        return
                     cursor, _delivered = await _deliver(websocket, cursor, user, topics)
             else:
                 # Idle. Read anyway so a lost NOTIFY cannot stall the stream,
                 # and send the heartbeat when the read found nothing.
                 delivered = False
                 if subscribed:
+                    if not await refresh_access():
+                        await websocket.close(code=1008)
+                        return
                     cursor, delivered = await _deliver(websocket, cursor, user, topics)
                 if not delivered:
                     await asyncio.wait_for(

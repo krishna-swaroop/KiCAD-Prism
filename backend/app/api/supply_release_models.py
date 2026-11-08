@@ -108,9 +108,10 @@ class ProjectSupplyRelease(SupplyModel):
 
 
 class ProjectSupply(SupplyModel):
-    """How a project stands in supply, from its stored BOM. Without a BOM read, only ``available``, the variants, releases and notes."""
+    """How a project stands in supply, from its stored BOM. Without parts, only ``available``, ``has_usage``, the variants, releases and notes."""
 
     available: bool
+    has_usage: bool = Field(description="Whether the project's BOM has been read, even when it has no fitted parts.")
     has_schematic: Optional[bool] = Field(default=None, description="Without a BOM read: whether the project has a schematic to read it from.")
     variant: str
     variants: list[str]

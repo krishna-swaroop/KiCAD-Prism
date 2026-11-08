@@ -14,6 +14,11 @@ const DIRECTORY = "prism-bundle-cache-a0";
 /** The OPFS directory the cache keeps its files in (workers write into it too; see `adopt`). */
 export const ASSET_CACHE_DIRECTORY = DIRECTORY;
 const MANIFEST = "manifest.json";
+const MANIFEST_SCHEMA = "prism.bundle_cache_manifest.a0";
+/** The Web Lock that serialises merge-then-write between tabs. */
+const MANIFEST_LOCK = "prism-asset-cache";
+/** An unlisted file younger than this may be another tab's write not yet read; leave it. */
+export const CACHE_UNLISTED_GRACE_MS = 10 * 60 * 1000;
 export const CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 export const CACHE_MAX_BYTES = 2 * 1024 * 1024 * 1024;
 
@@ -42,6 +47,16 @@ export function fileNameFor(key) {
   return `a_${encodeURIComponent(key)}`;
 }
 
+/** The cache key an OPFS file name stands for, or null when it is not one. */
+function keyForFileName(name) {
+  if (!name.startsWith("a_")) return null;
+  try {
+    return decodeURIComponent(name.slice(2));
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Which entries to delete: those unused for `maxAgeMs`, then the least recently
  * used until the rest fit in `maxBytes`. `entries` maps key → { bytes, lastUsed }.
@@ -62,6 +77,46 @@ export function planPrune(entries, now, { maxAgeMs = CACHE_MAX_AGE_MS, maxBytes 
   return [...drop];
 }
 
+/**
+ * Whether `removed` (key → removal time) makes `entry` stale: this tab deleted
+ * the key and no writer has used it since. A newer entry supersedes the
+ * removal, so a later download of the same key is kept.
+ */
+function tombstoned(removed, key, entry) {
+  const removedAt = Number(removed?.[key] || 0);
+  return removedAt > 0 && Number(entry?.lastUsed || 0) <= removedAt;
+}
+
+/**
+ * Both tabs' view of the manifest: every key from either side, the more
+ * recently used entry winning, except keys this tab removed (`removed`, key →
+ * removedAt). A tab whose in-memory entries predate another tab's write still
+ * keeps that write when it flushes, and a tab that pruned a key keeps it gone
+ * when another tab's stale manifest still lists it.
+ */
+export function mergeEntries(local = {}, disk = {}, removed = {}) {
+  const merged = {};
+  for (const [key, entry] of Object.entries(disk)) {
+    if (!tombstoned(removed, key, entry)) merged[key] = entry;
+  }
+  for (const [key, entry] of Object.entries(local)) {
+    if (tombstoned(removed, key, entry)) continue;
+    if (Number(entry?.lastUsed || 0) >= Number(merged[key]?.lastUsed || 0)) merged[key] = entry;
+  }
+  return merged;
+}
+
+/**
+ * Unlisted files to delete: those older than `graceMs`. A younger file may be
+ * another tab's write (or a worker's) that this tab's manifest has not read
+ * yet; the next prune removes it if it is still unlisted.
+ */
+export function planUnlisted(files, listed, now, graceMs = CACHE_UNLISTED_GRACE_MS) {
+  return files
+    .filter((file) => !listed.has(file.name) && !(now - Number(file.lastModified || 0) <= graceMs))
+    .map((file) => file.name);
+}
+
 export class AssetCache {
   /** The page's cache, or a pass-through when OPFS writes are unavailable. */
   static open(options = {}) {
@@ -73,6 +128,8 @@ export class AssetCache {
     this.maxAgeMs = maxAgeMs;
     this.maxBytes = maxBytes;
     this.stats = { hits: 0, misses: 0, bypassed: 0, cachedBytes: 0, networkBytes: 0, writeErrors: 0 };
+    /** Keys this tab removed (key → removedAt); the merge drops older disk entries for them. */
+    this.removed = {};
     this.ready = this.init();
     this.flushTimer = null;
   }
@@ -85,15 +142,8 @@ export class AssetCache {
       const directory = await root.getDirectoryHandle(DIRECTORY, { create: true });
       const probe = await directory.getFileHandle(MANIFEST, { create: true });
       if (typeof probe.createWritable !== "function") return null;
-      let entries = {};
-      try {
-        const text = await (await probe.getFile()).text();
-        entries = text ? JSON.parse(text).entries || {} : {};
-      } catch {
-        entries = {};
-      }
       this.directory = directory;
-      this.entries = entries;
+      this.entries = await this.#readManifest();
       await this.prune();
       globalThis.addEventListener?.("pagehide", () => void this.flush());
       return directory;
@@ -199,17 +249,41 @@ export class AssetCache {
 
   async prune(now = Date.now()) {
     if (!this.directory) return [];
-    const drop = planPrune(this.entries, now, { maxAgeMs: this.maxAgeMs, maxBytes: this.maxBytes });
-    for (const key of drop) {
-      delete this.entries[key];
-      await this.directory.removeEntry(fileNameFor(key)).catch(() => {});
+    let drop = [];
+    try {
+      await this.#withLock(async () => {
+        // Merge first: another tab's entries are candidates too, and its view
+        // must survive the write that follows the deletions.
+        this.entries = mergeEntries(this.entries, await this.#readManifest(), this.removed);
+        drop = planPrune(this.entries, now, { maxAgeMs: this.maxAgeMs, maxBytes: this.maxBytes });
+        for (const key of drop) {
+          delete this.entries[key];
+          this.removed[key] = now;
+          await this.directory.removeEntry(fileNameFor(key)).catch(() => {});
+        }
+        // Files no manifest lists (another tab's torn write, an older manifest)
+        // go too, once they have had the grace period to be listed by their
+        // writer. Only unlisted names need their timestamp.
+        const listed = new Set(Object.keys(this.entries).map(fileNameFor));
+        const files = [];
+        for await (const name of this.directory.keys()) {
+          if (name === MANIFEST || listed.has(name)) continue;
+          const file = await this.directory.getFileHandle(name).then((handle) => handle.getFile()).catch(() => null);
+          files.push({ name, lastModified: file?.lastModified || 0 });
+        }
+        const unlisted = planUnlisted(files, listed, now);
+        for (const name of unlisted) {
+          const key = keyForFileName(name);
+          if (key) this.removed[key] = now;
+          await this.directory.removeEntry(name).catch(() => {});
+        }
+        // Deletions and the manifest are one atomic plan: a union merge would
+        // otherwise put a pruned key back on the next flush.
+        if (drop.length || unlisted.length) await this.#writeManifest(this.entries);
+      });
+    } catch {
+      this.stats.writeErrors += 1;
     }
-    // Files no manifest lists (another tab's torn write, an older manifest) go too.
-    const listed = new Set(Object.keys(this.entries).map(fileNameFor));
-    for await (const name of this.directory.keys()) {
-      if (name !== MANIFEST && !listed.has(name)) await this.directory.removeEntry(name).catch(() => {});
-    }
-    if (drop.length) await this.flush();
     return drop;
   }
 
@@ -217,9 +291,23 @@ export class AssetCache {
   async clear() {
     await this.ready;
     if (!this.directory) return;
+    const now = Date.now();
+    const known = Object.keys(this.entries || {});
     this.entries = {};
-    await this.prune();
-    await this.flush();
+    try {
+      await this.#withLock(async () => {
+        for (const key of [...known, ...Object.keys(await this.#readManifest())]) this.removed[key] = now;
+        for await (const name of this.directory.keys()) {
+          if (name === MANIFEST) continue;
+          const key = keyForFileName(name);
+          if (key) this.removed[key] = now;
+          await this.directory.removeEntry(name).catch(() => {});
+        }
+        await this.#writeManifest({});
+      });
+    } catch {
+      this.stats.writeErrors += 1;
+    }
   }
 
   summary() {
@@ -240,13 +328,40 @@ export class AssetCache {
     }, 1000);
   }
 
+  /** Run `apply` inside the cross-tab manifest lock when Web Locks are available. */
+  #withLock(apply) {
+    const locks = globalThis.navigator?.locks;
+    if (typeof locks?.request !== "function") return apply();
+    return locks.request(MANIFEST_LOCK, apply);
+  }
+
+  async #readManifest() {
+    try {
+      const handle = await this.directory.getFileHandle(MANIFEST, { create: true });
+      const text = await (await handle.getFile()).text();
+      return text ? JSON.parse(text).entries || {} : {};
+    } catch {
+      return {};
+    }
+  }
+
+  async #writeManifest(entries) {
+    const handle = await this.directory.getFileHandle(MANIFEST, { create: true });
+    const writable = await handle.createWritable();
+    await writable.write(JSON.stringify({ schema: MANIFEST_SCHEMA, entries }));
+    await writable.close();
+  }
+
   async flush() {
     if (!this.directory) return;
     try {
-      const handle = await this.directory.getFileHandle(MANIFEST, { create: true });
-      const writable = await handle.createWritable();
-      await writable.write(JSON.stringify({ schema: "prism.bundle_cache_manifest.a0", entries: this.entries }));
-      await writable.close();
+      await this.#withLock(async () => {
+        // Re-read first: another tab's entries must survive this write, keys
+        // this tab removed must not, and the merged set becomes this tab's view
+        // for its next prune.
+        this.entries = mergeEntries(this.entries, await this.#readManifest(), this.removed);
+        await this.#writeManifest(this.entries);
+      });
     } catch {
       this.stats.writeErrors += 1;
     }

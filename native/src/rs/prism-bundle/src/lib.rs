@@ -19,7 +19,8 @@
 //!   JSON Schema validation against the committed contracts ([`schema`]),
 //!   reading and verifying ([`reader`], [`verify`]), extraction
 //!   ([`extract`]), the generator bytes and bundle key ([`generator`]), the
-//!   pure revision-key layer ([`revision_key`]) and the limits ([`limits`]).
+//!   pure revision-key layer ([`revision_key`]), the process-exit temp registry
+//!   ([`temp`]) and the limits ([`limits`]).
 //!   prism-sim-studio depends on this part and on the pack crate; it opens
 //!   the materialization with `prism_geometry::Geometry::open` on
 //!   [`reader::BundleReader::member`] itself (a1's `geometry()` wrapper is
@@ -46,6 +47,7 @@ pub mod paths;
 pub mod reader;
 pub mod revision_key;
 pub mod schema;
+pub mod temp;
 pub mod verify;
 pub mod zip;
 

@@ -298,6 +298,7 @@ class AuditVerification(TypedDict, total=False):
 class AuthConfig(TypedDict, total=False):
     """Authentication configuration exposed to frontend."""
     auth_enabled: bool
+    comment_live_enabled: bool
     dev_mode: bool
     oidc_enabled: bool
     oidc_provider_name: str
@@ -1594,6 +1595,8 @@ class ConnectorCredentials(TypedDict, total=False):
 class ConnectorHealth(TypedDict, total=True):
     budget: int | None
     calls_today: int
+    catalogue_error: str
+    catalogue_failed_at: str | None
     connector_id: str
     enabled: bool
     failing: int
@@ -4853,7 +4856,7 @@ class ProjectSearchResults(TypedDict, total=True):
 
 
 class ProjectSupply(TypedDict, total=False):
-    """How a project stands in supply, from its stored BOM. Without a BOM read, only ``available``, the variants, releases and notes."""
+    """How a project stands in supply, from its stored BOM. Without parts, only ``available``, ``has_usage``, the variants, releases and notes."""
     attrition_percent: float | None
     available: bool
     build_quantity: int | None
@@ -4861,6 +4864,7 @@ class ProjectSupply(TypedDict, total=False):
     cost_history: list[CostDay] | None
     cost_history_left_out: list[CostDay] | None
     has_schematic: bool | None
+    has_usage: bool
     money: ProjectMoney | None
     notes: list[SupplyBomComment]
     parts: list[ProjectSupplyPart] | None
@@ -6226,6 +6230,8 @@ class SupplyConnector(TypedDict, total=False):
     block_streak: int
     catalogue: bool
     catalogue_available: bool
+    catalogue_error: str
+    catalogue_failed_at: str | None
     cooldown_until: str | None
     created_at: str | None
     created_by: str

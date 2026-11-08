@@ -19,6 +19,13 @@ import {
   isComponentHidden,
   planComponentVisibility,
 } from "./component-visibility.js";
+import { componentRetryDue, noteComponentFailure } from "./component-retry.js";
+import {
+  applyIsolationPrefs,
+  applyNetProbePrefs,
+  applyRestorePrefs,
+  applyShowBoard,
+} from "./visibility-prefs.js";
 import { escapeHtml } from "./escape-html.js";
 import { findNetByName } from "./net-emphasis.js";
 import { hasCommandModifier, isTypingTarget } from "./key-target.js";
@@ -257,8 +264,11 @@ function initialScene() {
     residentTiles: new Map(),
     componentFeatures: new Map(),
     componentModelCounts: new Map(),
-    // The component tier (SB2-26): idle → loading → loaded, and back to idle when evicted.
+    // The component tier (SB2-26): idle → loading → loaded, failed on a load
+    // error (IS-14, retried with bounded backoff), and back to idle when evicted.
     componentTier: "idle",
+    componentFailures: 0,
+    componentRetryAt: 0,
     componentEntries: [],
     componentsWantedAt: 0,
     componentEvictions: 0,
@@ -473,7 +483,7 @@ export async function mountStandaloneViewer(options = {}) {
   // The board scene port (AC-30): BoardModeController in viewer-controllers.js drives it.
   return {
     performance: performanceTimings,
-    ...sharedPortMembers(),
+    ...sharedPortMembers(token),
     selectOccurrence: selectOccurrenceByKey,
     setHighlightedNetIds(ids) {
       board.highlightedNetIds = ids;
@@ -939,7 +949,7 @@ export async function mountSystemViewer(options = {}) {
   scheduleFrame(token);
   // The system scene port (AC-30): SystemModeController in viewer-controllers.js drives it.
   return {
-    ...sharedPortMembers(),
+    ...sharedPortMembers(token),
     focusPlacement,
     selectBoardContext,
     setEmphasisSets,
@@ -2581,8 +2591,12 @@ function systemFrameNeedsRender(now, inputs, emphasis) {
 
 
 /** Port members both mounts share: selection, lit nets and the view controls. */
-function sharedPortMembers() {
+function sharedPortMembers(token) {
   return {
+    /** Whether this port still drives the page-wide viewer session. */
+    isCurrent() {
+      return viewerSessionActive(token);
+    },
     nets: () => board.scene.nets,
     quietly(apply) {
       suppressSelectionChange = true;
@@ -2765,21 +2779,13 @@ function emphasizedNetIds() {
 }
 
 function applyNetProbeVisibility() {
-  // Snapshot prefs only when leaving a non-probe visibility state so chained
-  // net probes do not overwrite the user's last ON preferences with false.
-  if (state.showBoard || state.showComponents) {
-    state.savedShowBoard = state.showBoard;
-    state.savedShowComponents = state.showComponents;
-  }
-  state.showBoard = false;
-  state.showComponents = false;
+  applyNetProbePrefs(state);
   syncNetIsolationControls();
   if (typeof refreshControls === "function") refreshControls();
 }
 
 function restoreViewVisibilityPrefs() {
-  state.showBoard = state.savedShowBoard !== false;
-  state.showComponents = state.savedShowComponents !== false;
+  applyRestorePrefs(state);
   syncNetIsolationControls();
   if (typeof refreshControls === "function") refreshControls();
 }
@@ -3241,16 +3247,32 @@ async function loadComponents(token = activeViewerToken, b = board) {
       zOffset: Number(b.scene.manifest?.componentsZOffsetMm || 0) / 1000,
     });
   } catch (error) {
-    if (viewerSessionActive(token)) b.scene.componentTier = "idle";
+    if (viewerSessionActive(token)) {
+      const retry = noteComponentFailure(b.scene.componentFailures, performance.now());
+      b.scene.componentFailures = retry.failures;
+      b.scene.componentRetryAt = retry.retryAt;
+      b.scene.componentTier = "failed";
+    }
     throw error;
   }
-  if (!viewerSessionActive(token) || !b.renderer) return;
+  if (!viewerSessionActive(token)) return;
+  if (!b.renderer) {
+    b.scene.componentTier = "idle";
+    return;
+  }
   const draws = componentDraws(loaded.models);
   // SB2-87: the upload waits its turn (per-frame cap); the tier stays "loading" meanwhile.
   await uploadBudget([...draws.instanced.map((draw) => draw.primitive), ...draws.baked]
     .reduce((sum, primitive) => sum + estimatePrimitiveGpuBytes(primitive), 0));
-  if (!viewerSessionActive(token) || !b.renderer) return;
+  if (!viewerSessionActive(token)) return;
+  if (!b.renderer) {
+    b.scene.componentTier = "idle";
+    return;
+  }
   b.scene.componentTier = "loaded";
+  // Only consecutive failures count toward the retry cap.
+  b.scene.componentFailures = 0;
+  b.scene.componentRetryAt = 0;
   b.loadedBytes += loaded.byteLength;
   for (const model of loaded.models) {
     for (const placement of model.placements) {
@@ -3304,6 +3326,14 @@ function manageTiers(now, b = board) {
   const prefetch = counts.board + counts.body > 0;
   const wanted = (b.renderer.identityOnly && !b.deferComponents) || (!b.renderer.identityOnly && (counts.full > 0 || prefetch));
   if (wanted) b.scene.componentsWantedAt = now;
+  // IS-14: a failed load is eligible again only while below the cap and after
+  // its backoff; the normal idle path then retries it.
+  if (
+    b.scene.componentTier === "failed"
+    && componentRetryDue(now, b.scene.componentFailures, b.scene.componentRetryAt)
+  ) {
+    b.scene.componentTier = "idle";
+  }
   if (wanted && b.scene.componentTier === "idle" && b.semanticGeometry.assets?.components_glb) {
     void loadComponents(activeViewerToken, b)
       .catch((error) => console.warn("Failed to load components", error));
@@ -4326,15 +4356,7 @@ function setNetIsolation(enabled) {
   // Restore the visibility that was current when Isolate was entered — not
   // savedShowBoard (user prefs for Esc). Net-probe already hides the board;
   // unisolating must not turn the substrate back on.
-  if (next && !wasIsolating) {
-    state.preIsolationShowBoard = state.showBoard;
-    state.showBoard = false;
-  } else if (!next && wasIsolating) {
-    if (typeof state.preIsolationShowBoard === "boolean") {
-      state.showBoard = state.preIsolationShowBoard;
-    }
-    state.preIsolationShowBoard = null;
-  }
+  applyIsolationPrefs(state, wasIsolating, next);
   syncNetIsolationControls();
   refreshControls();
 }
@@ -4417,10 +4439,8 @@ function applyLayerPreset(preset, placementKey = null) {
 }
 
 function setShowBoard(visible) {
-  state.showBoard = Boolean(visible);
-  state.savedShowBoard = state.showBoard;
-  if (state.showBoard && state.isolateNet) setNetIsolation(false);
-  else syncNetIsolationControls();
+  applyShowBoard(state, visible, () => setNetIsolation(false));
+  syncNetIsolationControls();
 }
 
 function setShowComponents(visible) {
@@ -4769,12 +4789,12 @@ function clearSelection() {
   state.selectionAnchor = null;
   const stillEmphasised = anyEmphasis();
   const wasIsolating = state.isolateNet;
-  if (wasIsolating && !stillEmphasised) setNetIsolation(false);
-  else if (!stillEmphasised) {
-    // Still clear isolation bookkeeping without forcing substrate ON.
-    state.isolateNet = false;
+  if (!stillEmphasised) {
+    // Exit through the same transition that restores the pre-isolation
+    // snapshot, then apply the pre-probe preference.
+    if (wasIsolating) setNetIsolation(false);
+    restoreViewVisibilityPrefs();
   } else if (wasIsolating) applyNetIsolationLayers();
-  if (!stillEmphasised) restoreViewVisibilityPrefs();
   schematicScene.activeNetUid = "";
   if (schematicRenderer) schematicRenderer.activeNetUid = "";
   schematicDomRenderer?.setSelection(null);

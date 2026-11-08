@@ -10,7 +10,7 @@ from unittest import mock
 from app.services import job_service
 from app.services import project_import_service
 from app.services.git_failures import GitAccessError, describe_git_failure
-from app.services.job_runtime import PermanentJobError
+from app.services.job_runtime import JobCancelled, PermanentJobError
 from app.services.git_remote_url import RemoteUrlError
 
 
@@ -273,6 +273,109 @@ class ProjectImportV3JobTests(unittest.TestCase):
         register_project.assert_called_once()
         # Renders are queued after registration, so that is the closing stage.
         self.assertEqual(progress_updates[-1]["stage"], "queue-thumbnails")
+
+    def test_a_cancel_during_registration_keeps_the_registered_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            projects_root = Path(temporary) / "projects"
+            projects_root.mkdir()
+            cancel = {"requested": False}
+
+            def check_cancelled() -> None:
+                if cancel["requested"]:
+                    raise JobCancelled("Cancellation requested")
+
+            context = SimpleNamespace(
+                payload={
+                    "repo_url": "https://example.com/boards.git",
+                    "import_type": "type2",
+                    "selected_paths": ["hardware/a", "hardware/b"],
+                },
+                check_cancelled=check_cancelled,
+                progress=lambda **values: None,
+            )
+            discovered = [
+                project_import_service.DiscoveredProject(
+                    name="a",
+                    relative_path="hardware/a",
+                    full_path="",
+                    has_schematic=True,
+                    has_pcb=True,
+                ),
+                project_import_service.DiscoveredProject(
+                    name="b",
+                    relative_path="hardware/b",
+                    full_path="",
+                    has_schematic=True,
+                    has_pcb=True,
+                ),
+            ]
+            target = projects_root / "type2" / "boards"
+            project_ids = iter(["project-1", "project-2"])
+
+            def clone(_url: str, target_path: str, **_kwargs: object) -> object:
+                Path(target_path).mkdir(parents=True)
+                return mock.Mock()
+
+            def register_project(**_kwargs: object) -> str:
+                project_id = next(project_ids)
+                # The user cancels after the first row exists; the second
+                # project must still be registered rather than abandoning a
+                # half-registered checkout.
+                cancel["requested"] = True
+                return project_id
+
+            with (
+                mock.patch.object(
+                    project_import_service.project_service,
+                    "PROJECTS_ROOT",
+                    str(projects_root),
+                ),
+                mock.patch.object(
+                    project_import_service,
+                    "find_existing_repository",
+                    return_value=None,
+                ),
+                mock.patch.object(
+                    project_import_service,
+                    "discover_projects_from_repo",
+                    return_value=discovered,
+                ),
+                mock.patch.object(
+                    project_import_service.Repo,
+                    "clone_from",
+                    side_effect=clone,
+                ),
+                mock.patch.object(
+                    project_import_service.repo_hydration, "hydrate", return_value={}
+                ),
+                mock.patch.object(
+                    project_import_service,
+                    "resolve_cached_paths",
+                    return_value={},
+                ),
+                mock.patch.object(
+                    project_import_service.workspace,
+                    "register_repository",
+                    return_value="repo-1",
+                ),
+                mock.patch.object(
+                    project_import_service.workspace,
+                    "register_project",
+                    side_effect=register_project,
+                ) as register,
+                mock.patch.object(
+                    project_import_service,
+                    "schedule_import_follow_ups",
+                    return_value=[],
+                ),
+            ):
+                result = project_import_service.run_project_import_job_v3(context)
+
+                self.assertEqual(
+                    result.details["project_ids"], ["project-1", "project-2"]
+                )
+                self.assertEqual(register.call_count, 2)
+                self.assertTrue(target.is_dir())
 
 
 class ImportHandlerReDerivesClientClaims(unittest.TestCase):

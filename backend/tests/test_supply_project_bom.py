@@ -58,9 +58,10 @@ class ProjectBomTests(unittest.TestCase):
     def read(self, conn, *, force: bool = True) -> dict:
         return self.project_bom.refresh_tracked(
             conn, NOW, force=force, projects=lambda ids: [(self.project, ["admin", "designer"])] if "prj_1" in set(ids) else [],
-            existing=lambda _project: self.index, queue=self.queued.append, identities=lambda ids: {},
+            existing=lambda _project: self.index, queue=self.queued.append, identities=lambda ids: {}, failed=lambda _project: False,
         ) if self.tracked(conn) else self.project_bom.read(
-            conn, self.project, ["admin", "designer"], NOW, existing=lambda _project: self.index, queue=self.queued.append, identities=lambda ids: {},
+            conn, self.project, ["admin", "designer"], NOW, existing=lambda _project: self.index, queue=self.queued.append,
+            identities=lambda ids: {}, failed=lambda _project: False,
         )
 
     @staticmethod
@@ -93,6 +94,36 @@ class ProjectBomTests(unittest.TestCase):
             self.assertEqual(self.read(conn)["reading"], 1)
             self.assertEqual(self.read(conn)["reading"], 1)
         self.assertEqual(self.queued, ["prj_1"], "queued once, not on every read")
+
+    def test_a_failed_index_is_not_reported_as_reading(self) -> None:
+        self.index = None
+        with self.store.connection() as conn:
+            status = self.project_bom.read(
+                conn, self.project, ["admin"], NOW, existing=lambda _project: None, queue=self.queued.append,
+                identities=lambda ids: {}, failed=lambda _project: True,
+            )
+        self.assertEqual(status, "without_index", "a build that ended failed is terminal, not still being read")
+        self.assertEqual(self.queued, ["prj_1"], "the build is retried, but on the requeue interval")
+
+    def test_a_queue_that_fails_is_retried_on_the_next_read(self) -> None:
+        self.index = None
+        attempts: list[str] = []
+
+        def queue(project_id: str) -> None:
+            attempts.append(project_id)
+            raise RuntimeError("the worker is offline")
+
+        with self.store.connection() as conn:
+            first = self.project_bom.read(
+                conn, self.project, ["admin"], NOW, existing=lambda _project: None, queue=queue,
+                identities=lambda ids: {}, failed=lambda _project: False,
+            )
+            second = self.project_bom.read(
+                conn, self.project, ["admin"], NOW, existing=lambda _project: None, queue=queue,
+                identities=lambda ids: {}, failed=lambda _project: False,
+            )
+        self.assertEqual((first, second), ("reading", "reading"))
+        self.assertEqual(attempts, ["prj_1", "prj_1"], "a failed enqueue does not block the next try for six hours")
 
     def test_reads_are_spaced_out(self) -> None:
         with self.store.connection() as conn:

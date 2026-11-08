@@ -41,6 +41,17 @@ def _state(conn, project_id: str, build_id: str, state: str, reason: str = "", *
     )
 
 
+def _ended_job(build_id: str) -> dict[str, Any] | None:
+    """The snapshot job of ``build_id`` when it ended without success."""
+
+    from app.services.job_queries import newest_jobs
+
+    found = newest_jobs(kind=JOB_KIND, artifact_key=artifact_key(build_id))
+    if not found or found[0].get("status") not in {"failed", "cancelled"}:
+        return None
+    return found[0]
+
+
 def status_of(conn, project_id: str, build_id: str) -> dict[str, Any]:
     """Whether a release has its snapshot, as a job's progress: ``done`` once taken, ``running`` while queued, ``failed``
     with the reason, ``none`` when nothing was asked."""
@@ -54,6 +65,12 @@ def status_of(conn, project_id: str, build_id: str) -> dict[str, Any]:
         return job_progress("failed", total=1, failed=1, reason=row["reason"])
     if row["state"] == "done":
         return job_progress("done", done=1, total=1)
+    ended = _ended_job(build_id)
+    if ended is not None:
+        return job_progress(
+            "failed", total=1, failed=1,
+            reason=str(ended.get("error_message") or ended.get("message") or "The snapshot job ended without success."),
+        )
     return job_progress("running", total=1)
 
 
