@@ -43,6 +43,11 @@ from app.services.trackers.link_lifecycle import apply_moved_issue
 from app.services.trackers.provenance import resolve_editor
 from app.services.trackers.scheduler import sweep_interval_seconds
 from app.services.trackers.store import issue_number_for_api
+from app.services.trackers._shared import (
+    append_lineage as _append_lineage,
+    load_checkpoint as _load_checkpoint,
+    save_checkpoint_error as _save_sweep_error,
+)
 
 GetIssueFn = Callable[[Destination, str, Optional[str]], IssueRead]
 ListCommentsFn = Callable[
@@ -104,14 +109,6 @@ def _encode_page_cursor(thread_id: str, comment_page: str | None) -> str:
     return json.dumps({"threadId": thread_id, "commentPage": comment_page})
 
 
-def _load_checkpoint(conn: Any, *, kind: str, scope: str) -> dict[str, Any] | None:
-    row = conn.execute(
-        "SELECT * FROM sync_checkpoints WHERE kind = %s AND scope_key = %s",
-        (kind, scope),
-    ).fetchone()
-    return dict(row) if row else None
-
-
 def _ensure_checkpoint(conn: Any, *, kind: str, scope: str) -> None:
     conn.execute(
         """
@@ -166,25 +163,6 @@ def _save_sweep_complete(
     )
 
 
-def _save_sweep_error(
-    conn: Any,
-    *,
-    kind: str,
-    scope: str,
-    error: Mapping[str, Any],
-    retry_after_seconds: int,
-) -> None:
-    conn.execute(
-        """
-        UPDATE sync_checkpoints
-        SET last_error = %s::jsonb,
-            next_run_at = NOW() + (%s * INTERVAL '1 second')
-        WHERE kind = %s AND scope_key = %s
-        """,
-        (json.dumps(dict(error)), retry_after_seconds, kind, scope),
-    )
-
-
 def _live_threads(conn: Any, *, connector_id: str, container_id: str) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
@@ -226,17 +204,6 @@ def _issue_etag(thread: Mapping[str, Any]) -> str | None:
         etag = version.get("etag")
         return str(etag) if etag else None
     return None
-
-
-def _append_lineage(conn: Any, thread_id: str, entry: Mapping[str, Any]) -> None:
-    conn.execute(
-        """
-        UPDATE tracked_threads
-        SET lineage = lineage || %s::jsonb
-        WHERE id = %s
-        """,
-        (json.dumps([dict(entry)]), thread_id),
-    )
 
 
 def _first_absence_at(lineage: Any) -> datetime | None:

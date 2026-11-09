@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Callable, Mapping, Optional
 from uuid import uuid4
 
@@ -31,6 +31,8 @@ from app.services.trackers.errors import ProviderError
 from app.services.trackers.providers import host_kit, host_kits, is_issue_provider, issue_adapter_for, kit_for
 from app.services.trackers.secrets import encrypt_secret
 from app.services.trackers.store import TrackerStore
+from app.services.trackers._shared import qual_checked as _qual
+from app.services.trackers.health import iso8601_duration as _iso8601_duration
 
 BOOTSTRAP_ENV_FIELDS = ("GITHUB_TOKEN",)
 # Hosts and their instance kinds come from ``providers`` (one kit each). Hosts
@@ -43,30 +45,6 @@ ALLOWED_INSTANCE_KINDS = set().union(*INSTANCE_KINDS_BY_PROVIDER.values())
 
 class ConnectorNotFound(KeyError):
     """No connector row for this id."""
-
-
-def _qual(schema: str, table: str) -> str:
-    if not schema.replace("_", "").isalnum():
-        raise ValueError("invalid schema name")
-    return f'"{schema}".{table}'
-
-
-def _iso8601_duration(delta: timedelta) -> str:
-    total = max(0, int(delta.total_seconds()))
-    if total < 60:
-        return f"PT{total}S"
-    minutes, seconds = divmod(total, 60)
-    if minutes < 60:
-        return f"PT{minutes}M" if seconds == 0 else f"PT{minutes}M{seconds}S"
-    hours, minutes = divmod(minutes, 60)
-    if seconds == 0 and minutes == 0:
-        return f"PT{hours}H"
-    parts = f"{hours}H"
-    if minutes:
-        parts += f"{minutes}M"
-    if seconds:
-        parts += f"{seconds}S"
-    return f"PT{parts}"
 
 
 class ConnectorService:

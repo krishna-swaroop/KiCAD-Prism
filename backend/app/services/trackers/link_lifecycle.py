@@ -9,7 +9,6 @@ old URLs and destination overrides cannot misroute later replies.
 from __future__ import annotations
 
 import json
-import uuid
 from dataclasses import dataclass
 from typing import Any, Mapping, Optional
 
@@ -24,6 +23,11 @@ from app.services.trackers.promotion import (
 )
 from app.services.trackers.publication_policy import DispatchPause, PublicationDenied
 from app.services.trackers.store import TrackerStore
+from app.services.trackers._shared import (
+    append_lineage as _append_lineage,
+    new_op_id as _new_op_id,
+    qual_quoted as _qual,
+)
 
 REPROMOTABLE_STATES = ("deleted",)
 PAUSED_TRANSFER_REASON = "transfer_unapproved"
@@ -54,21 +58,6 @@ def can_offer_repromote(thread: Mapping[str, Any]) -> bool:
     return can_repromote(str(thread.get("link_state") or ""))
 
 
-def _qual(schema: str, table: str) -> str:
-    return f'"{schema}"."{table}"'
-
-
-def _append_lineage(conn: Any, thread_id: str, entry: Mapping[str, Any]) -> None:
-    conn.execute(
-        """
-        UPDATE tracked_threads
-        SET lineage = lineage || %s::jsonb
-        WHERE id = %s
-        """,
-        (json.dumps([dict(entry)]), thread_id),
-    )
-
-
 def _active_create_op(conn: Any, thread_id: str) -> Optional[dict]:
     row = conn.execute(
         """
@@ -97,10 +86,6 @@ def _last_confirmed_create_op(conn: Any, thread_id: str) -> Optional[dict]:
         (thread_id,),
     ).fetchone()
     return dict(row) if row else None
-
-
-def _new_op_id() -> str:
-    return f"op_{uuid.uuid4().hex[:12]}"
 
 
 def supersede_live_ops(

@@ -17,7 +17,6 @@ from app.services.trackers.contracts import (
     PROTOCOL_CONFORMANCE_CASES,
     Container,
     Destination,
-    ForgeUser,
     IssueDraft,
     IssuePatch,
     IssueRead,
@@ -36,6 +35,11 @@ from app.services.trackers.forge_client import ForgeClient, read_outcome
 from app.services.trackers.github_auth import API_VERSION, GitHubAppAuth
 from app.services.trackers.github_recovery import IssuePage, IssuePageFetcher, RecoveryCandidate
 from app.services.trackers.http import TrackerHttp
+from app.services.trackers._shared import (
+    compose_body as _compose_body,
+    github_forge_user as _forge_user,
+    github_owner_repo as _owner_repo,
+)
 
 # Fresh poll checkpoints start here; never sent to GitHub as ``since`` (see list_updates).
 DEFAULT_SINCE = "1970-01-01T00:00:00Z"
@@ -398,33 +402,6 @@ def conformance_kind(status: int, *, retry_after: bool = False) -> str:
 
     return classify_read_status(status, retry_after=retry_after)
 
-
-
-def _compose_body(draft: IssueDraft) -> str:
-    parts = [draft.proseBlock.rstrip(), draft.marker.strip()]
-    return "\n\n".join(part for part in parts if part)
-
-
-def _owner_repo(dest: Destination) -> tuple[str, str]:
-    path = (dest.containerPath or "").strip().strip("/")
-    if path.count("/") != 1:
-        raise ProviderError("invalid_request", "GitHub destination path must be owner/repo.")
-    owner, repo = path.split("/", 1)
-    if not owner or not repo:
-        raise ProviderError("invalid_request", "GitHub destination path must be owner/repo.")
-    return owner, repo
-
-
-def _forge_user(payload: Mapping[str, Any]) -> ForgeUser:
-    login = str(payload.get("login") or "")
-    user_type = str(payload.get("type") or "")
-    is_bot = user_type.casefold() == "bot" or login.endswith("[bot]")
-    return ForgeUser(
-        id=str(payload.get("id") or ""),
-        login=login,
-        isBot=is_bot,
-        displayName=str(payload.get("name") or "") or None,
-    )
 
 
 def _is_pull_request(payload: Mapping[str, Any]) -> bool:

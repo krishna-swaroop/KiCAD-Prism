@@ -22,6 +22,7 @@ from app.services.trackers.contracts import ForgeUser, IdentityToken
 from app.services.trackers.errors import ProviderError
 from app.services.trackers.gitlab_auth import api_root_for, web_root_for
 from app.services.trackers.http import TrackerHttp
+from app.services.trackers._shared import split_scopes as _split_scopes
 
 ACCEPT = "application/json"
 DEFAULT_SCOPES: tuple[str, ...] = ("read_user",)
@@ -230,15 +231,6 @@ class GitLabIdentityAdapter:
             expiresAt=expires_at,
             scopes=scopes,
         )
-
-
-def _split_scopes(value: Any) -> list[str]:
-    if isinstance(value, list):
-        return [str(item) for item in value if str(item).strip()]
-    text = str(value or "").strip()
-    if not text:
-        return []
-    return [part for part in text.replace(",", " ").split() if part]
 
 
 def _redact_token_error(exc: ProviderError) -> ProviderError:

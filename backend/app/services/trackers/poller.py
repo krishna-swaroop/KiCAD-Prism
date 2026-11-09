@@ -25,6 +25,10 @@ from app.services.trackers.github_updates import (
 )
 from app.services.trackers.inbox_store import InboxStore
 from app.services.trackers.scheduler import poll_interval_seconds
+from app.services.trackers._shared import (
+    load_checkpoint as _load_checkpoint,
+    save_checkpoint_error as _save_poll_error,
+)
 
 ListUpdatesFn = Callable[[Destination, UpdateCursor], tuple[Sequence[RemoteChange], UpdateCursor]]
 CHECKPOINT_KIND = "poll"
@@ -54,14 +58,6 @@ def _cursor_payload(checkpoint: Mapping[str, Any] | None) -> dict[str, Any]:
     if isinstance(raw, dict):
         return dict(raw)
     return {"since": DEFAULT_SINCE}
-
-
-def _load_checkpoint(conn: Any, *, kind: str, scope: str) -> dict[str, Any] | None:
-    row = conn.execute(
-        "SELECT * FROM sync_checkpoints WHERE kind = %s AND scope_key = %s",
-        (kind, scope),
-    ).fetchone()
-    return dict(row) if row else None
 
 
 def _ensure_checkpoint(conn: Any, *, kind: str, scope: str) -> None:
@@ -113,25 +109,6 @@ def _save_poll_complete(
         WHERE kind = %s AND scope_key = %s
         """,
         (json.dumps({"since": since}), interval, kind, scope),
-    )
-
-
-def _save_poll_error(
-    conn: Any,
-    *,
-    kind: str,
-    scope: str,
-    error: Mapping[str, Any],
-    retry_after_seconds: int,
-) -> None:
-    conn.execute(
-        """
-        UPDATE sync_checkpoints
-        SET last_error = %s::jsonb,
-            next_run_at = NOW() + (%s * INTERVAL '1 second')
-        WHERE kind = %s AND scope_key = %s
-        """,
-        (json.dumps(dict(error)), retry_after_seconds, kind, scope),
     )
 
 

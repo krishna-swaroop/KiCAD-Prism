@@ -14,12 +14,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping
 
-from app.core.config import settings
 from app.services.trackers.contracts import Destination, IssueRead, RemoteIssue
 from app.services.trackers.drafts import (
-    DraftAttribution,
-    DraftRenderInput,
-    build_issue_draft,
     render_issue_body_from_draft,
 )
 from app.services.trackers import attachment_links
@@ -27,7 +23,6 @@ from app.services.trackers.errors import ProviderError
 from app.services.trackers.executor_support import (
     NON_CONSUMING_ERROR_CLASSES,
     apply_provider_error,
-    policy_check,
 )
 from app.services.trackers.github_recovery import (
     RecoveryKind,
@@ -38,6 +33,10 @@ from app.services.trackers.github_recovery import (
 from app.services.trackers.op_store import EXECUTE_DISPATCH, RECOVERY_DISPATCH, OpStore
 from app.services.trackers.connector_runtime import connector_runtime
 from app.services.trackers.providers import issue_web_url
+from app.services.trackers.executor_support import (
+    build_draft_for_ctx as _build_draft,
+    policy_check_for_ctx as _policy_check,
+)
 
 
 @dataclass(frozen=True)
@@ -233,32 +232,6 @@ def _comment_dict_from_row(row: Mapping[str, Any]) -> dict:
         "elementId": row.get("element_id"),
         "metadata": metadata,
     }
-
-
-def _policy_check(conn: Any, ctx: _ExecutionContext) -> None:
-    policy_check(
-        conn,
-        project_id=ctx.project_id,
-        op=ctx.op,
-        destination_generation=int(ctx.policy.get("destination_generation") or 0),
-    )
-
-
-def _build_draft(ctx: _ExecutionContext) -> Any:
-    return build_issue_draft(
-        DraftRenderInput(
-            project_id=ctx.project_id,
-            comment=ctx.comment,
-            connector_id=ctx.destination.connectorId,
-            remote_container_id=ctx.destination.remoteContainerId,
-            op_id=str(ctx.op["id"]),
-            public_base_url=settings.PUBLIC_BASE_URL,
-            attribution=DraftAttribution(
-                display_name=str(ctx.comment.get("author") or "Unknown"),
-                verified=str(ctx.comment.get("authorKind") or "") != "legacy",
-            ),
-        )
-    )
 
 
 def _confirm_create_link(

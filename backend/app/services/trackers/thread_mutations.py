@@ -8,7 +8,6 @@ while preserving the note op and audit lineage.
 from __future__ import annotations
 
 import re
-import uuid
 from dataclasses import dataclass
 from typing import Any, Mapping, Optional
 
@@ -41,6 +40,7 @@ from app.services.trackers.provenance import (
 )
 from app.services.trackers.publication_policy import DispatchPause, PublicationDenied
 from app.services.trackers.store import TrackerStore
+from app.services.trackers._shared import new_op_id as _new_op_id, thread_ready as _thread_ready
 
 THREAD_OPS = frozenset({"update_issue", "post_note"})
 DELETION_NOTE = "This comment was deleted in Prism"
@@ -71,10 +71,6 @@ class ThreadMutationResult:
     thread_id: str | None = None
     reason: str | None = None
     code: str | None = None
-
-
-def _new_op_id() -> str:
-    return f"op_{uuid.uuid4().hex[:12]}"
 
 
 def parse_issue_body_blocks(body: str) -> IssueBodyBlocks | None:
@@ -109,11 +105,6 @@ def compose_outbound_issue_body(
         context_block=blocks.context,
         marker=blocks.marker.raw,
     )
-
-
-def _thread_ready(thread: Mapping[str, Any]) -> bool:
-    external_id = str(thread.get("external_id") or "")
-    return external_id not in ("", "pending")
 
 
 def _enqueue_update_issue(

@@ -21,6 +21,11 @@ from app.services.trackers.publication_policy import (
     PublicationDenied,
 )
 from app.services.trackers.store import TrackerStore
+from app.services.trackers._shared import (
+    live_thread as _live_thread,
+    new_op_id as _new_op_id,
+    qual_quoted as _qual,
+)
 
 SEVERITY_RANK = {"info": 0, "minor": 1, "major": 2, "critical": 3}
 LIVE_CREATE_STATES = tuple(LIVE_STATES)
@@ -41,10 +46,6 @@ class PromotionResult:
     thread_id: str | None = None
     reason: str | None = None
     code: str | None = None
-
-
-def _qual(schema: str, table: str) -> str:
-    return f'"{schema}"."{table}"'
 
 
 def _severity_rank(value: str | None) -> int:
@@ -152,19 +153,6 @@ def _lock_comment(conn: Any, project_id: str, comment_id: str) -> bool:
     ).fetchone())
 
 
-def _live_thread(conn: Any, comment_id: str) -> Optional[dict]:
-    row = conn.execute(
-        """
-        SELECT * FROM tracked_threads
-        WHERE comment_id = %s AND unlinked_at IS NULL
-        ORDER BY id DESC
-        LIMIT 1
-        """,
-        (comment_id,),
-    ).fetchone()
-    return dict(row) if row else None
-
-
 def _active_create_op(conn: Any, thread_id: str) -> Optional[dict]:
     row = conn.execute(
         """
@@ -193,10 +181,6 @@ def _pending_update_op(conn: Any, thread_id: str) -> Optional[dict]:
         (thread_id, list(LIVE_CREATE_STATES)),
     ).fetchone()
     return dict(row) if row else None
-
-
-def _new_op_id() -> str:
-    return f"op_{uuid.uuid4().hex[:12]}"
 
 
 def _new_thread_id() -> str:

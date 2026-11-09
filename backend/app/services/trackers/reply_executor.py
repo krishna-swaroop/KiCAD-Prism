@@ -25,7 +25,6 @@ from app.services.trackers.errors import ProviderError
 from app.services.trackers.executor_support import (
     NON_CONSUMING_ERROR_CLASSES,
     apply_provider_error,
-    policy_check,
 )
 from app.services.trackers.github_recovery import (
     RecoveryKind,
@@ -41,6 +40,7 @@ from app.services.trackers.connector_runtime import connector_runtime
 from app.services.trackers.providers import comment_web_url
 from app.services.trackers.reply_mutations import REPLY_OPS, decode_reply_target
 from app.services.trackers.store import TrackerStore, issue_number_for_api
+from app.services.trackers.executor_support import policy_check_for_ctx as _policy_check
 
 logger = logging.getLogger(__name__)
 
@@ -221,14 +221,6 @@ def _load_reply_context(conn: Any, op: Mapping[str, Any]) -> _ReplyContext:
         destination=destination,
     )
 
-
-def _policy_check(conn: Any, ctx: _ReplyContext) -> None:
-    policy_check(
-        conn,
-        project_id=ctx.project_id,
-        op=ctx.op,
-        destination_generation=int(ctx.policy.get("destination_generation") or 0),
-    )
 
 def _stale_intent(conn: Any, ctx: _ReplyContext, ops: OpStore) -> bool:
     current = conn.execute(

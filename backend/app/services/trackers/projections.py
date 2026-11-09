@@ -26,6 +26,7 @@ from app.services.trackers.promotion import (
     load_policy_row,
 )
 from app.services.trackers.publication_policy import DispatchPause, PublicationDenied
+from app.services.trackers._shared import live_thread as _live_thread
 
 LIVE_OP_STATES = tuple(LIVE_STATES)
 RETRYABLE_OP_STATES = ("failed", "quarantine")
@@ -37,10 +38,6 @@ SECRET_HISTORY_KEYS = frozenset(
         "lineage_of",
     }
 )
-
-
-def _qual(schema: str, table: str) -> str:
-    return f'"{schema}"."{table}"'
 
 
 def _iso8601(dt: Any) -> str | None:
@@ -400,19 +397,6 @@ def _comment_for_projection(conn: Any, project_id: str, comment_id: str) -> dict
         "commit": row.get("anchor_commit"),
     }
     return {"id": comment_id, "replies": [], "anchor": anchor}
-
-
-def _live_thread(conn: Any, comment_id: str) -> Optional[dict]:
-    row = conn.execute(
-        """
-        SELECT * FROM tracked_threads
-        WHERE comment_id = %s AND unlinked_at IS NULL
-        ORDER BY id DESC
-        LIMIT 1
-        """,
-        (comment_id,),
-    ).fetchone()
-    return dict(row) if row else None
 
 
 def _retryable_op(conn: Any, thread_id: str) -> Optional[dict]:
