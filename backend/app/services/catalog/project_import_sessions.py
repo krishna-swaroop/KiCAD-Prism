@@ -32,7 +32,10 @@ def import_job_ended(session: Mapping[str, Any]) -> bool:
         return job[0].get("status") in TERMINAL_STATUSES
     touched = session.get("updated_at") or session.get("created_at")
     if isinstance(touched, str):
-        touched = datetime.fromisoformat(touched.replace("Z", "+00:00"))
+        try:
+            touched = datetime.fromisoformat(touched.replace("Z", "+00:00"))
+        except ValueError:
+            return False
     if not isinstance(touched, datetime):
         return False
     if touched.tzinfo is None:
