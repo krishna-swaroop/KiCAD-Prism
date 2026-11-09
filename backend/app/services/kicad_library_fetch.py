@@ -90,11 +90,16 @@ _FAILURES = {
 
 
 class FetchError(RuntimeError):
-    """A fetch that failed. ``permanent`` ones would fail the same way again."""
+    """A fetch that failed. ``permanent`` ones would fail the same way again.
 
-    def __init__(self, message: str, *, permanent: bool = False) -> None:
+    ``server`` ones are the server's to fix (git or git-lfs missing, a store it cannot write), not the repository's:
+    they record no failed commit, so the scheduled check tries again once the server is fixed.
+    """
+
+    def __init__(self, message: str, *, permanent: bool = False, server: bool = False) -> None:
         super().__init__(message)
         self.permanent = permanent
+        self.server = server
 
 
 def progress_of(line: str) -> int | None:
@@ -221,7 +226,7 @@ def resolve_remote(url: str, ref: str) -> str:
     except subprocess.TimeoutExpired as error:
         raise FetchError(f"No answer from the repository within {_REMOTE_TIMEOUT_SECONDS} seconds") from error
     except OSError as error:
-        raise FetchError(f"git could not run: {error}", permanent=True) from error
+        raise FetchError(f"git could not run: {error}", permanent=True, server=True) from error
     if done.returncode != 0:
         raise _failure(done.stderr, url, "git ls-remote failed")
     found: dict[str, str] = {}
@@ -355,7 +360,7 @@ def _ensure_store(store: Path) -> None:
     store.parent.mkdir(parents=True, exist_ok=True)
     done = subprocess.run(_git("init", "--bare", "-q", str(store)), capture_output=True, text=True, env=_environment())
     if done.returncode != 0:
-        raise FetchError(f"Could not create the library's object store: {_last_line(done.stderr)}", permanent=True)
+        raise FetchError(f"Could not create the library's object store: {_last_line(done.stderr)}", permanent=True, server=True)
 
 
 def _has_commit(store: Path, commit: str) -> bool:
@@ -419,7 +424,7 @@ def fetch_into_store(
         _git("update-ref", f"{_KEEP_REF}{commit}", commit, git_dir=store), capture_output=True, text=True, env=_environment()
     )
     if done.returncode != 0:
-        raise FetchError(f"Could not keep the fetched commit: {_last_line(done.stderr)}", permanent=True)
+        raise FetchError(f"Could not keep the fetched commit: {_last_line(done.stderr)}", permanent=True, server=True)
 
 
 class UnsafeArchive(FetchError):
@@ -658,6 +663,7 @@ def hydrate_lfs(
         raise FetchError(
             f"{len(pointers)} files in this library are stored with Git LFS, and git-lfs is not installed on the server",
             permanent=True,
+            server=True,
         )
     needed, limit = sum(size for _path, _sha, size in pointers), max_bytes()
     if already + needed > limit:
@@ -832,8 +838,9 @@ def run_fetch_job(context: JobContext) -> JobResult:
         kicad_library_store.record_fetch(name, state="failed", error="Cancelled")
         raise
     except FetchError as error:
+        repository_failure = error.permanent and not error.server
         kicad_library_store.record_fetch(
-            name, state="failed", error=str(error)[:500], **({"failed_commit": commit} if error.permanent else {})
+            name, state="failed", error=str(error)[:500], **({"failed_commit": commit} if repository_failure else {})
         )
         if error.permanent:
             raise PermanentJobError(str(error), code="library-fetch-failed") from error
@@ -1129,14 +1136,12 @@ def queue_missing() -> list[str]:
     queued = []
     kicad_libraries.forget_rows()
     libraries, problems = kicad_libraries.configured()
-    # A fetch that failed for good is not retried by a restart: Fetch again, a moved ref or a changed declaration is.
-    failed = kicad_library_store.failed_commits()
     for problem in problems:
         logger.warning("KiCad libraries: %s", problem)
     for library in libraries:
         if library.path and not library.ready:
             logger.warning("KiCad library %s: %s is not a folder.", library.name, library.path)
-        if library.git and not library.ready and library.name not in failed:
+        if library.git and not library.ready:
             request_fetch(library.name, requested_by="startup")
             queued.append(library.name)
     return queued

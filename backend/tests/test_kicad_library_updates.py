@@ -76,16 +76,6 @@ class CheckTests(FetchCase):
         self.assertTrue(updates.check_library("lsf")["queued"])
         self.request_fetch.assert_called_once_with("lsf", commit=second, requested_by=updates.SYSTEM_USER)
 
-    def test_startup_queues_a_library_with_nothing_served_unless_its_fetch_failed_for_good(self) -> None:
-        self.declared()
-        with mock.patch.object(fetch, "request_fetch") as queued, \
-                mock.patch.object(fetch.kicad_library_store, "failed_commits", return_value={}):
-            self.assertEqual(fetch.queue_missing(), ["lsf"])
-        with mock.patch.object(fetch, "request_fetch") as queued, \
-                mock.patch.object(fetch.kicad_library_store, "failed_commits", return_value={"lsf": self.first}):
-            self.assertEqual(fetch.queue_missing(), [])
-        queued.assert_not_called()
-
     def test_a_check_that_cannot_reach_the_remote_records_why_and_fetches_nothing(self) -> None:
         library = self.declared(git=(self.root / "gone").as_uri())
         result = updates.check_library("lsf")

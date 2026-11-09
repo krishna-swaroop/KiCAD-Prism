@@ -764,6 +764,14 @@ class FailedFetchTests(FetchCase):
         self.assertEqual(self.record_fetch.call_args_list[0].kwargs["failed_commit"], None, "a start clears it")
         self.assertEqual(self.record_fetch.call_args.kwargs["failed_commit"], self.first)
 
+    def test_a_failure_the_server_must_fix_records_no_failed_commit(self) -> None:
+        self.declare(self.library())
+        missing = fetch.FetchError("git-lfs is not installed on the server", permanent=True, server=True)
+        with mock.patch.object(fetch, "fetch_version", side_effect=missing), self.assertRaises(fetch.PermanentJobError):
+            fetch.run_fetch_job(_Context({"name": "lsf", "commit": self.first}))
+        self.assertEqual(self.record_fetch.call_args.kwargs["state"], "failed")
+        self.assertNotIn("failed_commit", self.record_fetch.call_args.kwargs)
+
     def test_a_transient_failure_records_no_failed_commit(self) -> None:
         self.declare(self.library())
         with mock.patch.object(fetch, "fetch_version", side_effect=fetch.FetchError("network down")), \
