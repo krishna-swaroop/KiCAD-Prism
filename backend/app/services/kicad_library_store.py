@@ -157,7 +157,10 @@ def update(name: str, fields: dict[str, Any], *, expected_version: int | None, u
         if source_changed and "pinned_commit" not in fields:
             merged["pinned_commit"] = ""
         if merged["update_policy"] == "pinned" and not merged.get("pinned_commit") and not source_changed:
-            merged["pinned_commit"] = current["fetched_commit"] or ""
+            # What is served now, from disk: the row's fetched commit may be the earlier source's
+            # (a subfolder changed and not yet fetched). Nothing served leaves the pin to the next publish.
+            served = _served_commit(current)
+            merged["pinned_commit"] = served
         if merged["update_policy"] == "follow" and "pinned_commit" not in fields:
             merged["pinned_commit"] = ""
         library = _checked(merged)
@@ -395,6 +398,16 @@ def projects_using(variables: Iterable[str]) -> int:
             (names,),
         ).fetchone()
     return int(row["n"])
+
+
+def _served_commit(row: dict[str, Any]) -> str:
+    """The commit a git library's row serves from disk now; ``""`` when nothing of its source is published."""
+
+    try:
+        published = kicad_libraries.validate_entry(_entry(row)).published()
+    except ValueError:
+        return ""
+    return published.commit if published is not None else ""
 
 
 def _checked(fields: dict[str, Any]) -> kicad_libraries.Library:

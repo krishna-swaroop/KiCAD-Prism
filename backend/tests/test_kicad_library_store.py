@@ -96,13 +96,28 @@ class KicadLibraryStoreTests(unittest.TestCase):
         moved = store.update("lsf", {"ref": "v2"}, expected_version=None, updated_by="")
         self.assertEqual((moved["state"], moved["pinnedCommit"], moved["fetchedCommit"]), ("pending", "", COMMIT))
 
+    def serving(self, commit: str | None):
+        served = kicad_libraries.Published(commit=commit, directory=commit, source="") if commit else None
+        return patch.object(kicad_libraries.Library, "published", return_value=served)
+
     def test_pinning_pins_what_is_served_and_following_clears_it(self) -> None:
         store.create(LSF, updated_by="")
         store.record_published("lsf", commit=COMMIT, ref="main", size_bytes=1, requested_by="")
-        frozen = store.update("lsf", {"update_policy": "pinned"}, expected_version=None, updated_by="")
+        with self.serving(COMMIT):
+            frozen = store.update("lsf", {"update_policy": "pinned"}, expected_version=None, updated_by="")
         self.assertEqual((frozen["updatePolicy"], frozen["pinnedCommit"]), ("pinned", COMMIT))
         thawed = store.update("lsf", {"update_policy": "follow"}, expected_version=None, updated_by="")
         self.assertEqual((thawed["updatePolicy"], thawed["pinnedCommit"]), ("follow", ""))
+
+    def test_pinning_while_nothing_of_this_source_is_served_pins_the_next_publish(self) -> None:
+        store.create(LSF, updated_by="")
+        store.record_published("lsf", commit=COMMIT, ref="main", size_bytes=1, requested_by="")
+        store.update("lsf", {"subdir": "lsf.3dshapes"}, expected_version=None, updated_by="")
+        with self.serving(None):  # the earlier subfolder's version is not this source's
+            frozen = store.update("lsf", {"update_policy": "pinned"}, expected_version=None, updated_by="")
+        self.assertEqual((frozen["pinnedCommit"], frozen["fetchedCommit"]), ("", COMMIT))
+        store.record_published("lsf", commit=OTHER, ref="main", size_bytes=1, requested_by="")
+        self.assertEqual(store.get("lsf")["pinnedCommit"], OTHER)
 
     def test_the_history_keeps_the_last_versions_newest_first(self) -> None:
         store.create(LSF, updated_by="")
