@@ -1,0 +1,6 @@
+# Overlay for shared machines, drops the host port bindings
+services:
+  backend:
+    ports: !reset []
+  frontend:
+    ports: !reset []
