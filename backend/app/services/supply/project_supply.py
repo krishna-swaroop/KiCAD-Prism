@@ -373,13 +373,13 @@ def _costed(conn, project_id: str, variant: str, build_quantity: int, attrition_
 
 
 def _cost_line(row: dict[str, Any], entry: dict[str, Any]) -> list[Any]:
-    from app.services.supply.compliance_draft import _safe
+    from app.services.supply.csv_cells import safe_cell
 
     buy = entry.get("buy") or {}
     return [
-        _safe(row["manufacturer"]), _safe(row["mpn"]), _safe(row["references"]), row["quantity"], entry["need"],
+        safe_cell(row["manufacturer"]), safe_cell(row["mpn"]), safe_cell(row["references"]), row["quantity"], entry["need"],
         entry.get("status") or "not tracked", "" if entry.get("stock") is None else entry["stock"], entry.get("lead_time_days") or "",
-        _safe(buy.get("connector_name", "")), _safe(buy.get("sku", "")), buy.get("unit_price", ""), buy.get("currency", ""),
+        safe_cell(buy.get("connector_name", "")), safe_cell(buy.get("sku", "")), buy.get("unit_price", ""), buy.get("currency", ""),
         buy.get("extended", "") if not entry.get("bought_with") else "with another line",
     ]
 

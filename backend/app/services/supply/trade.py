@@ -10,10 +10,10 @@ import csv
 import io
 from typing import Any, Mapping, Sequence
 
+from app.services.supply.csv_cells import safe_cell
 from app.services.supply import bom_lookup, facts
 
 HEADER = ("Manufacturer", "Part number", "Per board", "References", "ECCN", "Export control", "Tariff code US", "Tariff code EU", "Other tariff codes", "Gaps")
-_RISKY_START = ("=", "+", "-", "@", "\t", "\r")
 _TARIFFS = ("hts_us", "hts_eu")
 _OTHER_TARIFFS = ("hts_cn", "hts_ca", "hts_jp", "hts_kr", "hts_mx", "hts_br")
 # What a distributor writes for "no specific control": EAR99 is the catch-all class for items not on the Commerce Control List.
@@ -88,11 +88,6 @@ def build(conn, rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _safe(cell: object) -> str:
-    text = str(cell)
-    return "'" + text if text.startswith(_RISKY_START) else text
-
-
 _CONTROL_TEXT = {"none": "No specific control (EAR99)", "controlled": "Controlled", "disputed": "Disputed", "unknown": "Unknown"}
 
 
@@ -104,7 +99,7 @@ def to_csv(report: Mapping[str, Any]) -> str:
     for item in report["parts"]:
         other = "; ".join(f"{name.replace('hts_', '').upper()} {', '.join(values)}" for name, values in item["other"].items())
         writer.writerow([
-            _safe(item["manufacturer"]), _safe(item["mpn"]), item["quantity"], _safe(item["references"]), _safe(", ".join(item["eccn"])),
-            _CONTROL_TEXT[item["control"]], _safe(", ".join(item["hts_us"])), _safe(", ".join(item["hts_eu"])), _safe(other), _safe(" ".join(item["gaps"])),
+            safe_cell(item["manufacturer"]), safe_cell(item["mpn"]), item["quantity"], safe_cell(item["references"]), safe_cell(", ".join(item["eccn"])),
+            _CONTROL_TEXT[item["control"]], safe_cell(", ".join(item["hts_us"])), safe_cell(", ".join(item["hts_eu"])), safe_cell(other), safe_cell(" ".join(item["gaps"])),
         ])
     return out.getvalue()

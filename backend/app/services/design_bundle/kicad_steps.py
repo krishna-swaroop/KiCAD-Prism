@@ -30,6 +30,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path, PurePosixPath
 from typing import Callable, Mapping
 
+from app.core.file_touch import touch_used
 from app.core.config import settings
 from app.services import kicad_tools
 
@@ -254,7 +255,7 @@ class UpgradeCache:
         except OSError:
             upgraded = None
         if upgraded is not None:
-            _stamp(cached)
+            touch_used(cached)
             with self._lock:
                 self.hits += 1
             return upgraded
@@ -394,7 +395,7 @@ def refill_board(
     cached = refill_cache_root() / f"{key}.kicad_pcb"
     if cached.is_file():
         shutil.copyfile(cached, target)
-        _stamp(cached)
+        touch_used(cached)
         return target, True
     shutil.copyfile(sources / board_path, target)
     project = sources / str(config["project_file"])
@@ -439,15 +440,6 @@ def upgrade_cache_root() -> Path:
 
 #: A ``.part`` file older than this died before its rename; the GLB cache's grace.
 PART_GRACE_SECONDS = 3600
-
-
-def _stamp(path: Path) -> None:
-    """Mark a cached entry used, so retention evicts by last use."""
-
-    try:
-        os.utime(path, None)
-    except OSError:
-        pass  # a lost stamp only makes eviction earlier
 
 
 def _prune_cache(root: Path, suffixes: tuple[str, ...], *, unused_before: float, now: float) -> dict[str, int]:

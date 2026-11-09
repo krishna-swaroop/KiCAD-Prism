@@ -38,6 +38,7 @@ import threading
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from app.core.file_touch import touch_used
 from app.core.config import settings
 from app.services import kicad_libraries
 
@@ -120,7 +121,7 @@ def load(key: str) -> bytes | None:
         payload = path.read_bytes()
     except OSError:
         return None
-    _stamp(path)
+    touch_used(path)
     return payload
 
 
@@ -162,15 +163,6 @@ def prune(*, unused_before: float, now: float) -> dict[str, int]:
         else:
             kept_bytes += info.st_size
     return {"removed": removed, "bytes": kept_bytes}
-
-
-def _stamp(path: Path) -> None:
-    """Mark a cached entry used, so retention evicts by last use."""
-
-    try:
-        os.utime(path, None)
-    except OSError:
-        pass  # a lost stamp only makes eviction earlier
 
 
 def _executor_identity() -> str:

@@ -63,14 +63,6 @@ def binary(name: str) -> Path:
     return path
 
 
-def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
 def engine_descriptors() -> list[dict[str, Any]]:
     """What the installed ``sim-worker`` reports; empty when it is not installed."""
 

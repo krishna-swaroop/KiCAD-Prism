@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any
 
+from app.services.catalog.metadata_normalization import dedupe
 from app.services.catalog.component_read_models import (
     CatalogComponentReadModels,
     STATE_FILES_PARTIAL,
@@ -65,16 +66,6 @@ class CatalogComponentListPlan:
     lightweight: bool
 
 
-def _dedupe(values: Iterable[str]) -> list[str]:
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for value in values:
-        if value and value not in seen:
-            seen.add(value)
-            ordered.append(value)
-    return ordered
-
-
 class CatalogComponentQueries:
     """Plan and execute component list reads using supplied read models/connection."""
 
@@ -114,7 +105,7 @@ class CatalogComponentQueries:
         if category is not None:
             filters.append(f"{revision_ref}.category = %s")
             params.append(category)
-        requested_workflow_stages = _dedupe(
+        requested_workflow_stages = dedupe(
             [
                 normalized
                 for raw_stage in str(workflow_stage or "").split(",")
