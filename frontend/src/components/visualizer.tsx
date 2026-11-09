@@ -63,6 +63,7 @@ import {
 import { usePrismCrossProbe } from "@/hooks/use-prism-cross-probe";
 import { registerProjectViewerState } from "@/lib/project-viewer-state";
 import { applyViewState } from "@/lib/view-state-apply";
+import { isAbortError } from "@/lib/jobs";
 import { buildViewStateParams, parseViewState } from "@/lib/view-state-url";
 import {
     projectAssemblyState,
@@ -98,9 +99,6 @@ function selectionContextForTab(tab: VisualizerTab): PrismSelectionContext {
     if (tab === "bom" || tab === "assembly") return "BOM";
     return "SCH";
 }
-
-const isAbortError = (error: unknown): boolean =>
-    error instanceof DOMException && error.name === "AbortError";
 
 const buildViewerKey = (
     kind: "schematic" | "pcb",

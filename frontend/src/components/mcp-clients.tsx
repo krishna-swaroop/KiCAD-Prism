@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog, useConfirmTarget } from "@/components/ui/confirm-dialog";
 import { fetchApi, readApiError } from "@/lib/api";
+import { formatDate } from "@/lib/format-date";
 
 /** One MCP client the signed-in person has connected (ADR scripting-and-mcp §3.6). */
 export interface McpClientGrant {
@@ -12,12 +13,6 @@ export interface McpClientGrant {
     scopes: string[];
     created_at: string;
     last_used_at: string | null;
-}
-
-function formatDate(value: string | null): string {
-    if (!value) return "never";
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? "unknown" : date.toLocaleDateString();
 }
 
 /**

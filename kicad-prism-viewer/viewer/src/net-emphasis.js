@@ -7,6 +7,8 @@
 // fragment when its net is the active net or is marked here. Net id 0 is
 // "no net" and is never emphasised.
 
+import { normalizeIdSet } from "./id-set.js";
+
 export const MIN_NET_MASK_CAPACITY = 64;
 export const NET_EMPHASIS_ON = 1;
 export const NET_EMPHASIS_OFF = 0;
@@ -22,16 +24,7 @@ fn netEmphasized(id: u32) -> bool {
 `;
 
 /** Accept only real net ids: positive 32-bit integers. */
-export function normalizeNetIds(ids) {
-  const normalized = new Set();
-  if (ids == null) return normalized;
-  for (const value of ids) {
-    const id = Number(value);
-    if (!Number.isInteger(id) || id <= 0 || id > 0xffffffff) continue;
-    normalized.add(id);
-  }
-  return normalized;
-}
+export const normalizeNetIds = normalizeIdSet;
 
 /**
  * Buffer capacity (u32 slots) covering every id, a power of two with a floor

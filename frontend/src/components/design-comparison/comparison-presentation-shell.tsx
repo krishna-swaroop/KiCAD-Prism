@@ -66,6 +66,7 @@ import type {
     KiCadProjectDiffBundle,
 } from "./types";
 import type { ComparisonPresentationMode } from "./comparison-url";
+import { isAbortError } from "@/lib/jobs";
 import { useComparisonCameraSync } from "./use-comparison-camera-sync";
 import {
     logComparisonDebug,
@@ -114,10 +115,6 @@ const ignoreRightRailChange = () => undefined;
  * a hang into an error, not to police performance.
  */
 const PREPARE_COMPARISON_TIMEOUT_MS = 45_000;
-
-function isAbortError(error: unknown): boolean {
-    return error instanceof DOMException && error.name === "AbortError";
-}
 
 function normalizedPath(value: string): string {
     return value.replace(/\\/g, "/").replace(/^\.\//, "");

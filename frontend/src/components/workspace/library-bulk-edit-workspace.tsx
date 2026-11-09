@@ -46,6 +46,7 @@ import type {
   CatalogComponent, CatalogMetadataBatch, CatalogMetadataField, CatalogMetadataFieldType,
   CatalogMetadataGridPreferences, WorkflowStage,
 } from "@/types/catalog";
+import { componentFieldValue } from "./library-component-metadata-form";
 
 const PAGE_SIZE = 100;
 const DEFAULT_WIDTH = 180;
@@ -66,11 +67,6 @@ const EMPTY_FIELD: FieldDraft = { key: "", label: "", description: "", type: "te
 
 function cloneStaged(value: StagedRows): StagedRows {
   return Object.fromEntries(Object.entries(value).map(([key, row]) => [key, { ...row, patch: { ...row.patch } }]));
-}
-
-function componentFieldValue(component: CatalogComponent, field: CatalogMetadataField): string {
-  if (field.storage_kind === "extra") return String(component.extra_fields?.[field.storage_key] ?? "");
-  return String((component as unknown as Record<string, unknown>)[field.storage_key] ?? "");
 }
 
 /** Stage one cell; a value equal to the component's own drops the edit. */

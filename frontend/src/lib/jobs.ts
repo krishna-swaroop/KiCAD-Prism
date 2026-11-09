@@ -75,7 +75,7 @@ export function isTerminalJobStatus(status: PrismJobState): boolean {
 }
 
 export function isAbortError(error: unknown): boolean {
-    return error instanceof DOMException && error.name === "AbortError";
+    return (error instanceof DOMException || error instanceof Error) && error.name === "AbortError";
 }
 
 export class JobStalledError extends Error {

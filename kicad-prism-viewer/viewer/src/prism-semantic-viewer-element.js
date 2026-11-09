@@ -1,5 +1,6 @@
 import { ANALYTIC_BUNDLE_SCHEMA } from "./analytic-scene.js";
 import viewerCss from "../styles.css";
+import { escapeHtml } from "./escape-html.js";
 import { AssetCache } from "./asset-cache.js";
 import { absolutizeAssetPaths, bundleIsFinal } from "./bundle-urls.js";
 import { mountStandaloneViewer, mountSystemViewer } from "./main.js";
@@ -128,13 +129,6 @@ function shellHtml() {
       </aside>
     </main>
   `;
-}
-
-function escapeHtml(value) {
-  return String(value).replace(
-    /[&<>"']/g,
-    (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character],
-  );
 }
 
 async function fetchJson(url, timings = null, label = "fetch", signal = undefined) {

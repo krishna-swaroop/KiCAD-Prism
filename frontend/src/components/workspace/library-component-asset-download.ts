@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 import { fetchJson } from "@/lib/api";
+import { isAbortError } from "@/lib/jobs";
 import { useCommittedRef } from "@/hooks/use-committed-ref";
 import type { CatalogAsset, CatalogComponent, CatalogRepresentation } from "@/types/catalog";
 
@@ -58,10 +59,6 @@ export type ReleasedAssetDownloadOptions = {
 };
 
 type DownloadSubject = Pick<CatalogComponent, "revision_id" | "released_revision_id" | "representations">;
-
-function isAbortError(reason: unknown): boolean {
-  return reason instanceof Error && reason.name === "AbortError";
-}
 
 function isCompleteRepresentation(representation: CatalogRepresentation): boolean {
   return Boolean(representation.symbol?.id && representation.footprint?.id);

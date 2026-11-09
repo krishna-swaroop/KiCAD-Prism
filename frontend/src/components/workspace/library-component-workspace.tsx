@@ -119,6 +119,7 @@ import {
 import { useReleasedAssetDownload } from "./library-component-asset-download";
 import { resolveLibraryPreviewPairAssetIds } from "./library-preview-pair";
 import { useLibraryComponentValidation } from "./library-component-validation";
+import { isCatalogComponent } from "./library-component-guards";
 
 type ComponentTab = "overview" | "assets" | "revisions" | "review" | "usage" | "sourcing" | "audit";
 
@@ -175,15 +176,6 @@ const VALIDATION_LABELS: Record<CatalogValidationStatus, string> = {
  * It checks the fields the header commits to, not the whole shape, because
  * those are what the crash was about.
  */
-function isCatalogComponent(value: unknown): value is CatalogComponent {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<CatalogComponent>;
-  return typeof candidate.id === "string"
-    && typeof candidate.revision_id === "string"
-    && typeof candidate.validation === "object"
-    && candidate.validation !== null;
-}
-
 function OverviewPanel({ component, canMutate, onEdit }: { component: CatalogComponent; canMutate: boolean; onEdit: () => void }) {
   const requiredAttached = component.assets.filter((asset) => asset.required).length;
 

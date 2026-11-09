@@ -1,10 +1,5 @@
 import type { BudgetConnector } from "@/types/supply";
-
-function hoursMinutes(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  return hours > 0 ? `${hours} h ${minutes} min` : `${minutes} min`;
-}
+import { hoursMinutes } from "./supply-format";
 
 interface Segment {
   id: string;

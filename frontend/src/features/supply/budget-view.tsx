@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { Link } from "react-router-dom";
 
 import type { BudgetCall, BudgetConnector } from "@/types/supply";
+import { hoursMinutes } from "./supply-format";
 import { partHref } from "./supply-views";
 import { getBudget } from "./tracking-api";
 import { useLoaded } from "./use-loaded";
@@ -14,12 +15,6 @@ const PURPOSES: ReadonlyArray<{ id: string; label: string; tone: string }> = [
   { id: "oneoff", label: "One-off", tone: "bg-warning/60" },
   { id: "spare", label: "Spare", tone: "bg-success" },
 ];
-
-function hoursMinutes(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  return hours > 0 ? `${hours} h ${minutes} min` : `${minutes} min`;
-}
 
 function totalsByPurpose(rows: readonly BudgetCall[]): Map<string, number> {
   const totals = new Map<string, number>();

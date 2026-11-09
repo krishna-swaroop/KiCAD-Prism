@@ -1,3 +1,5 @@
+import { escapeHtml } from "./escape-html.js";
+
 export class BomViewer {
   static async create(container, url, callbacks = {}) {
     const response = await fetch(url, { cache: "default" });
@@ -212,13 +214,6 @@ function importantColumn(column) {
     "Footprint",
     "Value",
   ].includes(column);
-}
-
-function escapeHtml(value) {
-  return String(value ?? "").replace(
-    /[&<>"']/g,
-    (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character],
-  );
 }
 
 function cssEscape(value) {
