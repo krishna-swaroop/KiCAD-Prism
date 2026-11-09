@@ -11,24 +11,16 @@ of failing the call it describes — the audit is a record, not part of the read
 from __future__ import annotations
 
 import logging
-from contextlib import contextmanager
-from typing import Any, Iterator
+from typing import Any
 
 from app.core import request_context
 from app.services.mcp import registry
-from app.services.postgres_database import database
+from app.services.workspace_connection import connect
 
 logger = logging.getLogger(__name__)
 
 _MIN_LIMIT = 1
 _MAX_LIMIT = 500
-
-
-@contextmanager
-def connect() -> Iterator[Any]:
-    with database.connection() as conn:
-        conn.execute("SET search_path TO workspace, public")
-        yield conn
 
 
 def result_revision(

@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api import supply_connectors
+from app.api.supply_store import store as _store
 from app.api.supply_call import run_supply
 from app.api.supply_models import Items
 from app.api.supply_parts_models import (
@@ -23,11 +24,6 @@ from app.services.supply import catalog_read, component_parts, cross_reference, 
 
 router = APIRouter(prefix="/api/supply", tags=["supply"])
 _run = partial(run_supply, invalid="invalid_request")
-
-
-def _store():
-    # Resolved per call so a replaced connector service (tests) brings its own store.
-    return supply_connectors.service.store
 
 
 @router.get("/parts", response_model=SupplyPartsPage, response_model_exclude_unset=True)

@@ -23,6 +23,7 @@ from typing import Any
 from app.core.config import settings
 from app.core.links import project_url
 from app.services.mcp import invoke
+from app.services.mcp.schema import object_schema as _object
 from app.services.mcp.registry import READ_ONLY_ANNOTATIONS, Tool, presenter, register
 
 
@@ -40,15 +41,6 @@ _IMPACTS = (
 _DEFAULT_LIMIT = 50
 _MAX_LIMIT = 200
 
-
-
-def _object(properties: dict[str, Any], required: tuple[str, ...] = ()) -> dict[str, Any]:
-    return {
-        "type": "object",
-        "properties": properties,
-        "required": list(required),
-        "additionalProperties": False,
-    }
 
 
 _PROJECT_ID = {"type": "string", "description": "The Prism project id."}

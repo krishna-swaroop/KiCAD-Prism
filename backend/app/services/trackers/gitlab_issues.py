@@ -44,6 +44,7 @@ from app.services.trackers.forge_client import ForgeClient, read_outcome
 from app.services.trackers.github_updates import parse_iso8601
 from app.services.trackers.gitlab_auth import GitLabBotAuth, _visibility
 from app.services.trackers.http import TrackerHttp
+from app.services.trackers._shared import compose_body as _compose_body
 
 # Fresh poll checkpoints start here and are never sent as ``updated_after``.
 DEFAULT_SINCE = "1970-01-01T00:00:00Z"
@@ -377,11 +378,6 @@ def project_ref(dest: Destination) -> str:
         raise ProviderError("invalid_request", "GitLab destination path must be group/project.")
     return quote(path, safe="")
 
-
-
-def _compose_body(draft: IssueDraft) -> str:
-    parts = [draft.proseBlock.rstrip(), draft.marker.strip()]
-    return "\n\n".join(part for part in parts if part)
 
 
 def _forge_user(payload: Mapping[str, Any]) -> ForgeUser:

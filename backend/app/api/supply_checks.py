@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
-from app.api import supply_connectors
+from app.api.supply_store import store as _store
 from app.api.supply_call import run_supply
 from app.api.supply_checks_models import CheckProgress, CheckStarted, NewCheck
 from app.core.security import AuthenticatedUser, require_supply_reader, require_supply_tracker
@@ -15,10 +15,6 @@ from app.services.supply import oneoff
 
 router = APIRouter(prefix="/api/supply/checks", tags=["supply"])
 _run = partial(run_supply, missing=True)
-
-
-def _store():
-    return supply_connectors.service.store
 
 
 @router.post("", status_code=201, response_model=CheckStarted)

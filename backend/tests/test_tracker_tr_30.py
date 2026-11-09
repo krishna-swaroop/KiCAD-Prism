@@ -234,7 +234,7 @@ class ThreadMutationPostgresTests(unittest.TestCase):
         self.conn.commit()
         self.forge.seed_issue(body=remote_body)
 
-        with patch("app.services.trackers.thread_executor.settings.PUBLIC_BASE_URL", "https://prism.example"):
+        with patch("app.core.config.settings.PUBLIC_BASE_URL", "https://prism.example"):
             execute_thread_claimed_op(self.ops.get(OP_UPDATE))
 
         self.assertEqual(self.ops.get(OP_UPDATE)["state"], "confirmed")
@@ -389,7 +389,7 @@ class ThreadMutationPostgresTests(unittest.TestCase):
         self.conn.commit()
 
         self.forge.seed_issue(body=remote_body, title="Human changed title")
-        with patch("app.services.trackers.thread_executor.settings.PUBLIC_BASE_URL", "https://prism.example"):
+        with patch("app.core.config.settings.PUBLIC_BASE_URL", "https://prism.example"):
             execute_thread_claimed_op(self.ops.get(OP_UPDATE))
         [(_ref, issue_patch)] = self.forge.update_patches
         self.assertIsNone(issue_patch.title)

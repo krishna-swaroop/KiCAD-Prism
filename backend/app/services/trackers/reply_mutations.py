@@ -24,6 +24,7 @@ from app.services.trackers.promotion import (
     load_policy_row,
 )
 from app.services.trackers.provenance import body_hash
+from app.services.trackers._shared import thread_ready as _thread_ready
 
 REPLY_TARGET_PREFIX = "reply:"
 REPLY_OPS = frozenset({"add_comment", "edit_comment", "delete_comment"})
@@ -64,11 +65,6 @@ def _thread_enqueueable(thread: Mapping[str, Any]) -> bool:
     """A live thread may accept reply ops while root creation is still pending."""
 
     return str(thread.get("external_id") or "") not in ("",)
-
-
-def _thread_ready(thread: Mapping[str, Any]) -> bool:
-    external_id = str(thread.get("external_id") or "")
-    return external_id not in ("", "pending")
 
 
 def _reply_link(conn: Any, reply_id: str) -> Optional[dict]:

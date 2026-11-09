@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.api import supply_connectors
+from app.api.supply_store import store as _store
 from app.api.supply_call import run_supply
 from app.api.supply_compliance_models import Declaration, LoadList, SupplyCompliance, SupplySvhcList
 from app.core.security import AuthenticatedUser, require_admin, require_supply_reader, require_supply_writer
@@ -21,11 +21,6 @@ from app.services.supply import compliance, facts, parts
 
 router = APIRouter(prefix="/api/supply", tags=["supply"])
 _run = partial(run_supply, invalid="invalid_compliance")
-
-
-def _store():
-    # Resolved per call so a replaced connector service (tests) brings its own store.
-    return supply_connectors.service.store
 
 
 @router.get("/compliance/svhc", response_model=SupplySvhcList)

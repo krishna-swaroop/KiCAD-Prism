@@ -11,7 +11,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends
 
-from app.api import supply_connectors
+from app.api.supply_store import store as _store
 from app.api.supply_call import run_supply
 from app.api.supply_review_models import (
     AcceptMatchedRequest, AliasConfirmed, AliasUndone, ChoiceRequest, ConfirmAliasRequest, ListingsRejected, MakerChosen, MatchedAccepted, NumbersCounted, NumbersRequest, PinRequest,
@@ -22,11 +22,6 @@ from app.services.supply import discovery, parts, review, settle
 
 router = APIRouter(prefix="/api/supply/review", tags=["supply"])
 _run = partial(run_supply, invalid="invalid_request")
-
-
-def _store():
-    # Resolved per call so a replaced connector service (tests) brings its own store.
-    return supply_connectors.service.store
 
 
 @router.get("", response_model=SupplyReviewQueue)

@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api import supply_connectors
+from app.api.supply_store import store as _store
 from app.api.supply_call import run_supply
 from app.core.security import AuthenticatedUser, require_admin, require_supply_approver, require_supply_reader
 from app.services.supply.inventory import sources, sync
@@ -21,11 +22,6 @@ from app.services.supply.inventory.inventree import InvenTreeClient
 
 router = APIRouter(prefix="/api/supply/inventory-sources", tags=["supply"])
 _run = partial(run_supply, upstream=True)
-
-
-def _store():
-    # Resolved per call so a replaced connector service (tests) brings its own store and keyring.
-    return supply_connectors.service.store
 
 
 def _keyring():

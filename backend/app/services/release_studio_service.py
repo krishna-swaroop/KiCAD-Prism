@@ -11,13 +11,12 @@ import hashlib
 import json
 import secrets
 import uuid
-from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any, Iterator, Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
 from app.core import errors
 from app.release_studio.canonical import sha256_canonical
-from app.services.postgres_database import database
+from app.services.workspace_connection import connect
 
 CANDIDATE_STATUSES = ("draft", "building", "built", "failed", "superseded", "frozen")
 
@@ -32,13 +31,6 @@ def _now_iso() -> str:
 
 def _new_id(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:16]}"
-
-
-@contextmanager
-def connect() -> Iterator[Any]:
-    with database.connection() as conn:
-        conn.execute("SET search_path TO workspace, public")
-        yield conn
 
 
 # ---------------------------------------------------------------------------

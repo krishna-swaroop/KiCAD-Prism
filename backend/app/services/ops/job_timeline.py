@@ -17,11 +17,12 @@ the route does that. Nothing here is async.
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from app.core.redaction import redact_text, redact_value
+from app.services.job_rows import timestamp
 from app.services.job_runtime import JobLogNotFound, tail_job_log
 from app.services.job_service import jobs
 from app.services.postgres_database import database
@@ -52,16 +53,6 @@ _EXIT_CODE = re.compile(r"exited with code (-?\d+)")
 _ABSOLUTE_PATH = re.compile(r"(?<![\w:/.~-])(?:/[\w.@+-]+)+/([\w.@+-]+)")
 _TRACEBACK = "Traceback (most recent call last):"
 _FRAME = re.compile(r'^\s*File ".*", line \d+')
-
-
-def _text(value: Any) -> str | None:
-    """A timestamp from the job decoder or a database row, as ISO text."""
-
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value.astimezone(timezone.utc).isoformat()
-    return str(value)
 
 
 def _moment(value: Any) -> datetime | None:
@@ -232,7 +223,7 @@ def _claims_held(job_id: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]
                 "slot_number": int(row["slot_number"]),
                 "fence": row["fence"],
                 "lease_owner": str(row["lease_owner"] or ""),
-                "lease_expires_at": _text(row["lease_expires_at"]),
+                "lease_expires_at": timestamp(row["lease_expires_at"]),
             }
             for row in slots
         ],
@@ -242,7 +233,7 @@ def _claims_held(job_id: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]
                 "mode": str(row["mode"] or ""),
                 "fence": row["fence"],
                 "lease_owner": str(row["lease_owner"] or ""),
-                "lease_expires_at": _text(row["lease_expires_at"]),
+                "lease_expires_at": timestamp(row["lease_expires_at"]),
             }
             for row in locks
         ],

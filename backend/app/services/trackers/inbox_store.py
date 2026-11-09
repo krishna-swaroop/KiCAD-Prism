@@ -9,11 +9,10 @@ inbox. Hint claims use the same lease/fence pattern as ops.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 from typing import Any, Mapping, Optional, Sequence
 from uuid import uuid4
 
-from app.services.trackers.schema import FORBIDDEN_COLUMNS
+from app.services.trackers._shared import dump_row as _dump
 
 HINT_STATES = ("pending", "applied", "ignored", "failed")
 CHECKPOINT_KINDS = ("poll", "sweep", "recovery")
@@ -75,21 +74,6 @@ def apply_schema(conn: Any) -> None:
         """,
         prepare=False,
     )
-
-
-def _dump(row: Mapping[str, Any] | None) -> Optional[dict]:
-    if row is None:
-        return None
-    leaked = set(row) & FORBIDDEN_COLUMNS
-    if leaked:
-        raise ValueError(f"owner/repo column leaked: {sorted(leaked)}")
-    out = {}
-    for key, value in row.items():
-        if isinstance(value, datetime):
-            out[key] = value.astimezone(timezone.utc)
-        else:
-            out[key] = value
-    return out
 
 
 class InboxStore:

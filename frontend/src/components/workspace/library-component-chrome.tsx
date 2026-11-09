@@ -14,7 +14,7 @@ const DATE_TIME_FORMAT = new Intl.DateTimeFormat(undefined, {
   timeStyle: "short",
 });
 
-export const formatDate = (value: string) => {
+export const formatDate = (value?: string) => {
   if (!value) return "—";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : DATE_TIME_FORMAT.format(date);

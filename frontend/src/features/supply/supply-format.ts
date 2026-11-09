@@ -208,3 +208,9 @@ export function parseThreshold(text: string): number | null | undefined {
   if (trimmed === "") return null;
   return /^\d+$/.test(trimmed) ? Number(trimmed) : undefined;
 }
+
+export function hoursMinutes(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return hours > 0 ? `${hours} h ${minutes} min` : `${minutes} min`;
+}

@@ -8,18 +8,9 @@ webhook health. They are ``ops_read`` diagnostics, listed only while
 
 from __future__ import annotations
 
-from typing import Any
 
 from app.services.mcp.registry import READ_ONLY_ANNOTATIONS, Tool, register
-
-
-def _object(properties: dict[str, Any], required: tuple[str, ...] = ()) -> dict[str, Any]:
-    return {
-        "type": "object",
-        "properties": properties,
-        "required": list(required),
-        "additionalProperties": False,
-    }
+from app.services.mcp.schema import object_schema as _object
 
 
 register(

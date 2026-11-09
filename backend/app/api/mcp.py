@@ -39,6 +39,7 @@ from urllib.parse import quote, urlsplit
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
+from app.api.mcp_base_url import base_url as _base_url
 from app.core import policy
 from app.core.config import settings
 from app.core.links import parse_resource_uri
@@ -93,13 +94,6 @@ _RESOURCE_TEMPLATES = (
         "description": "The revision's grouped engineering BOM.",
     },
 )
-
-
-def _base_url(request: Request) -> str:
-    configured = settings.PUBLIC_BASE_URL.strip().rstrip("/")
-    if configured:
-        return configured
-    return str(request.base_url).rstrip("/")
 
 
 def _unauthorized(request: Request) -> JSONResponse:

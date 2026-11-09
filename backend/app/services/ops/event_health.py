@@ -12,29 +12,13 @@ redactor (D22), as does the whole result.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from datetime import datetime, timezone
-from typing import Any, Iterator
+from typing import Any
 from urllib.parse import urlsplit
 
 from app.core.config import settings
 from app.core.redaction import REDACTED, redact_text, redact_value
-from app.services.postgres_database import database
-
-
-@contextmanager
-def connect() -> Iterator[Any]:
-    """A workspace connection, the same seam the other ops stores read."""
-
-    with database.connection() as conn:
-        conn.execute("SET search_path TO workspace, public")
-        yield conn
-
-
-def _iso(value: datetime | None) -> str | None:
-    if value is None:
-        return None
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+from app.services.ops.timefmt import iso_z as _iso
+from app.services.workspace_connection import connect
 
 
 def _host(url: object) -> str:

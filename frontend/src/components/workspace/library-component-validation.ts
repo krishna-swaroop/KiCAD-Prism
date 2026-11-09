@@ -3,8 +3,9 @@ import { toast } from "sonner";
 
 import { getValidationJob, queueComponentValidation } from "./catalog-client";
 import { useCommittedRef } from "@/hooks/use-committed-ref";
-import { watchPrismJob, type PrismJobStatus } from "@/lib/jobs";
+import { isAbortError, watchPrismJob, type PrismJobStatus } from "@/lib/jobs";
 import type { CatalogComponent } from "@/types/catalog";
+import { isCatalogComponent } from "./library-component-guards";
 
 /**
  * Catalog KLC validation is a resumable fenced job. The browser watches the
@@ -28,19 +29,6 @@ export type CatalogValidationJobPayload = {
 };
 
 const MISSING_COMPONENT_ERROR = "Validation did not return an updated component.";
-
-export function isValidationWatchAbort(reason: unknown): boolean {
-  return reason instanceof DOMException && reason.name === "AbortError";
-}
-
-function isCatalogComponent(value: unknown): value is CatalogComponent {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<CatalogComponent>;
-  return typeof candidate.id === "string"
-    && typeof candidate.revision_id === "string"
-    && typeof candidate.validation === "object"
-    && candidate.validation !== null;
-}
 
 function readErrors(source: unknown): Array<{ error: string }> {
   if (!Array.isArray(source)) return [];
@@ -95,7 +83,7 @@ export async function resolveCatalogValidationResult(
       component = readComponent(legacy);
       if (!errors.length) errors = collectErrors(legacy);
     } catch (reason) {
-      if (isValidationWatchAbort(reason)) throw reason;
+      if (isAbortError(reason)) throw reason;
     }
   }
   if (component) return { kind: "completed", component };
@@ -195,7 +183,7 @@ export function useLibraryComponentValidation({
       applyCatalogValidationOutcome(outcome);
       if (outcome.kind === "completed") onRefreshRef.current();
     } catch (reason) {
-      if (isValidationWatchAbort(reason) || controller.signal.aborted) return;
+      if (isAbortError(reason) || controller.signal.aborted) return;
       if (componentIdRef.current !== originatingId) return;
       toast.error(reason instanceof Error ? reason.message : String(reason));
     } finally {

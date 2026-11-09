@@ -7,6 +7,7 @@ import { useNavigate } from "react-router-dom";
 import React from "react";
 import { cn } from "@/lib/utils";
 import { projectLastUpdated } from "@/lib/project-dates";
+import { getDisplayName } from "@/lib/project-display-name";
 
 interface ProjectCardProps {
     project: Project;
@@ -41,11 +42,6 @@ function highlightMatch(text: string, query: string): React.ReactNode {
         </>
     );
 }
-
-// Closes over nothing in the component.
-const getDisplayName = (project: Project) => {
-    return project.display_name || project.name;
-};
 
 export function ProjectCard({
     project,

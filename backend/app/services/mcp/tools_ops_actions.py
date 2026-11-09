@@ -18,21 +18,8 @@ import json
 from typing import Any
 
 from app.services.mcp import invoke
+from app.services.mcp.schema import object_schema as _object
 from app.services.mcp.registry import RouteRequest, Tool, register, write_annotations
-
-
-def _object(
-    properties: dict[str, Any],
-    required: tuple[str, ...] = (),
-    *,
-    additional: bool = False,
-) -> dict[str, Any]:
-    return {
-        "type": "object",
-        "properties": properties,
-        "required": list(required),
-        "additionalProperties": additional,
-    }
 
 
 _JOB_ID = {"type": "string", "minLength": 1, "description": "The Prism job id."}

@@ -9,11 +9,11 @@ any claim of ``sent`` / ``recovering`` / ``quarantine`` is recovery (D2).
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Mapping, Optional
 
 from app.services.trackers.errors import ProviderError
-from app.services.trackers.schema import FORBIDDEN_COLUMNS
+from app.services.trackers._shared import dump_row as _dump
 
 OP_KINDS = (
     "create_issue",
@@ -104,21 +104,6 @@ def sanitize_error(
         retryable=retryable,
         new_ref=new_ref,
     ).to_dto()
-
-
-def _dump(row: Mapping[str, Any] | None) -> Optional[dict]:
-    if row is None:
-        return None
-    leaked = set(row) & FORBIDDEN_COLUMNS
-    if leaked:
-        raise ValueError(f"owner/repo column leaked: {sorted(leaked)}")
-    out = {}
-    for key, value in row.items():
-        if isinstance(value, datetime):
-            out[key] = value.astimezone(timezone.utc)
-        else:
-            out[key] = value
-    return out
 
 
 def _dispatch_for(state: str) -> str:

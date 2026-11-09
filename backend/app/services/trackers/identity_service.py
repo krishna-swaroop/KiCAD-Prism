@@ -19,6 +19,7 @@ from typing import Any, Callable, Mapping, Optional
 from uuid import uuid4
 
 from app.core.config import Settings, settings as default_settings
+from app.core.b64url import b64_decode as _b64_decode, b64_encode as _b64_encode
 from app.services.trackers.connector_service import ConnectorNotFound, ConnectorService
 from app.services.trackers.errors import ProviderError
 from app.services.trackers.providers import host_kit
@@ -565,19 +566,6 @@ class IdentityService:
 
 def _token_context(identity_id: str) -> dict[str, str]:
     return {"record": identity_id, "field": TOKEN_FIELD}
-
-
-def _b64_encode(raw: bytes) -> str:
-    import base64
-
-    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
-
-
-def _b64_decode(value: str) -> bytes:
-    import base64
-
-    pad = "=" * ((4 - len(value) % 4) % 4)
-    return base64.urlsafe_b64decode((value + pad).encode("ascii"))
 
 
 def _sign(encoded: str, settings: Settings) -> str:

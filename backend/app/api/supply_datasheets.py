@@ -10,7 +10,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends
 from pydantic import Field
 
-from app.api import supply_connectors
+from app.api.supply_store import store as _store
 from app.api.supply_call import run_supply as _run
 from app.api.supply_models import SupplyModel
 from app.core.security import AuthenticatedUser, require_supply_reader
@@ -21,11 +21,6 @@ router = APIRouter(prefix="/api/supply", tags=["supply"])
 
 class Datasheet(SupplyModel):
     url: Optional[str] = Field(description="The address a distributor gave; null when none did.")
-
-
-def _store():
-    # Resolved per call so a replaced connector service (tests) brings its own store.
-    return supply_connectors.service.store
 
 
 @router.get("/parts/{part_id}/datasheet", response_model=Datasheet)

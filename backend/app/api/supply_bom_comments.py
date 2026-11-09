@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Response
 
-from app.api import supply_connectors
+from app.api.supply_store import store as _store
 from app.api._helpers import get_project_for_role_or_404
 from app.api.supply_bom_models import CommentIn, SupplyBomComment
 from app.api.supply_call import run_supply
@@ -17,10 +17,6 @@ from app.services.supply import bom_comments
 
 router = APIRouter(prefix="/api/supply/projects", tags=["supply"])
 _run = partial(run_supply, invalid="invalid_comment")
-
-
-def _store():
-    return supply_connectors.service.store
 
 
 @router.get("/{project_id}/bom-comments", response_model=Items[SupplyBomComment])

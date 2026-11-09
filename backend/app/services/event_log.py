@@ -19,14 +19,13 @@ writers wait for it.
 from __future__ import annotations
 
 import logging
-from contextlib import contextmanager
-from typing import Any, Iterator
+from typing import Any
 
 from psycopg.types.json import Jsonb
 
 from app.core import policy, request_context
 from app.core.roles import Role
-from app.services.postgres_database import database
+from app.services.workspace_connection import connect
 
 #: The closed set of event kinds. A new producer adds one here first.
 EVENT_KINDS: tuple[str, ...] = (
@@ -48,13 +47,6 @@ logger = logging.getLogger(__name__)
 
 _MIN_LIMIT = 1
 _MAX_LIMIT = 500
-
-
-@contextmanager
-def connect() -> Iterator[Any]:
-    with database.connection() as conn:
-        conn.execute("SET search_path TO workspace, public")
-        yield conn
 
 
 def record(

@@ -22,7 +22,8 @@ import { LibraryImportRemediationDialog, type ProposalRemediation } from "./libr
 import { LibraryImportRemediationGrid } from "./library-import-remediation-grid";
 import { useImportCustomFields } from "./library-import-custom-fields";
 import { LibraryFolderDiscoveryDialog } from "./library-folder-discovery-dialog";
-import { isAbortError, useImportSessionProposals } from "./library-import-session-proposals";
+import { isAbortError } from "@/lib/jobs";
+import { useImportSessionProposals } from "./library-import-session-proposals";
 import {
   completeFolderSnapshot,
   createFolderSnapshot,

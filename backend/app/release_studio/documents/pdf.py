@@ -33,6 +33,7 @@ from app.release_studio.documents.layout import (
     Rectangle,
     Sheet,
     Text,
+    fmt,
     stroke_text_batch,
     text_width,
 )
@@ -61,16 +62,6 @@ def _resource_for(element: Text) -> str:
     if element.family == "display":
         return "F1"
     return "F3" if element.bold else "F2"
-
-
-def _pt(value: float) -> str:
-    """Format a point value; PDF operators are whitespace-separated numbers."""
-
-    rounded = round(float(value), 3)
-    if rounded == 0:
-        rounded = 0.0
-    text = f"{rounded:.3f}".rstrip("0").rstrip(".")
-    return text or "0"
 
 
 def _subset(asset: FontAsset, used: Mapping[int, int]) -> bytes:
@@ -133,8 +124,8 @@ def _text_matrix(
     start_x = anchor_x_pt - cos * offset_pt
     start_y = baseline_y_pt + sin * offset_pt
     return (
-        f"{_pt(cos)} {_pt(-sin)} {_pt(sin)} {_pt(cos)} "
-        f"{_pt(start_x)} {_pt(start_y)} Tm"
+        f"{fmt(cos)} {fmt(-sin)} {fmt(sin)} {fmt(cos)} "
+        f"{fmt(start_x)} {fmt(start_y)} Tm"
     )
 
 
@@ -152,11 +143,11 @@ def _paint_operator(ops: list[str], colour: str, fill: str, *, close: bool) -> s
     painted = ""
     if fill and fill != "none":
         fr, fg, fb = _rgb(fill)
-        ops.append(f"{_pt(fr)} {_pt(fg)} {_pt(fb)} rg")
+        ops.append(f"{fmt(fr)} {fmt(fg)} {fmt(fb)} rg")
         painted = "f"
     if colour and colour != "none":
         r, g, b = _rgb(colour)
-        ops.append(f"{_pt(r)} {_pt(g)} {_pt(b)} RG")
+        ops.append(f"{fmt(r)} {fmt(g)} {fmt(b)} RG")
         painted = "B" if painted else "S"
     if not painted:
         return "n"
@@ -304,43 +295,43 @@ def _page_content(
         return value * MM_TO_PT
 
     ops: list[str] = ["1 J", "1 j", "1 1 1 rg"]
-    ops.append(f"0 0 {_pt(width_pt)} {_pt(height_pt)} re f")
+    ops.append(f"0 0 {fmt(width_pt)} {fmt(height_pt)} re f")
 
     for element in sheet.elements:
         if isinstance(element, Line):
             r, g, b = _rgb(element.colour)
-            ops.append(f"{_pt(r)} {_pt(g)} {_pt(b)} RG")
-            ops.append(f"{_pt(element.width * MM_TO_PT)} w")
+            ops.append(f"{fmt(r)} {fmt(g)} {fmt(b)} RG")
+            ops.append(f"{fmt(element.width * MM_TO_PT)} w")
             ops.append(
-                f"{_pt(x(element.x1))} {_pt(y(element.y1))} m "
-                f"{_pt(x(element.x2))} {_pt(y(element.y2))} l S"
+                f"{fmt(x(element.x1))} {fmt(y(element.y1))} m "
+                f"{fmt(x(element.x2))} {fmt(y(element.y2))} l S"
             )
         elif isinstance(element, Rectangle):
             rect = element.rect
-            ops.append(f"{_pt(element.width * MM_TO_PT)} w")
+            ops.append(f"{fmt(element.width * MM_TO_PT)} w")
             painted = ""
             if element.fill != "none":
                 fr, fg, fb = _rgb(element.fill)
-                ops.append(f"{_pt(fr)} {_pt(fg)} {_pt(fb)} rg")
+                ops.append(f"{fmt(fr)} {fmt(fg)} {fmt(fb)} rg")
                 painted = "f"
             if element.colour != "none":
                 r, g, b = _rgb(element.colour)
-                ops.append(f"{_pt(r)} {_pt(g)} {_pt(b)} RG")
+                ops.append(f"{fmt(r)} {fmt(g)} {fmt(b)} RG")
                 painted = "B" if painted else "S"
             ops.append(
-                f"{_pt(x(rect.x))} {_pt(y(rect.bottom))} "
-                f"{_pt(rect.width * MM_TO_PT)} {_pt(rect.height * MM_TO_PT)} re {painted or 'n'}"
+                f"{fmt(x(rect.x))} {fmt(y(rect.bottom))} "
+                f"{fmt(rect.width * MM_TO_PT)} {fmt(rect.height * MM_TO_PT)} re {painted or 'n'}"
             )
         elif isinstance(element, Polyline):
             if element.points:
-                ops.append(f"{_pt(element.width * MM_TO_PT)} w")
+                ops.append(f"{fmt(element.width * MM_TO_PT)} w")
                 painter = _paint_operator(
                     ops, element.colour, element.fill, close=element.close
                 )
                 first = element.points[0]
-                ops.append(f"{_pt(x(first[0]))} {_pt(y(first[1]))} m")
+                ops.append(f"{fmt(x(first[0]))} {fmt(y(first[1]))} m")
                 for px, py in element.points[1:]:
-                    ops.append(f"{_pt(x(px))} {_pt(y(py))} l")
+                    ops.append(f"{fmt(x(px))} {fmt(y(py))} l")
                 ops.append(painter)
         elif isinstance(element, Text):
             baseline = element.y
@@ -353,15 +344,15 @@ def _page_content(
                 pivot_x, pivot_y = x(element.x), y(baseline)
                 ops.append("q")
                 ops.append(
-                    f"{_pt(cos)} {_pt(-sin)} {_pt(sin)} {_pt(cos)} "
-                    f"{_pt(pivot_x - cos * pivot_x - sin * pivot_y)} "
-                    f"{_pt(pivot_y + sin * pivot_x - cos * pivot_y)} cm"
+                    f"{fmt(cos)} {fmt(-sin)} {fmt(sin)} {fmt(cos)} "
+                    f"{fmt(pivot_x - cos * pivot_x - sin * pivot_y)} "
+                    f"{fmt(pivot_y + sin * pivot_x - cos * pivot_y)} cm"
                 )
             if vector_text:
                 r, g, b = _rgb(element.colour)
-                ops.append(f"{_pt(r)} {_pt(g)} {_pt(b)} RG")
+                ops.append(f"{fmt(r)} {fmt(g)} {fmt(b)} RG")
                 ops.append(
-                    f"{_pt(newstroke_width(element.size, bold=element.bold) * MM_TO_PT)} w"
+                    f"{fmt(newstroke_width(element.size, bold=element.bold) * MM_TO_PT)} w"
                 )
                 rows = element.value.splitlines() or [""]
                 for row_index, row in enumerate(rows):
@@ -381,9 +372,9 @@ def _page_content(
                         if len(line) < 2:
                             continue
                         first = line[0]
-                        ops.append(f"{_pt(x(first[0]))} {_pt(y(first[1]))} m")
+                        ops.append(f"{fmt(x(first[0]))} {fmt(y(first[1]))} m")
                         for px, py in line[1:]:
-                            ops.append(f"{_pt(x(px))} {_pt(y(py))} l")
+                            ops.append(f"{fmt(x(px))} {fmt(y(py))} l")
                         ops.append("S")
 
                     # The visible glyphs above are authoritative. This hidden
@@ -402,8 +393,8 @@ def _page_content(
                         [
                             "BT",
                             "3 Tr",
-                            f"/FText {_pt(element.size * MM_TO_PT)} Tf",
-                            f"1 0 0 1 {_pt(x(start))} {_pt(y(row_y))} Tm",
+                            f"/FText {fmt(element.size * MM_TO_PT)} Tf",
+                            f"1 0 0 1 {fmt(x(start))} {fmt(y(row_y))} Tm",
                             f"<{encoded}> Tj",
                             "0 Tr",
                             "ET",
@@ -430,9 +421,9 @@ def _page_content(
             ops.extend(
                 [
                     "BT",
-                    f"{_pt(r)} {_pt(g)} {_pt(b)} rg",
-                    f"/{resource} {_pt(element.size * MM_TO_PT)} Tf",
-                    f"1 0 0 1 {_pt(x(start))} {_pt(y(baseline))} Tm",
+                    f"{fmt(r)} {fmt(g)} {fmt(b)} rg",
+                    f"/{resource} {fmt(element.size * MM_TO_PT)} Tf",
+                    f"1 0 0 1 {fmt(x(start))} {fmt(y(baseline))} Tm",
                     f"<{glyph_hex}> Tj",
                     "ET",
                 ]
@@ -450,8 +441,8 @@ def _page_content(
             ops.extend(
                 [
                     "q",
-                    f"{_pt(rect.width * MM_TO_PT)} 0 0 {_pt(rect.height * MM_TO_PT)} "
-                    f"{_pt(x(rect.x))} {_pt(y(rect.bottom))} cm",
+                    f"{fmt(rect.width * MM_TO_PT)} 0 0 {fmt(rect.height * MM_TO_PT)} "
+                    f"{fmt(x(rect.x))} {fmt(y(rect.bottom))} cm",
                     f"/{name} Do",
                     "Q",
                 ]
@@ -459,12 +450,12 @@ def _page_content(
         elif isinstance(element, Artwork):
             border = element.border_colour or "#999999"
             r, g, b = _rgb(border)
-            ops.append(f"{_pt(r)} {_pt(g)} {_pt(b)} RG")
-            ops.append(f"{_pt(0.2 * MM_TO_PT)} w")
+            ops.append(f"{fmt(r)} {fmt(g)} {fmt(b)} RG")
+            ops.append(f"{fmt(0.2 * MM_TO_PT)} w")
             rect = element.rect
             ops.append(
-                f"{_pt(x(rect.x))} {_pt(y(rect.bottom))} "
-                f"{_pt(rect.width * MM_TO_PT)} {_pt(rect.height * MM_TO_PT)} re S"
+                f"{fmt(x(rect.x))} {fmt(y(rect.bottom))} "
+                f"{fmt(rect.width * MM_TO_PT)} {fmt(rect.height * MM_TO_PT)} re S"
             )
         else:  # pragma: no cover - guarded by the layout element union
             raise TypeError(f"unrenderable sheet element: {type(element).__name__}")
@@ -577,7 +568,7 @@ def _assemble(
             (
                 f"<< /Type /FontDescriptor /FontName /{metrics['postscript']} "
                 f"/Flags {metrics['flags']} /FontBBox [{bbox}] "
-                f"/ItalicAngle {_pt(metrics['italic_angle'])} /Ascent {metrics['ascent']} "
+                f"/ItalicAngle {fmt(metrics['italic_angle'])} /Ascent {metrics['ascent']} "
                 f"/Descent {metrics['descent']} /CapHeight {metrics['cap_height']} "
                 f"/StemV 80 /FontFile2 {font_file_id} 0 R >>"
             ).encode("ascii")
@@ -640,8 +631,8 @@ def _assemble(
         page_ids.append(
             add(
                 b"<< /Type /Page /Parent " + str(pages_id).encode("ascii") + b" 0 R"
-                b" /MediaBox [0 0 " + _pt(width_pt).encode("ascii") + b" "
-                + _pt(height_pt).encode("ascii") + b"]"
+                b" /MediaBox [0 0 " + fmt(width_pt).encode("ascii") + b" "
+                + fmt(height_pt).encode("ascii") + b"]"
                 b" /Resources " + page_resources
                 + b" /Contents " + str(content_id).encode("ascii") + b" 0 R >>"
             )

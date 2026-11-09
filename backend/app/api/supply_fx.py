@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
-from app.api import supply_connectors
+from app.api.supply_store import store as _store
 from app.api.supply_call import run_supply
 from app.api.supply_fx_models import ManualRates, SupplyFxRates, SupplyFxRatesSaved
 from app.core.security import AuthenticatedUser, require_admin, require_supply_reader
@@ -15,11 +15,6 @@ from app.services.supply import clock, fx
 
 router = APIRouter(prefix="/api/supply/fx", tags=["supply"])
 _run = partial(run_supply, invalid="invalid_rates", upstream="The exchange rates could not be fetched.")
-
-
-def _store():
-    # Resolved per call so a replaced connector service (tests) brings its own store.
-    return supply_connectors.service.store
 
 
 def _view(rates: fx.Rates) -> dict[str, Any]:

@@ -12,7 +12,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.api import supply_connectors
+from app.api.supply_store import store as _store
 from app.api.supply_assessment_models import SupplyAssessment, WaiverProposed
 from app.api.supply_access import is_approver, require_supply_editor
 from app.api.supply_call import run_supply
@@ -32,11 +32,6 @@ class ProposeWaiverRequest(BaseModel):
     check: str = Field(min_length=1, max_length=64)
     reason: str = Field(min_length=1, max_length=waivers.MAX_REASON)
     quantity: Optional[int] = Field(default=None, ge=1, le=10_000_000)
-
-
-def _store():
-    # Resolved per call so a replaced connector service (tests) brings its own store.
-    return supply_connectors.service.store
 
 
 @router.get("/parts/{part_id}/assessment", response_model=SupplyAssessment)

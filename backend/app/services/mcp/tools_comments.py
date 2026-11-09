@@ -26,19 +26,11 @@ from app.core.config import settings
 from app.core.links import project_url
 from app.services.comments_store_service import COMMENT_CLASSES, COMMENT_SEVERITIES
 from app.services.mcp import invoke
+from app.services.mcp.schema import object_schema as _object
 from app.services.mcp.registry import RouteRequest, Tool, register, write_annotations
 
 _DOMAIN = {"schematic": "SCH", "pcb": "PCB"}
 _RESOLVE_MESSAGE = "Resolving a comment needs a person in Prism."
-
-
-def _object(properties: dict[str, Any], required: tuple[str, ...] = ()) -> dict[str, Any]:
-    return {
-        "type": "object",
-        "properties": properties,
-        "required": list(required),
-        "additionalProperties": False,
-    }
 
 
 _PROJECT_ID = {"type": "string", "minLength": 1, "description": "The Prism project id."}

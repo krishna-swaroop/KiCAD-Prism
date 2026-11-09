@@ -22,6 +22,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from app.core.file_touch import touch_used
 from app.core.config import settings
 from app.services import kicad_libraries, kicad_tools, kicad_variables
 from app.services.design_bundle.archive import Archive, BundleInvalid
@@ -145,7 +146,7 @@ def export_components_glb(
     output = output_dir / GLB_NAME
     if cached.is_file():
         shutil.copyfile(cached, output)
-        _stamp(cached)
+        touch_used(cached)
         return output, True
     tool = kicad_tools.kicad_cli()
     if not tool.available():
@@ -168,15 +169,6 @@ def export_components_glb(
     shutil.copyfile(output, temp)
     os.replace(temp, cached)
     return output, False
-
-
-def _stamp(path: Path) -> None:
-    """Mark a cached GLB used, so retention evicts by last use."""
-
-    try:
-        os.utime(path, None)
-    except OSError:
-        pass  # a lost stamp only makes eviction earlier
 
 
 #: A ``.part`` file older than this is an export that died before its rename.

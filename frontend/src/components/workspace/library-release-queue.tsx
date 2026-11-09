@@ -27,6 +27,7 @@ import {
 } from "@/lib/catalog-badges";
 import { cn } from "@/lib/utils";
 import type { CatalogComponent, CatalogReleaseQueueResponse, WorkflowStage } from "@/types/catalog";
+import { formatDate } from "./library-component-chrome";
 
 type QueueFilter = "all" | "qa_review" | "done";
 
@@ -50,19 +51,6 @@ const EMPTY_SUMMARY: CatalogReleaseQueueResponse["summary"] = {
   qa_review: 0,
   done: 0,
   blocked: 0,
-};
-
-// Constructing an Intl formatter is the expensive part; the runtime locale
-// cannot change mid-session, so build it once.
-const DATE_TIME_FORMAT = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-
-const formatDate = (value?: string) => {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : DATE_TIME_FORMAT.format(date);
 };
 
 // One line per revision. Every column has a floor; below them the list scrolls

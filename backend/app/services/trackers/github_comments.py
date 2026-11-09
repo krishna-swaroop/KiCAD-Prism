@@ -18,7 +18,6 @@ from app.services.trackers.contracts import (
     CommentRead,
     Destination,
     ForbiddenRead,
-    ForgeUser,
     GoneConfirmed,
     NotModified,
     PageCursor,
@@ -31,6 +30,7 @@ from app.services.trackers.github_recovery import CommentPageFetcher, make_comme
 from app.services.trackers.forge_client import ForgeClient, read_outcome
 from app.services.trackers.github_auth import GitHubAppAuth
 from app.services.trackers.http import TrackerHttp
+from app.services.trackers._shared import github_forge_user as _forge_user, github_owner_repo as _owner_repo
 
 
 def comment_body_hash(body: str) -> str:
@@ -270,28 +270,6 @@ class GitHubCommentAdapter:
         )
         assert_no_owner_repo(comment)
         return comment
-
-
-def _owner_repo(dest: Destination) -> tuple[str, str]:
-    path = (dest.containerPath or "").strip().strip("/")
-    if path.count("/") != 1:
-        raise ProviderError("invalid_request", "GitHub destination path must be owner/repo.")
-    owner, repo = path.split("/", 1)
-    if not owner or not repo:
-        raise ProviderError("invalid_request", "GitHub destination path must be owner/repo.")
-    return owner, repo
-
-
-def _forge_user(payload: Mapping[str, Any]) -> ForgeUser:
-    login = str(payload.get("login") or "")
-    user_type = str(payload.get("type") or "")
-    is_bot = user_type.casefold() == "bot" or login.endswith("[bot]")
-    return ForgeUser(
-        id=str(payload.get("id") or ""),
-        login=login,
-        isBot=is_bot,
-        displayName=str(payload.get("name") or "") or None,
-    )
 
 
 __all__ = ["GitHubCommentAdapter", "comment_body_hash"]

@@ -7,6 +7,7 @@ import { ConfirmDialog, useConfirmTarget } from "@/components/ui/confirm-dialog"
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { fetchApi, readApiError } from "@/lib/api";
+import { formatDate } from "@/lib/format-date";
 
 /** Every scope a personal access token may hold; `remote_symbols.read` is the KiCad provider's. */
 export const PERSONAL_TOKEN_SCOPES = [
@@ -33,12 +34,6 @@ export interface PersonalAccessToken {
     expires_at: string;
     last_used_at: string | null;
     revoked_at: string | null;
-}
-
-function formatDate(value: string | null): string {
-    if (!value) return "never";
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? "unknown" : date.toLocaleDateString();
 }
 
 /**

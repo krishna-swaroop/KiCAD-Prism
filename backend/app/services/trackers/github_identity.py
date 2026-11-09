@@ -18,6 +18,7 @@ from app.services.trackers.contracts import ForgeUser, IdentityToken
 from app.services.trackers.errors import ProviderError
 from app.services.trackers.github_auth import API_VERSION, GITHUB_COM_API, api_root_for
 from app.services.trackers.http import TrackerHttp
+from app.services.trackers._shared import split_scopes as _split_scopes
 
 GITHUB_COM_WEB = "https://github.com"
 ACCEPT = "application/json"
@@ -218,15 +219,6 @@ class GitHubIdentityAdapter:
             scopes=scopes,
         )
         return token
-
-
-def _split_scopes(value: Any) -> list[str]:
-    if isinstance(value, list):
-        return [str(item) for item in value if str(item).strip()]
-    text = str(value or "").strip()
-    if not text:
-        return []
-    return [part for part in text.replace(",", " ").split() if part]
 
 
 def web_root_for(*, instance_kind: str, base_url: str = "", web_url: str = "") -> str:

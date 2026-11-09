@@ -6,6 +6,8 @@
 // discard a fragment when its component feature is marked hidden. Feature id 0
 // is the "no feature" sentinel and is never hidden.
 
+import { normalizeIdSet } from "./id-set.js";
+
 export const MIN_FEATURE_MASK_CAPACITY = 64;
 export const VISIBLE_MASK_VALUE = 1;
 export const HIDDEN_MASK_VALUE = 0;
@@ -26,16 +28,7 @@ fn featureHidden(id: u32) -> bool {
  * (null, 0, fractional, negative, overflow) means "no feature" and must not
  * hide anything.
  */
-export function normalizeHiddenFeatureIds(ids) {
-  const normalized = new Set();
-  if (ids == null) return normalized;
-  for (const value of ids) {
-    const id = Number(value);
-    if (!Number.isInteger(id) || id <= 0 || id > 0xffffffff) continue;
-    normalized.add(id);
-  }
-  return normalized;
-}
+export const normalizeHiddenFeatureIds = normalizeIdSet;
 
 /**
  * The buffer capacity (in u32 slots) that covers every hidden id, rounded up

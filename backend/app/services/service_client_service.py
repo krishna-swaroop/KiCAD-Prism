@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import hashlib
 import hmac
 import json
@@ -12,6 +11,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from app.core.config import settings
+from app.core.b64url import b64_decode as _b64_decode, b64_encode as _b64_encode
 from app.core.roles import normalize_role
 
 SECRET_PREFIX = "kp_sc_"
@@ -35,15 +35,6 @@ def _utc_now_iso() -> str:
 
 def _now() -> int:
     return int(time.time())
-
-
-def _b64_encode(raw: bytes) -> str:
-    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
-
-
-def _b64_decode(value: str) -> bytes:
-    pad = "=" * ((4 - len(value) % 4) % 4)
-    return base64.urlsafe_b64decode((value + pad).encode("ascii"))
 
 
 def _sign(message: str) -> str:

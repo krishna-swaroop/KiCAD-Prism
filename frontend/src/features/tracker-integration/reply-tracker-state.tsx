@@ -2,16 +2,7 @@ import { useState } from "react";
 import { Cloud, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CommentReply } from "@/types/comments";
-
-function safeUrl(value: string | null | undefined): string | null {
-    if (!value) return null;
-    try {
-        const url = new URL(value);
-        return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
-    } catch {
-        return null;
-    }
-}
+import { safeUrl } from "./safe-url";
 
 /**
  * Where a reply lives relative to the linked issue: imported from it, posted

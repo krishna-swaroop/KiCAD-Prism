@@ -38,6 +38,7 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Any, BinaryIO, Callable, Iterable, Mapping
 
+from app.core.file_touch import touch_used
 from app.core.config import settings
 from app.services.design_bundle.archive import MANIFEST, Archive, BundleInvalid, open_archive
 
@@ -291,7 +292,7 @@ def extract(
     # Retention reads this mtime to tell a directory a reader is using from an
     # idle one. A reader that only re-reads already extracted files would
     # otherwise leave it at the time the first member was written.
-    _touch(base)
+    touch_used(base)
     manifest_bytes = archive.manifest_bytes
     _install(base, base / MANIFEST, lambda handle: handle.write(manifest_bytes), len(manifest_bytes))
     members = archive.manifest["members"]
@@ -302,15 +303,8 @@ def extract(
         for member in chosen:
             target = base / member["path"]
             _install(base, target, lambda handle, path=member["path"]: archive.stream(path, handle), member["bytes"])
-    _touch(base)
+    touch_used(base)
     return base
-
-
-def _touch(path: Path) -> None:
-    try:
-        os.utime(path, None)
-    except OSError:
-        pass
 
 
 #: One unpacked version directory, as the store-wide cache sweep sees it.

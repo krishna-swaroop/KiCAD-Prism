@@ -12,15 +12,10 @@ from typing import Any, Mapping, Optional
 
 from app.services.trackers.connector_runtime import LOST_CREDENTIAL_REASONS
 from app.services.trackers.errors import PROVIDER_ERROR_CLASSES
+from app.services.trackers._shared import qual_checked as _qual
 
 COMMENTS_SCHEMA = "comments"
 WORKSPACE_SCHEMA = "workspace"
-
-
-def _qual(schema: str, table: str) -> str:
-    if not schema.replace("_", "").isalnum():
-        raise ValueError("invalid schema name")
-    return f'"{schema}".{table}'
 
 
 def iso8601_duration(delta: timedelta) -> str:

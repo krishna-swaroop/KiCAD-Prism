@@ -26,6 +26,7 @@ import { VISUALIZER_DESIGN_SEARCH_SLOT_ID } from "@/lib/design-search";
 import { installPrismScriptApi } from "@/lib/prism-script-api";
 import { canAdministerWorkspace, canCommentOnProjects, canManageProjects } from "@/lib/roles";
 import { projectLastUpdated } from "@/lib/project-dates";
+import { getDisplayName } from "@/lib/project-display-name";
 import { HelpMenu } from "@/features/bug-report/help-menu";
 import { LibraryUsageButton } from "@/features/library-usage/library-usage-button";
 import { canOpenSupply } from "@/lib/roles";
@@ -101,11 +102,6 @@ function sectionFromSearchParams(searchParams: URLSearchParams): ProjectSection 
     }
     return "overview";
 }
-
-// Closes over nothing in the component.
-const getDisplayName = (project: Project) => {
-    return project.display_name || project.name;
-};
 
 // react-doctor-disable-next-line no-giant-component - page aggregating tabs, builds, and branch state for one project
 export function ProjectDetailPage({ user }: { user: User | null }) {

@@ -10,7 +10,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
-from app.api import supply_connectors
+from app.api.supply_store import store as _store
 from app.api.supply_call import run_supply
 from app.api.supply_models import Items
 from app.api.supply_settings_models import (
@@ -23,11 +23,6 @@ from app.services.supply.assessment import settings as rules
 
 router = APIRouter(prefix="/api/supply/settings", tags=["supply"])
 _run = partial(run_supply, invalid="invalid_settings")
-
-
-def _store():
-    # Resolved per call so a replaced connector service (tests) brings its own store.
-    return supply_connectors.service.store
 
 
 def _currencies(conn, current: str) -> list[str]:

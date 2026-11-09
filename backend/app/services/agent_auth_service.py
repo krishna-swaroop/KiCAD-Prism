@@ -21,7 +21,6 @@ takes effect immediately.
 
 from __future__ import annotations
 
-import hashlib
 import hmac
 import secrets
 import threading
@@ -32,6 +31,7 @@ from urllib.parse import urlparse
 from fastapi import HTTPException
 
 from app.core.config import settings
+from app.core.b64url import pkce_challenge as _pkce_challenge
 from app.core.roles import Role, normalize_role
 from app.services import provider_auth_service
 from app.services.auth_service import ResolvedSessionUser
@@ -157,11 +157,6 @@ def issue_authorization_code(
     }
     _db().store_auth_code(code, grant, exp)
     return code
-
-
-def _pkce_challenge(code_verifier: str) -> str:
-    digest = hashlib.sha256(code_verifier.encode("utf-8")).digest()
-    return provider_auth_service._b64_encode(digest)
 
 
 def exchange_authorization_code(

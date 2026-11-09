@@ -12,7 +12,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from app.services.supply import clock
-from app.api import supply_connectors
+from app.api.supply_store import store as _store
 from app.api._helpers import get_project_for_role_or_404
 from app.services import project_service
 from app.api.supply_call import run_supply
@@ -29,11 +29,6 @@ from app.services.supply import release_snapshot as snapshot_jobs  # noqa: E402
 
 router = APIRouter(prefix="/api/supply/projects", tags=["supply"])
 _run = partial(run_supply, invalid="invalid_request")
-
-
-def _store():
-    # Resolved per call so a replaced connector service (tests) brings its own store.
-    return supply_connectors.service.store
 
 
 def _has_schematic(project) -> bool:

@@ -8,12 +8,10 @@ import type {
     SourceFileRef,
 } from "./types";
 import { fetchApi } from "@/lib/api";
+import { isAbortError } from "@/lib/jobs";
 
 export type ComparisonDomain = "schematic" | "pcb";
 export type ViewerBlobSource = { filename: string; content: string };
-
-const isAbortError = (error: unknown): boolean =>
-    error instanceof DOMException && error.name === "AbortError";
 
 function rootSchematicPath(files: SourceFileRef[]): string {
     const project = files.find((file) => file.path.endsWith(".kicad_pro"));

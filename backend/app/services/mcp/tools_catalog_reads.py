@@ -15,16 +15,8 @@ import json
 from typing import Any
 
 from app.services.mcp import invoke
+from app.services.mcp.schema import object_schema as _object
 from app.services.mcp.registry import READ_ONLY_ANNOTATIONS, RouteRequest, Tool, register
-
-
-def _object(properties: dict[str, Any], required: tuple[str, ...] = ()) -> dict[str, Any]:
-    return {
-        "type": "object",
-        "properties": properties,
-        "required": list(required),
-        "additionalProperties": False,
-    }
 
 
 ASSET_TYPES = ["symbol", "footprint", "3dmodel", "spice"]

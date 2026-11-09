@@ -15,6 +15,7 @@ from typing import Any
 from fastapi import APIRouter, Depends
 
 from app.api import supply_connectors
+from app.api.supply_store import store as _store
 from app.api._helpers import get_project_for_role_or_404
 from app.api.supply_access import is_approver
 from app.api.supply_bom_models import (
@@ -39,11 +40,6 @@ from app.services.supply.inventory import levels
 
 router = APIRouter(prefix="/api/supply/bom", tags=["supply"])
 _run = partial(run_supply, invalid="invalid_request")
-
-
-def _store():
-    # Resolved per call so a replaced connector service (tests) brings its own store.
-    return supply_connectors.service.store
 
 
 def _lines(items: list[LineIn]) -> list[bom_lookup.BomLine]:

@@ -10,13 +10,13 @@ board disagree, and :func:`board_state` lets submit say so first.
 
 from __future__ import annotations
 
-import hashlib
 import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
+from app.core.file_digest import sha256_file
 from app.services.design_bundle import reader, store
 from app.services.design_bundle.archive import open_archive
 
@@ -78,14 +78,6 @@ def _place(source: Path, target: Path) -> None:
         shutil.copyfile(source, target)
 
 
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
 def stage_board(run: Mapping[str, Any], inputs_dir: Path, log: list[str]) -> dict[str, str]:
     """Place the run's design bundle in ``inputs_dir``; return its ``path`` and ``sha256`` for the job,
     and the ``commit`` it was built for (the run's own, or the branch head it resolved to)."""
@@ -100,7 +92,7 @@ def stage_board(run: Mapping[str, Any], inputs_dir: Path, log: list[str]) -> dic
     target = inputs_dir / Path(INPUT).name
     _place(source, target)
     log.append(f"board: design bundle {opened.bundle_key} (revision {opened.revision_key})")
-    return {"path": INPUT, "sha256": _sha256(target), "commit": opened.commit or ""}
+    return {"path": INPUT, "sha256": sha256_file(target), "commit": opened.commit or ""}
 
 
 def materialization(run: Mapping[str, Any]) -> bytes:

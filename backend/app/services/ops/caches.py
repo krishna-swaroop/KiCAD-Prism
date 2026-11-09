@@ -15,14 +15,13 @@ import os
 import tempfile
 import threading
 import time
-from contextlib import contextmanager
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from app.core.config import settings
 from app.core.redaction import redact_value
-from app.services.postgres_database import database
+from app.services.ops.timefmt import iso_z as _iso
+from app.services.workspace_connection import connect
 
 #: How long one directory measurement is reused by this process.
 MEASURE_TTL_SECONDS = 300
@@ -51,21 +50,6 @@ _DISK_ONLY_CACHES: tuple[str, ...] = (
 
 _measurements: dict[tuple[str, str], tuple[float, dict[str, Any]]] = {}
 _measurements_lock = threading.Lock()
-
-
-@contextmanager
-def connect() -> Iterator[Any]:
-    """A workspace connection, the same seam the other ops stores read."""
-
-    with database.connection() as conn:
-        conn.execute("SET search_path TO workspace, public")
-        yield conn
-
-
-def _iso(value: datetime | None) -> str | None:
-    if value is None:
-        return None
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _design_compare_root() -> Path:

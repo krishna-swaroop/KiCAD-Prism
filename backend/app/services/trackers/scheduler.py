@@ -18,6 +18,7 @@ from typing import Any, Callable, Iterator, Optional
 from app.services.job_kinds import TRACKER_RESOURCE, resource_capacities
 from app.services.job_service import jobs as default_jobs
 from app.services.trackers.op_store import LIVE_STATES
+from app.services.trackers._shared import qual_checked as _qual
 
 DISPATCH_KIND = "tracker_dispatch"
 POLL_KIND = "tracker_poll"
@@ -234,12 +235,6 @@ def _enqueue(
         requested_by="system:tracker-scheduler",
         service=service,
     )
-
-
-def _qual(schema: str, table: str) -> str:
-    if not schema.replace("_", "").isalnum():
-        raise ValueError("invalid schema name")
-    return f'"{schema}".{table}'
 
 
 def _due_dispatch_destinations(conn: Any, comments_schema: str, workspace_schema: str) -> list[tuple[str, str, bool]]:

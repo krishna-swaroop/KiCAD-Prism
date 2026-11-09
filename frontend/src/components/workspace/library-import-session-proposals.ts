@@ -1,12 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { isAbortError } from "@/lib/jobs";
 
 import type { ProjectComponentImportProposal } from "@/types/catalog";
 import { listImportProposals } from "./catalog-client";
-
-export function isAbortError(reason: unknown): boolean {
-  return (reason instanceof DOMException || reason instanceof Error) && reason.name === "AbortError";
-}
 
 /**
  * The proposals of the selected import session. They are read again whenever

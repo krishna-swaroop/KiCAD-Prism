@@ -9,7 +9,9 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping
 
+from app.core.config import settings
 from app.core.roles import Role, normalize_role
+from app.services.trackers.drafts import DraftAttribution, DraftRenderInput, build_issue_draft
 from app.services.trackers.errors import PROVIDER_ERROR_CLASSES, ProviderError
 from app.services.trackers.op_store import OpStore
 from app.services.trackers.publication_policy import DispatchPause, PublicationDenied
@@ -270,12 +272,40 @@ def apply_provider_error(
     raise exc
 
 
+def policy_check_for_ctx(conn: Any, ctx: Any) -> None:
+    policy_check(
+        conn,
+        project_id=ctx.project_id,
+        op=ctx.op,
+        destination_generation=int(ctx.policy.get("destination_generation") or 0),
+    )
+
+
+def build_draft_for_ctx(ctx: Any) -> Any:
+    return build_issue_draft(
+        DraftRenderInput(
+            project_id=ctx.project_id,
+            comment=ctx.comment,
+            connector_id=ctx.destination.connectorId,
+            remote_container_id=ctx.destination.remoteContainerId,
+            op_id=str(ctx.op["id"]),
+            public_base_url=settings.PUBLIC_BASE_URL,
+            attribution=DraftAttribution(
+                display_name=str(ctx.comment.get("author") or "Unknown"),
+                verified=str(ctx.comment.get("authorKind") or "") != "legacy",
+            ),
+        )
+    )
+
+
 __all__ = [
     "DISPATCH_PAUSE_ERROR_CLASSES",
     "NON_CONSUMING_ERROR_CLASSES",
     "apply_provider_error",
+    "build_draft_for_ctx",
     "pause_connector_auth_lost",
     "policy_check",
+    "policy_check_for_ctx",
     "provider_error_for_dispatch_pause",
     "resolve_actor_role",
     "workspace_schema",

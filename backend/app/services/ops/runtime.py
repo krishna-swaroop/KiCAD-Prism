@@ -11,31 +11,16 @@ from __future__ import annotations
 
 import os
 import socket
-from contextlib import contextmanager
-from datetime import datetime, timezone
-from typing import Any, Iterator
+from typing import Any
 
 from app.core.config import settings
 from app.core.redaction import redact_value
 from app.services.job_kinds import resource_capacities
 from app.services.job_service import ACTIVE_STATUSES
 from app.services.ops import workers
+from app.services.ops.timefmt import iso_z as _iso
 from app.services.postgres_database import database
-
-
-@contextmanager
-def connect() -> Iterator[Any]:
-    """A workspace connection, the same seam the other ops stores read."""
-
-    with database.connection() as conn:
-        conn.execute("SET search_path TO workspace, public")
-        yield conn
-
-
-def _iso(value: datetime | None) -> str | None:
-    if value is None:
-        return None
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+from app.services.workspace_connection import connect
 
 
 def _resource_usage(conn: Any) -> list[dict[str, Any]]:

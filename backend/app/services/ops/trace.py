@@ -11,19 +11,13 @@ never read, and no job payload, message or result is selected (D22).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any
 
+from app.services.ops.timefmt import iso_z as _iso
 from app.services.postgres_database import database
 
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 500
-
-
-def _iso(value: datetime | None) -> str | None:
-    if value is None:
-        return None
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _nested(details: Any) -> bool:

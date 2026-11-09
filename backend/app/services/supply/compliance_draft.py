@@ -11,13 +11,13 @@ import csv
 import io
 from typing import Any, Mapping, Sequence
 
+from app.services.supply.csv_cells import safe_cell
 from app.services.supply import bom_lookup, compliance, facts, offer_rules
 
 HEADER = (
     "Manufacturer", "Part number", "Per board", "References", "RoHS", "REACH", "Declared substances on the Candidate List",
     "RoHS as stated", "REACH as stated", "Substances of very high concern as stated", "RoHS exemptions", "Gaps",
 )
-_RISKY_START = ("=", "+", "-", "@", "\t", "\r")
 
 
 def _reach_text(standing: Mapping[str, Any]) -> str:
@@ -80,13 +80,6 @@ def build(conn, rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
 LIST_NOT_LOADED = "The REACH Candidate List is not loaded, so declared substances were not checked."
 
 
-def _safe(cell: object) -> str:
-    """A spreadsheet cell that cannot run as a formula."""
-
-    text = str(cell)
-    return "'" + text if text.startswith(_RISKY_START) else text
-
-
 def to_csv(draft: Mapping[str, Any]) -> str:
     out = io.StringIO()
     writer = csv.writer(out, lineterminator="\r\n")
@@ -96,8 +89,8 @@ def to_csv(draft: Mapping[str, Any]) -> str:
         writer.writerow([""] * (len(HEADER) - 1) + [note])
     for item in draft["parts"]:
         writer.writerow([
-            _safe(item["manufacturer"]), _safe(item["mpn"]), item["quantity"], _safe(item["references"]), item["rohs"], item["reach"],
-            _safe("; ".join(item["on_candidate_list"])), _safe(item["rohs_stated"]), _safe(item["reach_stated"]),
-            _safe(item["svhc_stated"]), _safe("; ".join(item["exemptions"])), _safe(" ".join(item["gaps"])),
+            safe_cell(item["manufacturer"]), safe_cell(item["mpn"]), item["quantity"], safe_cell(item["references"]), item["rohs"], item["reach"],
+            safe_cell("; ".join(item["on_candidate_list"])), safe_cell(item["rohs_stated"]), safe_cell(item["reach_stated"]),
+            safe_cell(item["svhc_stated"]), safe_cell("; ".join(item["exemptions"])), safe_cell(" ".join(item["gaps"])),
         ])
     return out.getvalue()

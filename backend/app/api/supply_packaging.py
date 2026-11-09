@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
-from app.api import supply_connectors
+from app.api.supply_store import store as _store
 from app.api.supply_access import is_approver
 from app.api.supply_call import run_supply as _run
 from app.api.supply_models import Items
@@ -20,10 +20,6 @@ from app.core.security import AuthenticatedUser, require_supply_reader, require_
 from app.services.supply import packaging_auto, packaging_picks, parts
 
 router = APIRouter(prefix="/api/supply/packaging", tags=["supply"])
-
-
-def _store():
-    return supply_connectors.service.store
 
 
 @router.get("/several", response_model=Items[PackagingSeveral])

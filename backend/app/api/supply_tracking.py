@@ -12,7 +12,7 @@ from typing import Any, Callable
 
 from fastapi import APIRouter, Depends, Response
 
-from app.api import supply_connectors
+from app.api.supply_store import store as _store
 from app.api._helpers import get_project_for_role_or_404
 from app.core.security import AuthenticatedUser, require_admin, require_supply_reader, require_supply_tracker
 from app.api.supply_access import is_approver
@@ -31,10 +31,6 @@ from app.services.supply.progress import job_progress
 router = APIRouter(prefix="/api/supply/tracking", tags=["supply"])
 _run = partial(run_supply, invalid="invalid_request")
 budget_router = APIRouter(prefix="/api/supply", tags=["supply"])
-
-
-def _store():
-    return supply_connectors.service.store
 
 
 def _read_project_bom(conn, project_id: str) -> str:

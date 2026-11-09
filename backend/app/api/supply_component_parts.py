@@ -12,7 +12,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.api import supply_connectors
+from app.api.supply_store import store as _store
 from app.api.supply_call import run_supply as _run
 from app.api.supply_models import StoresState
 from app.core.security import AuthenticatedUser, require_supply_approver, require_supply_reader, require_supply_writer
@@ -20,11 +20,6 @@ from app.services.supply import component_parts
 from app.services.supply.inventory import levels
 
 router = APIRouter(prefix="/api/supply/components", tags=["supply"])
-
-
-def _store():
-    # Resolved per call so a replaced connector service (tests) brings its own store.
-    return supply_connectors.service.store
 
 
 class ComponentPart(BaseModel):

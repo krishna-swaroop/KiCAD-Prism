@@ -22,6 +22,7 @@ from urllib.parse import quote
 from app.core.config import settings
 from app.core.links import resource_uri, view_url
 from app.services.mcp import invoke
+from app.services.mcp.schema import object_schema as _object
 from app.services.mcp.registry import (
     READ_ONLY_ANNOTATIONS,
     RouteRequest,
@@ -31,15 +32,6 @@ from app.services.mcp.registry import (
 
 POLL_TIMEOUT_SECONDS = 30.0
 POLL_INTERVAL_SECONDS = 0.5
-
-
-def _object(properties: dict[str, Any], required: tuple[str, ...] = ()) -> dict[str, Any]:
-    return {
-        "type": "object",
-        "properties": properties,
-        "required": list(required),
-        "additionalProperties": False,
-    }
 
 
 def _request_path(project_id: str, suffix: str = "") -> str:
