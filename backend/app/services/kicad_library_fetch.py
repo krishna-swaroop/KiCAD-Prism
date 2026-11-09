@@ -830,6 +830,11 @@ def run_fetch_job(context: JobContext) -> JobResult:
             return JobResult(message=f"{name} is already at {commit[:12]}")
         size = fetch_version(library, commit, on_progress=on_progress, on_tick=on_tick)
         fresh = _library(name)
+        if fresh is not None and fresh.source != library.source:
+            # Declared again with another source while this ran: this version is not that source's, and
+            # the fetch queued with the change serves it. The row waits for that one.
+            kicad_library_store.record_fetch(name, state="pending", progress=None)
+            return JobResult(message=f"{name} changed while {commit[:12]} was fetched; its own fetch serves it")
         if fresh is not None and fresh.update_policy == "pinned" and fresh.pinned_commit and fresh.pinned_commit != commit:
             # Pinned while this fetch ran: the pin is what serves, and it is usually still on disk.
             commit = fresh.pinned_commit
@@ -838,15 +843,17 @@ def run_fetch_job(context: JobContext) -> JobResult:
         kicad_library_store.record_fetch(name, state="failed", error="Cancelled")
         raise
     except FetchError as error:
-        repository_failure = error.permanent and not error.server
-        kicad_library_store.record_fetch(
-            name, state="failed", error=str(error)[:500], **({"failed_commit": commit} if repository_failure else {})
-        )
         if error.permanent:
+            failed = {"failed_commit": commit} if not error.server else {}  # the server's to fix: the check retries
+            kicad_library_store.record_fetch(name, state="failed", error=str(error)[:500], **failed)
             raise PermanentJobError(str(error), code="library-fetch-failed") from error
+        # The job retries: still fetching, with why the last try failed. If no try is left, the end hook fails it.
+        kicad_library_store.record_fetch(name, state="fetching", error=str(error)[:500], progress=None)
         raise RetryableJobError(str(error), code="library-fetch-failed", retry_after_seconds=60) from error
     except Exception as error:
-        kicad_library_store.record_fetch(name, state="failed", error="The library could not be fetched; see the job log")
+        kicad_library_store.record_fetch(
+            name, state="fetching", error="The library could not be fetched; see the job log", progress=None
+        )
         raise RetryableJobError(str(error), code="library-fetch-failed", retry_after_seconds=60) from error
     kicad_library_store.record_published(name, commit=commit, ref=library.ref, size_bytes=size, requested_by=requested_by)
     logger.info("KiCad library %s is at %s (%s bytes)", name, commit, size)

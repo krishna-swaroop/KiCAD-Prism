@@ -778,6 +778,25 @@ class FailedFetchTests(FetchCase):
                 self.assertRaises(fetch.RetryableJobError):
             fetch.run_fetch_job(_Context({"name": "lsf", "commit": self.first}))
         self.assertNotIn("failed_commit", self.record_fetch.call_args.kwargs)
+        # The job retries it: the row stays fetching, with why the last try failed.
+        self.assertEqual(self.record_fetch.call_args.kwargs["state"], "fetching")
+        self.assertEqual(self.record_fetch.call_args.kwargs["error"], "network down")
+
+    def test_a_fetch_whose_library_changed_source_meanwhile_publishes_nothing_for_it(self) -> None:
+        self.declare(self.library())
+        real = fetch.fetch_version
+
+        def changed_meanwhile(lib, commit, **kwargs):
+            done = real(lib, commit, **kwargs)
+            self.declare(self.library(subdir="lsf.3dshapes"))  # the administrator changed the subfolder
+            return done
+
+        with mock.patch.object(fetch, "fetch_version", changed_meanwhile), \
+                mock.patch.object(fetch.kicad_library_store, "record_published") as published:
+            result = fetch.run_fetch_job(_Context({"name": "lsf", "commit": self.first}))
+        published.assert_not_called()
+        self.assertIn("changed", result.message)
+        self.assertEqual(self.record_fetch.call_args.kwargs["state"], "pending")
 
 
 class ProgressTests(unittest.TestCase):
