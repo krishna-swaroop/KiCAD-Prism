@@ -52,6 +52,9 @@ export function useTrackProject(projectId: string) {
     refreshEvery: READ_POLL_MS, refreshWhile: isRunning,
   });
   const readState = read.data?.state;
+  // A read that ended failed (or could not be asked for) stops the wait and says why; reopening the dialog reads again.
+  const readFailed = readState === "failed" ? read.data?.reason || "Could not read the project's BOM" : read.status === "error" ? read.error : "";
+  const reading = needsRead && !readFailed;
   const [readSeen, setReadSeen] = useState<string | undefined>(undefined);
   if (readState !== readSeen) {
     setReadSeen(readState);
@@ -76,10 +79,10 @@ export function useTrackProject(projectId: string) {
     state?.has_usage ? `projects/${projectId}/track-preview/${again}|${JSON.stringify(choice)}` : null, previewFetcher, "Could not work out the cost",
   );
   const preview = previewed.data;
-  const error = failed || (previewed.status === "error" ? previewed.error : "") || (read.status === "error" ? read.error : "") || (tracking.status === "error" ? tracking.error : "");
+  const error = failed || (previewed.status === "error" ? previewed.error : "") || (needsRead ? readFailed : "") || (tracking.status === "error" ? tracking.error : "");
 
   return {
-    state, connectors, setError, error, needsRead, preview, choice, assembly, regular, ids,
+    state, connectors, setError, error, reading, preview, choice, assembly, regular, ids,
     variants, allVariants, packaging, buildQuantity, spares, setAllVariants, setPackaging, setBuildQuantity, setSpares,
     recheck: () => { setError(""); setAgain((count) => count + 1); },
     reload: () => { void invalidateSupply("connectors"); setAgain((count) => count + 1); },

@@ -64,6 +64,17 @@ describe("a project with no schematic", () => {
   });
 });
 
+describe("a BOM read that fails", () => {
+  it("stops the wait and says why", async () => {
+    tracking.getProjectTracking.mockResolvedValue({ tracked: null, has_usage: false, has_schematic: true, variants: [] });
+    tracking.readProjectBom.mockResolvedValue({ state: "failed", done: 0, total: 1, failed: 1, reason: "The schematic could not be parsed" });
+    render(<MemoryRouter><TrackProjectButton projectId="prj_1" /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: /Track this project/ }));
+    expect(await screen.findByText("The schematic could not be parsed")).toBeTruthy();
+    expect(screen.queryByRole("progressbar", { name: "Reading the BOM" })).toBeNull();
+  });
+});
+
 describe("the track button of a tracked project", () => {
   it("shows a Tracked chip and a settings button instead of asking to track again", async () => {
     tracking.getProjectTracking.mockResolvedValue({

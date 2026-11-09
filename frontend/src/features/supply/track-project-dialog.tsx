@@ -69,7 +69,7 @@ function TrackProjectDialog({ projectId, onClose, onChanged }: { projectId: stri
   };
   const finished = useCallback(() => onChanged(), [onChanged]);
 
-  const reading = track.needsRead;
+  const reading = track.reading;
   const noSchematic = state?.has_schematic === false && !state.tracked;
   const title = reading ? "Reading BOM" : TITLE[step];
   return (
