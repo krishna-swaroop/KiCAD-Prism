@@ -409,11 +409,16 @@ _rows_lock = threading.Lock()
 _rows_cache: tuple[float, list[dict[str, Any]]] | None = None
 
 
-def declared_rows() -> list[dict[str, Any]]:
+class LibrariesUnreadable(RuntimeError):
+    """The declared libraries could not be read, and no earlier read stands in for them."""
+
+
+def declared_rows(*, strict: bool = False) -> list[dict[str, Any]]:
     """The administrator's libraries, as ``validate_entry`` takes them; read through a short cache.
 
     A database that cannot be reached leaves the last rows read in force, and none
-    if there never were any, so a tool run is never blocked on it.
+    if there never were any, so a tool run is never blocked on it. ``strict`` raises
+    ``LibrariesUnreadable`` instead of answering "none" when nothing was read before.
     """
 
     global _rows_cache
@@ -427,6 +432,8 @@ def declared_rows() -> list[dict[str, Any]]:
             rows = kicad_library_store.declared()
         except Exception as error:
             logger.warning("KiCad libraries: could not read the declared libraries: %s", error)
+            if strict and _rows_cache is None:
+                raise LibrariesUnreadable(f"Could not read the declared KiCad libraries: {error}") from error
             rows = _rows_cache[1] if _rows_cache is not None else []
         _rows_cache = (now, rows)
         return rows
@@ -440,13 +447,13 @@ def forget_rows() -> None:
         _rows_cache = None
 
 
-def configured() -> tuple[tuple[Library, ...], list[str]]:
+def configured(*, strict: bool = False) -> tuple[tuple[Library, ...], list[str]]:
     """The libraries in force, and why any declared one was left out."""
 
     kept: list[Library] = []
     problems: list[str] = []
     claimed: dict[str, str] = {}
-    for raw in declared_rows():
+    for raw in declared_rows(strict=strict):
         try:
             library = validate_entry(raw)
         except ValueError as error:
@@ -463,13 +470,13 @@ def configured() -> tuple[tuple[Library, ...], list[str]]:
     return tuple(kept), problems
 
 
-def snapshot(environ: Mapping[str, str] | None = None) -> Snapshot:
+def snapshot(environ: Mapping[str, str] | None = None, *, strict: bool = False) -> Snapshot:
     """The variables to bind now: the environment first, then each library that has something to serve."""
 
     env = dict(os.environ if environ is None else environ)
     bindings: dict[str, Binding] = {}
     overridden: dict[str, str] = {}
-    for library in configured()[0]:
+    for library in configured(strict=strict)[0]:
         served = library.served()
         if served is None:
             continue
@@ -485,11 +492,15 @@ def snapshot(environ: Mapping[str, str] | None = None) -> Snapshot:
 _pinned: Snapshot | None = None
 
 
-def pin(taken: Snapshot | None = None) -> Snapshot:
-    """Fix the snapshot this process uses from now on: a job takes one at its start and keeps it."""
+def pin(taken: Snapshot | None = None, *, strict: bool = False) -> Snapshot:
+    """Fix the snapshot this process uses from now on: a job takes one at its start and keeps it.
+
+    ``strict`` (a job's start) raises ``LibrariesUnreadable`` rather than pin a
+    snapshot that binds nothing because the database could not be read.
+    """
 
     global _pinned
-    _pinned = taken if taken is not None else snapshot()
+    _pinned = taken if taken is not None else snapshot(strict=strict)
     return _pinned
 
 

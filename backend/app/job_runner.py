@@ -56,11 +56,14 @@ def _execute(job_id: str, fence: int, worker_id: str) -> int:
         )
         return 4
 
-    # One answer to "which KiCad path variable points where" for the whole job: a library that
-    # publishes while it runs changes the next job, never what this one keyed or recorded.
-    kicad_libraries.pin()
     context = JobContext(job, worker_id=worker_id)
     try:
+        # One answer to "which KiCad path variable points where" for the whole job: a library that
+        # publishes while it runs changes the next job, never what this one keyed or recorded.
+        try:
+            kicad_libraries.pin(strict=True)
+        except kicad_libraries.LibrariesUnreadable as error:
+            raise RetryableJobError(str(error), code="kicad_libraries_unreadable", retry_after_seconds=15) from error
         context.check_cancelled()
         result = handler(context)
         context.flush_progress()

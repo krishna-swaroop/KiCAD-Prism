@@ -548,3 +548,34 @@ class ConsumerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UnreadableRowsTests(unittest.TestCase):
+    """A8: a job must not run with no libraries bound because the first read failed."""
+
+    def setUp(self) -> None:
+        libs.forget_rows()
+        self.addCleanup(libs.forget_rows)
+        self.addCleanup(libs.unpin)
+
+    def _failing_read(self):
+        from app.services import kicad_library_store
+
+        return mock.patch.object(kicad_library_store, "declared", side_effect=OSError("database is down"))
+
+    def test_a_strict_pin_with_nothing_read_before_raises(self) -> None:
+        with self._failing_read(), self.assertRaises(libs.LibrariesUnreadable):
+            libs.pin(strict=True)
+
+    def test_a_lenient_read_still_answers_none(self) -> None:
+        with self._failing_read():
+            self.assertEqual(libs.declared_rows(), [])
+
+    def test_a_strict_read_keeps_the_last_rows_read(self) -> None:
+        from app.services import kicad_library_store
+
+        rows = [{"name": "kept"}]
+        with mock.patch.object(kicad_library_store, "declared", return_value=rows):
+            libs.declared_rows()
+        with mock.patch.object(libs.time, "monotonic", return_value=libs.time.monotonic() + 3600), self._failing_read():
+            self.assertEqual(libs.declared_rows(strict=True), rows)
