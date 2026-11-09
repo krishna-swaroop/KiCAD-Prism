@@ -97,12 +97,17 @@ class ProjectBomTests(unittest.TestCase):
 
     def test_a_failed_index_is_not_reported_as_reading(self) -> None:
         self.index = None
-        with self.store.connection() as conn:
-            status = self.project_bom.read(
+
+        def read(conn) -> str:
+            return self.project_bom.read(
                 conn, self.project, ["admin"], NOW, existing=lambda _project: None, queue=self.queued.append,
                 identities=lambda ids: {}, failed=lambda _project: True,
             )
-        self.assertEqual(status, "without_index", "a build that ended failed is terminal, not still being read")
+
+        with self.store.connection() as conn:
+            first, second = read(conn), read(conn)
+        self.assertEqual(first, "reading", "the read that queued the retry reports the rebuild it started")
+        self.assertEqual(second, "without_index", "a build that ended failed is terminal, not still being read")
         self.assertEqual(self.queued, ["prj_1"], "the build is retried, but on the requeue interval")
 
     def test_a_queue_that_fails_is_retried_on_the_next_read(self) -> None:

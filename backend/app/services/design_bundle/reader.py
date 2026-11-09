@@ -47,6 +47,9 @@ class OpenedRevision:
     aliased: bool = False
     #: The error of a build that ended failed and is not being retried; ``None`` otherwise.
     failure: str | None = None
+    #: The error of the last models refresh over this served bundle when it failed; ``None`` otherwise.
+    #: The archive still serves its earlier parts, so this is not a ``failure``.
+    refresh_failure: str | None = None
     #: A no-commit request served HEAD while the checkout held uncommitted
     #: changes in the files the bundle reads (``consumer.BundleRead``).
     working_tree_dirty: bool = False
@@ -139,10 +142,25 @@ def open_revision(project_id: str, commit: str | None = None, *, queue: bool = F
     failure = None
     if not active and not complete and bundle and bundle["state"] == "failed":
         failure = str(bundle.get("error") or "the design bundle build failed")
+    refresh_failure = _refresh_failure(bundle) if complete and not active else None
     return OpenedRevision(
         project_id, key.commit, revision_key, generator.digest, bundle_key, archive, active,
         archive_revision_key=stored_as, aliased=aliased, failure=failure, working_tree_dirty=dirty,
+        refresh_failure=refresh_failure,
     )
+
+
+def _refresh_failure(bundle: Mapping[str, Any] | None) -> str | None:
+    """The error of the bundle's job when it was a models refresh that failed.
+
+    A refresh over a served bundle leaves its row ``complete`` (the archive keeps
+    serving), so the job is the only record that the parts were not updated.
+    """
+
+    job = rows.job_outline(str((bundle or {}).get("job_id") or ""))
+    if not job or job["status"] != "failed" or not (job.get("payload") or {}).get("refresh_models"):
+        return None
+    return str(job.get("error_message") or "the parts could not be exported")
 
 
 _unaffected: dict[tuple[str, str], None] = {}

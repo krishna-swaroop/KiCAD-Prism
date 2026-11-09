@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import shutil
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from app.core.errors import Conflict, NotFound
 from app.services.catalog.normalization import json_loads
@@ -12,6 +13,34 @@ from app.services.catalog.normalization import json_loads
 RUNNING_STATUSES = frozenset({"queued", "uploading", "scanning"})
 #: The job kinds that run an import session (their payload carries ``session_id``).
 IMPORT_JOB_KINDS = frozenset({"project_component_import", "folder_library_import"})
+#: How long a session with no job row may still be waiting for its enqueue.
+ENQUEUE_GRACE = timedelta(minutes=5)
+
+
+def import_job_ended(session: Mapping[str, Any]) -> bool:
+    """Whether the job running ``session`` is over, so a scanning session may be deleted.
+
+    A session with no job row at all lost it (the enqueue failed, or retention
+    purged the job) once it is older than ``ENQUEUE_GRACE``.
+    """
+
+    from app.services.job_queries import newest_jobs
+    from app.services.job_service import TERMINAL_STATUSES
+
+    job = newest_jobs(kind=sorted(IMPORT_JOB_KINDS), payload_key="session_id", payload_value=str(session["id"]))
+    if job:
+        return job[0].get("status") in TERMINAL_STATUSES
+    touched = session.get("updated_at") or session.get("created_at")
+    if isinstance(touched, str):
+        try:
+            touched = datetime.fromisoformat(touched.replace("Z", "+00:00"))
+        except ValueError:
+            return False
+    if not isinstance(touched, datetime):
+        return False
+    if touched.tzinfo is None:
+        touched = touched.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - touched >= ENQUEUE_GRACE
 
 
 class CatalogProjectImportSessions:

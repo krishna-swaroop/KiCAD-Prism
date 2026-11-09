@@ -458,11 +458,15 @@ def running_builds_for_job(job_id: str) -> list[dict[str, Any]]:
 
 
 def orphaned_build_job_ids(limit: int = 100) -> list[str]:
-    """Jobs with a running attempt whose fenced execution is over.
+    """Jobs with a running attempt whose fenced execution is over, or an ended job with open steps.
 
     An attempt is live only while its job is running or cancelling at the
     attempt's fence. Anything else (the job ended, waits for a retry, or a
     newer fence took over) left the row behind.
+
+    A job cancelled while it waited for a retry ended without its process, and
+    may have no attempt row at all (``prepare_candidate`` asked for a retry
+    before starting one); its pipeline still shows the steps it left open.
     """
 
     with connect() as conn:
@@ -476,11 +480,20 @@ def orphaned_build_job_ids(limit: int = 100) -> list[str]:
                 job.status NOT IN ('running', 'cancel_requested')
                 OR job.fence <> build.fence
               )
+            UNION
+            SELECT job.id
+            FROM ws_jobs job
+            WHERE job.kind = 'release_studio_build'
+              AND job.status IN ('failed', 'cancelled')
+              AND jsonb_path_exists(job.payload, %s::jsonpath, '{}', true)
             LIMIT %s
             """,
-            (limit,),
+            (_OPEN_STEP, limit),
         ).fetchall()
     return [str(row["job_id"]) for row in rows]
+
+
+_OPEN_STEP = 'strict $.pipeline.jobs[*].steps[*] ? (@.status == "queued" || @.status == "in_progress")'
 
 
 LIVE_STATUSES = frozenset({"running", "cancel_requested"})

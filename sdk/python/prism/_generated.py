@@ -7549,6 +7549,7 @@ class WebGpu3dStatus(TypedDict, total=False):
     message: str | None
     missingModels: list[VariableCount]
     readiness: StatusReadiness
+    refreshFailure: str | None
     refreshing: bool
     schema: str
     sourceRevisionKey: str

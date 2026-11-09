@@ -166,3 +166,38 @@ class ImportSessionDeleteTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@requires_scratch_postgres("import session job-end tests")
+class ImportJobEndedTests(unittest.TestCase):
+    """C6: a session whose job row is gone can still be deleted, once its enqueue had time to land."""
+
+    def _session(self, age: "timedelta") -> dict:
+        from datetime import datetime, timezone
+
+        stamp = (datetime.now(timezone.utc) - age).isoformat()
+        return {"id": f"pis_{uuid.uuid4().hex}", "created_at": stamp, "updated_at": stamp}
+
+    def test_a_session_with_no_job_row_ends_after_the_grace(self) -> None:
+        from datetime import timedelta
+
+        from app.services.catalog.project_import_sessions import ENQUEUE_GRACE, import_job_ended
+
+        self.assertFalse(import_job_ended(self._session(timedelta(seconds=5))))
+        self.assertTrue(import_job_ended(self._session(ENQUEUE_GRACE + timedelta(seconds=1))))
+
+    def test_a_live_job_keeps_an_old_session_running_and_its_end_releases_it(self) -> None:
+        from datetime import timedelta
+
+        from app.services.catalog.project_import_sessions import import_job_ended
+        from app.services.job_service import JobService
+
+        service = JobService()
+        service.initialize()
+        session = self._session(timedelta(hours=1))
+        job = service.enqueue(
+            "project_component_import", {"session_id": session["id"]}, worker_pool=f"test-{uuid.uuid4().hex[:8]}"
+        )
+        self.assertFalse(import_job_ended(session))
+        service.request_cancel(job["job_id"])
+        self.assertTrue(import_job_ended(session))

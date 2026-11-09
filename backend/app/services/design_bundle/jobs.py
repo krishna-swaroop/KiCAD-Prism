@@ -647,6 +647,7 @@ def run_design_bundle_job(context: JobContext) -> JobResult:
     _remove_superseded(run)
     if payload.get("refresh_models") and manifest_rules.models_built(archive.manifest):
         archive = run.models(archive)  # a library changed: the models stage again, nothing else
+        _rerender_thumbnail_at_head(row, str(key.commit))
     while (stage := manifest_rules.next_stage(archive.manifest)) is not None:
         archive = run.board(archive) if stage == "board" else run.models(archive)
     run.publish(archive, "models")
@@ -655,6 +656,24 @@ def run_design_bundle_job(context: JobContext) -> JobResult:
     incomplete = manifest_rules.incomplete_stages(statuses)
     run.details["failed_stages"], run.details["partial_stages"] = incomplete["failed"], incomplete["partial"]
     return JobResult(message=completion_message(statuses), details=run.details)
+
+
+def _rerender_thumbnail_at_head(row: Mapping[str, Any], commit: str) -> None:
+    """Render the project's thumbnail again when the refreshed commit is its HEAD.
+
+    The thumbnail draws the HEAD board with the bound libraries' models, so the
+    change that made this bundle's parts outdated made it outdated too.
+    """
+
+    project_id = str(row["id"])
+    try:
+        if project_revision.resolve_commit(project_revision.locate(row), "HEAD") != commit:
+            return
+        from app.services.project_import_service import start_thumbnail_job
+
+        start_thumbnail_job(project_id, requested_by="kicad-library-refresh")
+    except Exception:  # noqa: BLE001 - a thumbnail is cosmetic; the next library change tries again
+        logger.warning("design bundle: could not queue %s's thumbnail", project_id, exc_info=True)
 
 
 def completion_message(statuses: Mapping[str, str]) -> str:

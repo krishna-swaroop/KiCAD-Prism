@@ -52,6 +52,8 @@ class WebGpu3dStatus(WireModel):
     bundle_url: Optional[str] = None
     # The parts are being exported again because a KiCad library the board uses changed.
     refreshing: bool = False
+    # The last re-export of the parts failed; the earlier parts are still shown.
+    refreshFailure: Optional[str] = None
     # KiCad path variables the board's models use that this server does not define, with how many models each.
     unresolvedVariables: list[VariableCount] = []
     # Models a defined variable points to that are not in the library, grouped by variable.

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { Box, Eye, EyeOff, Focus, Layers3, Loader2, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
+import { Box, Eye, EyeOff, Focus, Layers3, Loader2, RefreshCw, RotateCcw, Sparkles, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -60,6 +60,8 @@ interface WebGpu3dStatus {
     job_id?: string | null;
     /** The parts are being exported again because a KiCad library the board uses changed. */
     refreshing?: boolean;
+    /** The last re-export of the parts failed; the earlier parts are still shown. */
+    refreshFailure?: string;
     /** KiCad path variables the board's models use that this server does not define. */
     unresolvedVariables?: VariableCount[];
     /** Models a defined variable points to that are not in its library. */
@@ -636,6 +638,12 @@ export function WebGpu3dTab({
                     <Badge variant="secondary" className="pointer-events-auto gap-1 shadow-sm">
                         <Loader2 className="h-3 w-3 animate-spin" />
                         Updating models: a KiCad library changed
+                    </Badge>
+                )}
+                {readinessStage === "semantic-ready" && !status?.refreshing && status?.refreshFailure && (
+                    <Badge variant="destructive" className="pointer-events-auto gap-1 shadow-sm" title={status.refreshFailure}>
+                        <TriangleAlert className="h-3 w-3" />
+                        Models not updated
                     </Badge>
                 )}
                 {!isStackup && onShowDnpChange && (

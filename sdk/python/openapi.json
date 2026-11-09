@@ -42155,6 +42155,17 @@
           "readiness": {
             "$ref": "#/components/schemas/StatusReadiness"
           },
+          "refreshFailure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refreshfailure"
+          },
           "refreshing": {
             "default": false,
             "title": "Refreshing",
