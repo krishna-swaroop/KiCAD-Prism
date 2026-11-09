@@ -1,4 +1,3 @@
-import base64
 import hashlib
 import hmac
 import json
@@ -8,6 +7,7 @@ from typing import Any, TypedDict
 from fastapi import Response
 
 from app.core.config import settings
+from app.core.b64url import b64_decode as _b64_decode, b64_encode as _b64_encode
 
 SESSION_COOKIE_NAME = "kicad_prism_session"
 SESSION_COOKIE_SAMESITE = "lax"
@@ -31,15 +31,6 @@ class OidcTransaction(TypedDict):
     code_verifier: str
     redirect_uri: str
     exp: int
-
-
-def _b64_encode(raw: bytes) -> str:
-    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
-
-
-def _b64_decode(value: str) -> bytes:
-    pad = "=" * ((4 - len(value) % 4) % 4)
-    return base64.urlsafe_b64decode((value + pad).encode("ascii"))
 
 
 def _sign(message: str, *, purpose: str) -> str:

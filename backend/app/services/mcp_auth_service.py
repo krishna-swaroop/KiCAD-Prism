@@ -25,6 +25,7 @@ from fastapi import HTTPException
 from psycopg.types.json import Jsonb
 
 from app.core.config import settings
+from app.core.b64url import pkce_challenge as _pkce_challenge
 from app.core.roles import normalize_role
 from app.services import access_service, provider_auth_service
 from app.services.postgres_database import database
@@ -130,11 +131,6 @@ def _new_refresh_token() -> str:
 
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
-
-
-def _pkce_challenge(code_verifier: str) -> str:
-    digest = hashlib.sha256(code_verifier.encode("utf-8")).digest()
-    return provider_auth_service._b64_encode(digest)
 
 
 def issue_authorization_code(

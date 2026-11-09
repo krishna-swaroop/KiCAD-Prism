@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import hashlib
 import hmac
 import json
@@ -12,6 +11,8 @@ from urllib.parse import urlparse
 from fastapi import HTTPException
 
 from app.core.config import settings
+from app.core.b64url import pkce_challenge as _pkce_challenge
+from app.core.b64url import b64_decode as _b64_decode, b64_encode as _b64_encode
 from app.core.roles import Role, normalize_role
 from app.core.session import create_oidc_transaction_token, decode_oidc_transaction_token
 from app.services import access_service
@@ -28,15 +29,6 @@ def _db():
 
 def _now() -> int:
     return int(time.time())
-
-
-def _b64_encode(raw: bytes) -> str:
-    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
-
-
-def _b64_decode(value: str) -> bytes:
-    pad = "=" * ((4 - len(value) % 4) % 4)
-    return base64.urlsafe_b64decode((value + pad).encode("ascii"))
 
 
 def _sign(message: str) -> str:
@@ -224,11 +216,6 @@ def issue_authorization_code(
     }
     _db().store_auth_code(code, grant, exp)
     return code
-
-
-def _pkce_challenge(code_verifier: str) -> str:
-    digest = hashlib.sha256(code_verifier.encode("utf-8")).digest()
-    return _b64_encode(digest)
 
 
 def exchange_authorization_code(

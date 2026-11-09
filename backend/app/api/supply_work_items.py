@@ -12,7 +12,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 
-from app.api import supply_connectors
+from app.api.supply_store import store as _store
 from app.api.supply_access import is_approver
 from app.api.supply_call import run_supply
 from app.api.supply_models import Items
@@ -22,11 +22,6 @@ from app.services.supply import work_items
 
 router = APIRouter(prefix="/api/supply/work-items", tags=["supply"])
 _run = partial(run_supply, missing=True)
-
-
-def _store():
-    # Resolved per call so a replaced connector service (tests) brings its own store.
-    return supply_connectors.service.store
 
 
 @router.get("", response_model=Items[SupplyWorkItem])

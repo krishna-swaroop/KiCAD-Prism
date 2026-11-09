@@ -18,6 +18,7 @@ from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api import supply_connectors
+from app.api.supply_store import store as _store
 from app.api.supply_call import run_supply as _run
 from app.core.errors import BadRequest
 from app.core.security import AuthenticatedUser, get_current_user, require_admin
@@ -121,10 +122,6 @@ class IssuedPushToken(BaseModel):
     # Shown once.
     token: str
     prefix: str
-
-
-def _store():
-    return supply_connectors.service.store
 
 
 def _pusher(target_kind: str) -> Callable:

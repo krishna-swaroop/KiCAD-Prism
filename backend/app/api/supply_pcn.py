@@ -11,6 +11,7 @@ from typing import Any
 from fastapi import APIRouter, Depends
 
 from app.api import supply_connectors
+from app.api.supply_store import store as _store
 from app.api.supply_access import is_approver
 from app.api.supply_call import run_supply
 from app.api.supply_models import Items
@@ -20,11 +21,6 @@ from app.services.supply import component_parts, details, parts, pcn, substitute
 
 router = APIRouter(prefix="/api/supply", tags=["supply"])
 _run = partial(run_supply, invalid="invalid_notice")
-
-
-def _store():
-    # Resolved per call so a replaced connector service (tests) brings its own store.
-    return supply_connectors.service.store
 
 
 @router.get("/parts/{part_id}/notices", response_model=Items[SupplyNotice])

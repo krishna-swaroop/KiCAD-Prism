@@ -11,7 +11,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Response
 
-from app.api import supply_connectors
+from app.api.supply_store import store as _store
 from app.api.supply_access import is_approver, require_supply_editor
 from app.api.supply_alerts_models import AlertRules, PartAlertRules, RulesRequest, SnoozeRequest, SupplyAlert
 from app.api.supply_call import run_supply
@@ -21,11 +21,6 @@ from app.services.supply import alert_rules, alerts, clock
 
 router = APIRouter(prefix="/api/supply", tags=["supply"])
 _run = partial(run_supply, invalid="decided", invalid_status=409, missing=True)
-
-
-def _store():
-    # Resolved per call so a replaced connector service (tests) brings its own store.
-    return supply_connectors.service.store
 
 
 @router.get("/alerts", response_model=Items[SupplyAlert], response_model_exclude_unset=True)
