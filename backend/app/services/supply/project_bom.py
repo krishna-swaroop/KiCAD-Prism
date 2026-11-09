@@ -104,8 +104,8 @@ def read(
     failed: Callable[[Any], bool] = index_failed,
 ) -> str:
     """Read a project's BOM into usage. ``reading`` when its newest revision has no index yet and one was queued (or was
-    queued lately); ``without_index`` once the index ended failed (a terminal state, retried after ``REQUEUE_AFTER``);
-    otherwise what ``usage.refresh_one`` says."""
+    queued lately), or when this call queued the retry of a failed one; ``without_index`` once the index ended failed
+    (a terminal state, retried after ``REQUEUE_AFTER``); otherwise what ``usage.refresh_one`` says."""
 
     project_id = str(project.id)
     status = usage.refresh_one(conn, project, existing, now, roles, identities if identities is not None else _identities())
@@ -114,14 +114,16 @@ def read(
         return status
     index_failed_now = failed(project)
     last = _queued_at.get(project_id)
+    queued = False
     if last is None or time.monotonic() - last >= REQUEUE_AFTER:
         _queued_at[project_id] = time.monotonic()
         try:
             queue(project_id)
+            queued = True
         except Exception:  # noqa: BLE001 - a project that cannot be queued is tried again later
             _queued_at.pop(project_id, None)
             logging.getLogger(__name__).info("Index not queued for %s", project_id, exc_info=True)
-    return "without_index" if index_failed_now else "reading"
+    return "without_index" if index_failed_now and not queued else "reading"
 
 
 def _event(conn, project: Any, roles: Sequence[str], before: Mapping[str, tuple[str, str]], after: Mapping[str, tuple[str, str]], now: datetime) -> None:
