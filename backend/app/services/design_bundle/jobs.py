@@ -175,6 +175,7 @@ def start_design_bundle_job(
     force: bool = False,
     retry_failed: bool = False,
     refresh_models: bool = False,
+    models_wanted: Mapping[str, str | None] | None = None,
 ) -> str | None:
     """Queue the bundle of ``project_id`` at ``commit`` (default ``HEAD``) on demand.
 
@@ -224,6 +225,7 @@ def start_design_bundle_job(
             "head": bool(head or commit is None),
             "force": bool(force),
             "refresh_models": bool(refresh_models),
+            **({"models_wanted": dict(models_wanted)} if refresh_models and models_wanted is not None else {}),
         },
         subject=JobSubject.of_project(row, project_id),
         artifact_key=artifact_key(project_id, bundle_key),

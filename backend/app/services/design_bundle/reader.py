@@ -171,7 +171,8 @@ def models_outdated(opened: OpenedRevision, *, snapshot: kicad_libraries.Snapsho
     taken = snapshot or kicad_libraries.current()
     recorded = store.read_models_record(opened.project_id, stored_as, opened.generator_digest)
     if recorded is not None:
-        return taken.fingerprints(recorded["variables"]) != recorded["variables"]
+        wanted = taken.fingerprints(recorded["variables"])
+        return wanted != recorded["variables"] and not _refresh_futile(opened, wanted, recorded["variables"])
     if not taken.bindings:
         return False
     memo = (archive.manifest_sha256, "|".join(sorted(f"{n}={b.fingerprint}" for n, b in taken.bindings.items())))
@@ -184,6 +185,38 @@ def models_outdated(opened: OpenedRevision, *, snapshot: kicad_libraries.Snapsho
         _unaffected.clear()
     _unaffected[memo] = None
     return False
+
+
+_futile_warned: set[tuple[str, str]] = set()
+
+
+def _refresh_futile(opened: OpenedRevision, wanted: Mapping[str, str | None], recorded: Mapping[str, Any]) -> bool:
+    """Whether the bundle's last job was a refresh that completed for exactly these bindings and still recorded others.
+
+    The worker records what it bound; this process compares what it binds. When
+    they disagree for good (a path library's mount root mounted into one
+    container only), another refresh would record the same and every status read
+    would queue one. It is futile until the bindings change again.
+    """
+
+    bundle = rows.get_bundle(opened.project_id, opened.bundle_key) if opened.bundle_key else None
+    job = rows.job_outline(str((bundle or {}).get("job_id") or ""))
+    payload = (job or {}).get("payload") or {}
+    if not job or job["status"] != "completed" or not payload.get("refresh_models"):
+        return False
+    if payload.get("models_wanted") != dict(wanted):
+        return False
+    key = (opened.project_id, str(opened.bundle_key))
+    if key not in _futile_warned:
+        if len(_futile_warned) >= _UNAFFECTED_LIMIT:
+            _futile_warned.clear()
+        _futile_warned.add(key)
+        differs = sorted(name for name in wanted if wanted[name] != recorded.get(name))
+        logger.warning(
+            "design bundle %s: the worker binds %s differently from this process after a refresh; "
+            "is every library mounted in both containers?", opened.bundle_key, ", ".join(differs),
+        )
+    return True
 
 
 def manifest_models_built(archive: Archive) -> bool:
@@ -205,6 +238,11 @@ def refresh_models(
         return None
     bundle = rows.get_bundle(opened.project_id, opened.bundle_key)
     commit = (bundle or {}).get("commit_sha") if opened.aliased else opened.commit
+    stored_as = opened.archive_revision_key or opened.revision_key
+    recorded = store.read_models_record(opened.project_id, stored_as, opened.generator_digest) if stored_as else None
+    # What this process binds for the board's variables: a refresh that completes and still records
+    # otherwise is not queued again for the same bindings (``_refresh_futile``).
+    wanted = kicad_libraries.current().fingerprints(recorded["variables"]) if recorded is not None else {}
     try:
         return jobs.start_design_bundle_job(
             opened.project_id,
@@ -213,6 +251,7 @@ def refresh_models(
             priority=priority,
             head=head,
             refresh_models=True,
+            models_wanted=wanted,
         )
     except cli.CliUnavailable:
         return None

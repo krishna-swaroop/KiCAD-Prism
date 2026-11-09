@@ -84,6 +84,9 @@ class ModelsCase(unittest.TestCase):
         self.enterContext(mock.patch.object(settings, "KICAD_PROJECTS_ROOT", str(self.tmp / "projects")))
         self.enterContext(mock.patch.object(settings, "PRISM_DESIGN_BUNDLE_ROOT", ""))
         reader._unaffected.clear()
+        self.bundle_job: dict | None = None
+        self.enterContext(mock.patch.object(reader.rows, "get_bundle", return_value={"job_id": "job_1"}))
+        self.enterContext(mock.patch.object(reader.rows, "job_outline", side_effect=lambda job_id: self.bundle_job))
 
     def opened(self, archive, *, active: bool = False) -> OpenedRevision:
         return OpenedRevision(PROJECT_ID, COMMIT_ID, REVISION_KEY, GENERATOR_DIGEST, BUNDLE_KEY, archive, active)
@@ -175,6 +178,27 @@ class OutdatedTests(ModelsCase):
     def test_a_library_the_board_used_and_that_was_removed_outdates_it(self) -> None:
         self.record(LSF_KICAD_LIB=LSF_FINGERPRINT)
         self.assertTrue(self.outdated(self.opened(write_archive(self.tmp / "a.prism"))))
+
+    def test_a_refresh_that_completed_for_these_bindings_and_still_differs_is_not_queued_again(self) -> None:
+        # The worker bound the library; this process cannot see it (its mount is missing here).
+        self.record(LSF_KICAD_LIB=LSF_FINGERPRINT)
+        opened = self.opened(write_archive(self.tmp / "a.prism"))
+        refresh = {"refresh_models": True, "models_wanted": {"LSF_KICAD_LIB": None}}
+        self.bundle_job = {"status": "completed", "payload": refresh}
+        with self.assertLogs(reader.logger, "WARNING"):
+            self.assertFalse(self.outdated(opened))
+        self.bundle_job = {"status": "failed", "payload": refresh}
+        self.assertTrue(self.outdated(opened), "a failed refresh proves nothing")
+        self.bundle_job = {"status": "completed", "payload": {**refresh, "models_wanted": {"LSF_KICAD_LIB": "git:x@y"}}}
+        self.assertTrue(self.outdated(opened), "bindings that changed since are worth a refresh")
+
+    def test_a_refresh_carries_the_bindings_this_process_wants(self) -> None:
+        self.record(LSF_KICAD_LIB=LSF_FINGERPRINT)
+        opened = self.opened(write_archive(self.tmp / "a.prism"))
+        with Configured(self.tmp / "projects"), \
+                mock.patch.object(reader.jobs, "start_design_bundle_job", return_value="job_2") as start:
+            self.assertEqual(reader.refresh_models(opened), "job_2")
+        self.assertEqual(start.call_args.kwargs["models_wanted"], {"LSF_KICAD_LIB": None})
 
     def test_a_variable_that_had_no_library_outdates_the_bundle_once_one_arrives(self) -> None:
         self.record(LSF_KICAD_LIB=None, KICAD10_3DMODEL_DIR=None)
