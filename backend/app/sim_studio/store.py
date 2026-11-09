@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import uuid
-from contextlib import contextmanager
-from typing import Any, Callable, ContextManager, Iterator, Optional
+from typing import Any, Callable, ContextManager, Optional
 
 from psycopg.types.json import Jsonb
 
 from app.core import errors, preconditions
-from app.services.postgres_database import database
+from app.services.workspace_connection import connect as workspace_connection
 
 ETAG_KIND = "simsetup"
 
@@ -27,13 +26,6 @@ class StaleSetup(errors.StaleVersion):
             "The setup changed since you read it; reload it and apply your change again.",
             headers={"ETag": preconditions.etag(ETAG_KIND, setup_id, revision)},
         )
-
-
-@contextmanager
-def workspace_connection() -> Iterator[Any]:
-    with database.connection() as conn:
-        conn.execute("SET search_path TO workspace, public")
-        yield conn
 
 
 _COLUMNS = (

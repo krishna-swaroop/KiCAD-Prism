@@ -20,6 +20,7 @@ from urllib.parse import quote, urlencode, urlparse, urlsplit
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
+from app.api.mcp_base_url import base_url as _base_url
 from app.core.config import settings
 from app.core.security import get_current_user, is_guest, refuse_provider_token
 from app.services import mcp_auth_service, mcp_clients
@@ -35,14 +36,6 @@ def _require_mcp_enabled() -> None:
 router = APIRouter(dependencies=[Depends(_require_mcp_enabled)])
 
 ISSUER_PATH = "/oauth/mcp"
-
-
-def _base_url(request: Request) -> str:
-    """``PUBLIC_BASE_URL`` when configured, else the request's own origin."""
-    configured = settings.PUBLIC_BASE_URL.strip().rstrip("/")
-    if configured:
-        return configured
-    return str(request.base_url).rstrip("/")
 
 
 def _issuer(base: str) -> str:

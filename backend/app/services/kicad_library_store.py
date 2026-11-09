@@ -10,16 +10,15 @@ this process; the others pick it up within its TTL.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any, Iterable, Iterator
+from typing import Any, Iterable
 
 from psycopg.types.json import Jsonb
 
 from app.core import preconditions
 from app.core.errors import Conflict, Invalid, NotFound, StaleVersion
 from app.services import kicad_libraries
-from app.services.postgres_database import database
+from app.services.workspace_connection import connect
 
 ETAG_KIND = "kicad-library"
 STATES = ("pending", "fetching", "ready", "failed")
@@ -33,13 +32,6 @@ _COLUMNS = (
     "check_interval_seconds, last_checked_at, last_check_error, remote_commit, generation, state, error, "
     "progress, size_bytes, fetched_at, row_version, created_at, updated_at, updated_by"
 )
-
-
-@contextmanager
-def connect() -> Iterator[Any]:
-    with database.connection() as conn:
-        conn.execute("SET search_path TO workspace, public")
-        yield conn
 
 
 def etag_of(row: dict[str, Any]) -> str:

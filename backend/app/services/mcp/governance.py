@@ -18,14 +18,13 @@ import asyncio
 import logging
 import threading
 import time
-from contextlib import contextmanager
-from typing import Any, Iterator, Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.errors import Invalid
 from app.services.mcp import invoke, registry
-from app.services.postgres_database import database
+from app.services.workspace_connection import connect
 
 logger = logging.getLogger(__name__)
 
@@ -46,13 +45,6 @@ class McpGovernance(BaseModel):
 _cached: McpGovernance | None = None
 _loaded_at: float | None = None
 _lock = threading.Lock()
-
-
-@contextmanager
-def connect() -> Iterator[Any]:
-    with database.connection() as conn:
-        conn.execute("SET search_path TO workspace, public")
-        yield conn
 
 
 def _load() -> McpGovernance:

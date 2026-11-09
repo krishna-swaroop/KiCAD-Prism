@@ -30,6 +30,7 @@ from urllib.parse import quote
 from app.core.config import settings
 from app.core.links import catalog_component_url
 from app.services.mcp import invoke
+from app.services.mcp.schema import object_schema as _object
 from app.services.mcp.registry import RouteRequest, Tool, register, write_annotations
 from app.services.mcp.tools_catalog_reads import (
     ASSET_TYPES,
@@ -88,15 +89,6 @@ _METADATA_FIELDS = (
     "rate",
     "sap_code",
 )
-
-
-def _object(properties: dict[str, Any], required: tuple[str, ...] = ()) -> dict[str, Any]:
-    return {
-        "type": "object",
-        "properties": properties,
-        "required": list(required),
-        "additionalProperties": False,
-    }
 
 
 def _component_path(component_id: str, suffix: str = "") -> str:

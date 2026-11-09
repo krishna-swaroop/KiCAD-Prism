@@ -15,13 +15,13 @@ sweep never grows with the number of dead workers.
 from __future__ import annotations
 
 import logging
-from contextlib import contextmanager
-from datetime import datetime, timezone
-from typing import Any, Iterable, Iterator
+from datetime import datetime
+from typing import Any, Iterable
 
 from psycopg.types.json import Jsonb
 
-from app.services.postgres_database import database
+from app.services.ops.timefmt import iso_z as _iso
+from app.services.workspace_connection import connect
 
 logger = logging.getLogger(__name__)
 
@@ -33,21 +33,6 @@ _PRUNE_AFTER_SECONDS = 24 * 60 * 60
 
 #: The most rows one heartbeat removes, so the sweep stays bounded.
 _PRUNE_LIMIT = 100
-
-
-@contextmanager
-def connect() -> Iterator[Any]:
-    """A workspace connection, the same seam the other ops stores read."""
-
-    with database.connection() as conn:
-        conn.execute("SET search_path TO workspace, public")
-        yield conn
-
-
-def _iso(value: datetime | None) -> str | None:
-    if value is None:
-        return None
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _running_jobs(running_jobs: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:

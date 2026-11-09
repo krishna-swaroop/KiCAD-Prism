@@ -14,13 +14,12 @@ never reconsidered and a crashed pass resumes at the event it did not settle.
 from __future__ import annotations
 
 import uuid
-from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any, Iterator
+from typing import Any
 
 from app.core.errors import Conflict, Invalid, NotFound
 from app.services import event_log
-from app.services.postgres_database import database
+from app.services.workspace_connection import connect
 from app.services.trackers.secrets import (
     SecretIntegrityError,
     SecretStoreLocked,
@@ -33,13 +32,6 @@ STATUSES = ("active", "failing", "disabled")
 SECRET_STORE_LOCKED = "secret-store-locked"
 #: ``update``'s "leave this column alone" marker; an explicit ``None`` clears one.
 UNSET = object()
-
-
-@contextmanager
-def connect() -> Iterator[Any]:
-    with database.connection() as conn:
-        conn.execute("SET search_path TO workspace, public")
-        yield conn
 
 
 def create(

@@ -23,21 +23,13 @@ from typing import Any
 from app.core.config import settings
 from app.core.links import resource_uri, view_url
 from app.services.mcp.registry import READ_ONLY_ANNOTATIONS, Tool, presenter, register
+from app.services.mcp.schema import object_schema as _object
 
 # The render tool registers from its own module; importing it first keeps it
 # first among the reads.
 from app.services.mcp import tools_render as _tools_render  # noqa: E402,F401
 
 _FULL_SHA = 40
-
-
-def _object(properties: dict[str, Any], required: tuple[str, ...] = ()) -> dict[str, Any]:
-    return {
-        "type": "object",
-        "properties": properties,
-        "required": list(required),
-        "additionalProperties": False,
-    }
 
 
 _PROJECT_ID = {"type": "string", "description": "The Prism project id."}
