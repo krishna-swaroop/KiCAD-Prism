@@ -500,6 +500,32 @@ class SweepTests(FetchCase):
         os.utime(stale, (old, old))
         self.assertEqual(fetch.sweep(grace=3600), [str(stale)])
 
+    def test_a_version_folder_nothing_serves_or_marks_goes_after_the_grace(self) -> None:
+        library = self.library()
+        self.declare(library)
+        fetch.fetch_version(library, self.first)
+        # Left by a fetch that crashed before current.json, or by the library's earlier declaration.
+        orphan = library.clone_dir / ("c" * 40)
+        orphan.mkdir()
+        self.assertTrue(fetch._needs_sweep(library.clone_dir, library, True, set()))
+        self.assertEqual(fetch.sweep(grace=3600), [])
+        self.assertTrue((library.clone_dir / f"{orphan.name}.superseded").is_file())
+        self.assertEqual(fetch.sweep(grace=-1), [str(orphan)])
+        self.assertTrue((library.clone_dir / self.first).is_dir(), "the served version stays")
+
+    def test_a_library_declared_again_leaves_no_version_of_its_earlier_declaration(self) -> None:
+        library = self.library()
+        patcher = self.declare(library)
+        fetch.fetch_version(library, self.first)
+        patcher.stop()
+        with mock.patch.object(libs, "declared_rows", return_value=[]):
+            fetch.unpublish(library.clone_dir)
+        again = self.library(subdir="lsf.3dshapes")
+        self.declare(again)
+        fetch.fetch_version(again, self.first)
+        self.assertEqual(fetch.sweep(grace=-1), [str(library.clone_dir / self.first)])
+        self.assertIn("LSF_KICAD_LIB", libs.snapshot({}).bindings)
+
     def test_unreferenced_objects_leave_the_store(self) -> None:
         library = self.library()
         self.declare(library)

@@ -911,6 +911,7 @@ def sweep(
                 removed.append(str(library_dir))
             continue
         published = library.published()
+        _mark_unmarked_versions(library_dir, published)
         for entry in list(library_dir.iterdir()):
             if entry.name.endswith(".partial") and entry.is_dir() and time.time() - entry.stat().st_mtime > grace:
                 remove_tree(entry, ignore_errors=True)
@@ -927,6 +928,29 @@ def sweep(
         if keep_commits is not None:
             _prune_store(library_dir / _STORE, set(keep_commits.get(library.name, ())) | ({published.commit} if published else set()))
     return removed
+
+
+def _unmarked_versions(library_dir: Path, published: kicad_libraries.Published | None) -> list[Path]:
+    """Version folders nothing serves and no ``.superseded`` marker names.
+
+    ``publish`` marks only the version it replaces, so a folder left by a
+    library removed and declared again, or by a fetch that crashed between its
+    rename and ``current.json``, would otherwise stay for good.
+    """
+
+    serving = published.directory if published is not None else None
+    return [
+        entry for entry in library_dir.iterdir()
+        if entry.is_dir() and kicad_libraries._DIRECTORY.fullmatch(entry.name) and entry.name != serving
+        and not (library_dir / f"{entry.name}{_SUPERSEDED}").exists()
+    ]
+
+
+def _mark_unmarked_versions(library_dir: Path, published: kicad_libraries.Published | None) -> None:
+    """Start the grace period of every version folder nothing serves or marks; the sweep removes it once it ends."""
+
+    for entry in _unmarked_versions(library_dir, published):
+        (library_dir / f"{entry.name}{_SUPERSEDED}").write_text(str(time.time()), encoding="utf-8")
 
 
 def _dropped_refs(store: Path, keep: set[str]) -> list[str]:
@@ -981,6 +1005,8 @@ def _needs_sweep(
         age = _age(library_dir / _REMOVED_FILE)
         return age is None or age > grace
     published = library.published()
+    if _unmarked_versions(library_dir, published):
+        return True
     for entry in library_dir.iterdir():
         if entry.name.endswith(".partial") and entry.is_dir() and time.time() - entry.stat().st_mtime > grace:
             return True
