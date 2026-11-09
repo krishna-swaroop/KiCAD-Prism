@@ -25,6 +25,7 @@ from app.services.trackers.errors import ProviderError
 from app.services.trackers.executor_support import (
     NON_CONSUMING_ERROR_CLASSES,
     apply_provider_error,
+    policy_check_for_ctx as _policy_check,
 )
 from app.services.trackers.github_recovery import (
     RecoveryKind,
@@ -40,7 +41,6 @@ from app.services.trackers.connector_runtime import connector_runtime
 from app.services.trackers.providers import comment_web_url
 from app.services.trackers.reply_mutations import REPLY_OPS, decode_reply_target
 from app.services.trackers.store import TrackerStore, issue_number_for_api
-from app.services.trackers.executor_support import policy_check_for_ctx as _policy_check
 
 logger = logging.getLogger(__name__)
 

@@ -23,6 +23,8 @@ from app.services.trackers.errors import ProviderError
 from app.services.trackers.executor_support import (
     NON_CONSUMING_ERROR_CLASSES,
     apply_provider_error,
+    build_draft_for_ctx as _build_draft,
+    policy_check_for_ctx as _policy_check,
 )
 from app.services.trackers.github_recovery import (
     RecoveryKind,
@@ -33,10 +35,6 @@ from app.services.trackers.github_recovery import (
 from app.services.trackers.op_store import EXECUTE_DISPATCH, RECOVERY_DISPATCH, OpStore
 from app.services.trackers.connector_runtime import connector_runtime
 from app.services.trackers.providers import issue_web_url
-from app.services.trackers.executor_support import (
-    build_draft_for_ctx as _build_draft,
-    policy_check_for_ctx as _policy_check,
-)
 
 
 @dataclass(frozen=True)

@@ -22,6 +22,8 @@ from app.services.trackers.errors import ProviderError
 from app.services.trackers.executor_support import (
     NON_CONSUMING_ERROR_CLASSES,
     apply_provider_error,
+    build_draft_for_ctx as _build_draft,
+    policy_check_for_ctx as _policy_check,
 )
 from app.services.trackers.github_recovery import next_quarantine_at
 from app.services.trackers.markers import build_marker
@@ -34,10 +36,6 @@ from app.services.trackers.thread_mutations import (
     THREAD_OPS,
     compose_outbound_issue_body,
     should_rewrite_title,
-)
-from app.services.trackers.executor_support import (
-    build_draft_for_ctx as _build_draft,
-    policy_check_for_ctx as _policy_check,
 )
 
 
