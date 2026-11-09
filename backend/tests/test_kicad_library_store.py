@@ -96,13 +96,28 @@ class KicadLibraryStoreTests(unittest.TestCase):
         moved = store.update("lsf", {"ref": "v2"}, expected_version=None, updated_by="")
         self.assertEqual((moved["state"], moved["pinnedCommit"], moved["fetchedCommit"]), ("pending", "", COMMIT))
 
+    def serving(self, commit: str | None):
+        served = kicad_libraries.Published(commit=commit, directory=commit, source="") if commit else None
+        return patch.object(kicad_libraries.Library, "published", return_value=served)
+
     def test_pinning_pins_what_is_served_and_following_clears_it(self) -> None:
         store.create(LSF, updated_by="")
         store.record_published("lsf", commit=COMMIT, ref="main", size_bytes=1, requested_by="")
-        frozen = store.update("lsf", {"update_policy": "pinned"}, expected_version=None, updated_by="")
+        with self.serving(COMMIT):
+            frozen = store.update("lsf", {"update_policy": "pinned"}, expected_version=None, updated_by="")
         self.assertEqual((frozen["updatePolicy"], frozen["pinnedCommit"]), ("pinned", COMMIT))
         thawed = store.update("lsf", {"update_policy": "follow"}, expected_version=None, updated_by="")
         self.assertEqual((thawed["updatePolicy"], thawed["pinnedCommit"]), ("follow", ""))
+
+    def test_pinning_while_nothing_of_this_source_is_served_pins_the_next_publish(self) -> None:
+        store.create(LSF, updated_by="")
+        store.record_published("lsf", commit=COMMIT, ref="main", size_bytes=1, requested_by="")
+        store.update("lsf", {"subdir": "lsf.3dshapes"}, expected_version=None, updated_by="")
+        with self.serving(None):  # the earlier subfolder's version is not this source's
+            frozen = store.update("lsf", {"update_policy": "pinned"}, expected_version=None, updated_by="")
+        self.assertEqual((frozen["pinnedCommit"], frozen["fetchedCommit"]), ("", COMMIT))
+        store.record_published("lsf", commit=OTHER, ref="main", size_bytes=1, requested_by="")
+        self.assertEqual(store.get("lsf")["pinnedCommit"], OTHER)
 
     def test_the_history_keeps_the_last_versions_newest_first(self) -> None:
         store.create(LSF, updated_by="")
@@ -170,6 +185,23 @@ class KicadLibraryStoreTests(unittest.TestCase):
     def test_a_fetch_ends_ready_or_failed_only(self) -> None:
         with self.assertRaises(Invalid):
             self.settle("2026-01-01T00:00:00+00:00", state="pending")
+
+    def test_a_permanent_failure_records_its_commit_until_a_fetch_starts_or_publishes(self) -> None:
+        store.create(LSF, updated_by="")
+        store.record_fetch("lsf", state="failed", error="too large", failed_commit=COMMIT)
+        self.assertEqual(store.failed_commits(), {"lsf": COMMIT})
+        store.record_fetch("lsf", state="fetching", failed_commit=None)
+        self.assertEqual(store.failed_commits(), {})
+        store.record_fetch("lsf", state="failed", error="no such ref", failed_commit="")
+        self.assertEqual(store.failed_commits(), {"lsf": ""})
+        store.record_published("lsf", commit=OTHER, ref="main", size_bytes=1, requested_by="")
+        self.assertEqual(store.failed_commits(), {})
+
+    def test_a_changed_source_forgets_the_permanent_failure(self) -> None:
+        store.create(LSF, updated_by="")
+        store.record_fetch("lsf", state="failed", error="no folder", failed_commit=COMMIT)
+        store.update("lsf", {"subdir": "lsf.3dshapes"}, expected_version=None, updated_by="")
+        self.assertEqual(store.failed_commits(), {})
 
     def test_due_libraries_are_claimed_once(self) -> None:
         store.create(LSF, updated_by="")

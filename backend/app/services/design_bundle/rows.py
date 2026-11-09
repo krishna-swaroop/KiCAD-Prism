@@ -422,6 +422,16 @@ def job_end(job_id: str | None, *, connect: Connect | None = None) -> tuple[str,
     return (str(row["status"]), row["updated_at"]) if row else None
 
 
+def job_outline(job_id: str | None, *, connect: Connect | None = None) -> dict[str, Any] | None:
+    """A job's status, payload and when it last changed; ``None`` when there is no such job."""
+
+    if not job_id:
+        return None
+    with _with(connect)() as conn:
+        row = conn.execute("SELECT status, payload, updated_at FROM ws_jobs WHERE id=%s", (job_id,)).fetchone()
+    return {"status": str(row["status"]), "payload": row["payload"] or {}, "ended_at": row["updated_at"]} if row else None
+
+
 def job_status(job_id: str | None, *, connect: Connect | None = None) -> str | None:
     if not job_id:
         return None

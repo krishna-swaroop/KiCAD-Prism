@@ -500,6 +500,32 @@ class SweepTests(FetchCase):
         os.utime(stale, (old, old))
         self.assertEqual(fetch.sweep(grace=3600), [str(stale)])
 
+    def test_a_version_folder_nothing_serves_or_marks_goes_after_the_grace(self) -> None:
+        library = self.library()
+        self.declare(library)
+        fetch.fetch_version(library, self.first)
+        # Left by a fetch that crashed before current.json, or by the library's earlier declaration.
+        orphan = library.clone_dir / ("c" * 40)
+        orphan.mkdir()
+        self.assertTrue(fetch._needs_sweep(library.clone_dir, library, True, set()))
+        self.assertEqual(fetch.sweep(grace=3600), [])
+        self.assertTrue((library.clone_dir / f"{orphan.name}.superseded").is_file())
+        self.assertEqual(fetch.sweep(grace=-1), [str(orphan)])
+        self.assertTrue((library.clone_dir / self.first).is_dir(), "the served version stays")
+
+    def test_a_library_declared_again_leaves_no_version_of_its_earlier_declaration(self) -> None:
+        library = self.library()
+        patcher = self.declare(library)
+        fetch.fetch_version(library, self.first)
+        patcher.stop()
+        with mock.patch.object(libs, "declared_rows", return_value=[]):
+            fetch.unpublish(library.clone_dir)
+        again = self.library(subdir="lsf.3dshapes")
+        self.declare(again)
+        fetch.fetch_version(again, self.first)
+        self.assertEqual(fetch.sweep(grace=-1), [str(library.clone_dir / self.first)])
+        self.assertIn("LSF_KICAD_LIB", libs.snapshot({}).bindings)
+
     def test_unreferenced_objects_leave_the_store(self) -> None:
         library = self.library()
         self.declare(library)
@@ -722,6 +748,55 @@ class PinnedFetchTests(FetchCase):
             fetch.run_fetch_job(_Context({"name": "lsf", "commit": second}))
         self.assertEqual(calls, [second, self.first])
         self.assertEqual(library.published().commit, self.first)
+
+
+class FailedFetchTests(FetchCase):
+    def setUp(self) -> None:
+        super().setUp()
+        patcher = mock.patch.object(fetch.kicad_library_store, "record_fetch")
+        self.record_fetch = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_a_permanent_failure_records_the_commit_it_failed_at(self) -> None:
+        self.declare(self.library(subdir="absent"))
+        with self.assertRaises(fetch.PermanentJobError):
+            fetch.run_fetch_job(_Context({"name": "lsf", "commit": self.first}))
+        self.assertEqual(self.record_fetch.call_args_list[0].kwargs["failed_commit"], None, "a start clears it")
+        self.assertEqual(self.record_fetch.call_args.kwargs["failed_commit"], self.first)
+
+    def test_a_failure_the_server_must_fix_records_no_failed_commit(self) -> None:
+        self.declare(self.library())
+        missing = fetch.FetchError("git-lfs is not installed on the server", permanent=True, server=True)
+        with mock.patch.object(fetch, "fetch_version", side_effect=missing), self.assertRaises(fetch.PermanentJobError):
+            fetch.run_fetch_job(_Context({"name": "lsf", "commit": self.first}))
+        self.assertEqual(self.record_fetch.call_args.kwargs["state"], "failed")
+        self.assertNotIn("failed_commit", self.record_fetch.call_args.kwargs)
+
+    def test_a_transient_failure_records_no_failed_commit(self) -> None:
+        self.declare(self.library())
+        with mock.patch.object(fetch, "fetch_version", side_effect=fetch.FetchError("network down")), \
+                self.assertRaises(fetch.RetryableJobError):
+            fetch.run_fetch_job(_Context({"name": "lsf", "commit": self.first}))
+        self.assertNotIn("failed_commit", self.record_fetch.call_args.kwargs)
+        # The job retries it: the row stays fetching, with why the last try failed.
+        self.assertEqual(self.record_fetch.call_args.kwargs["state"], "fetching")
+        self.assertEqual(self.record_fetch.call_args.kwargs["error"], "network down")
+
+    def test_a_fetch_whose_library_changed_source_meanwhile_publishes_nothing_for_it(self) -> None:
+        self.declare(self.library())
+        real = fetch.fetch_version
+
+        def changed_meanwhile(lib, commit, **kwargs):
+            done = real(lib, commit, **kwargs)
+            self.declare(self.library(subdir="lsf.3dshapes"))  # the administrator changed the subfolder
+            return done
+
+        with mock.patch.object(fetch, "fetch_version", changed_meanwhile), \
+                mock.patch.object(fetch.kicad_library_store, "record_published") as published:
+            result = fetch.run_fetch_job(_Context({"name": "lsf", "commit": self.first}))
+        published.assert_not_called()
+        self.assertIn("changed", result.message)
+        self.assertEqual(self.record_fetch.call_args.kwargs["state"], "pending")
 
 
 class ProgressTests(unittest.TestCase):

@@ -157,7 +157,10 @@ def update(name: str, fields: dict[str, Any], *, expected_version: int | None, u
         if source_changed and "pinned_commit" not in fields:
             merged["pinned_commit"] = ""
         if merged["update_policy"] == "pinned" and not merged.get("pinned_commit") and not source_changed:
-            merged["pinned_commit"] = current["fetched_commit"] or ""
+            # What is served now, from disk: the row's fetched commit may be the earlier source's
+            # (a subfolder changed and not yet fetched). Nothing served leaves the pin to the next publish.
+            served = _served_commit(current)
+            merged["pinned_commit"] = served
         if merged["update_policy"] == "follow" and "pinned_commit" not in fields:
             merged["pinned_commit"] = ""
         library = _checked(merged)
@@ -169,6 +172,7 @@ def update(name: str, fields: dict[str, Any], *, expected_version: int | None, u
                    update_policy = %s, pinned_commit = %s, check_interval_seconds = %s,
                    state = CASE WHEN %s THEN 'pending' ELSE state END,
                    error = CASE WHEN %s THEN NULL ELSE error END,
+                   failed_commit = CASE WHEN %s THEN NULL ELSE failed_commit END,
                    row_version = row_version + 1, updated_at = now(), updated_by = %s
              WHERE name = %s
             RETURNING {_COLUMNS}
@@ -182,6 +186,7 @@ def update(name: str, fields: dict[str, Any], *, expected_version: int | None, u
                 library.update_policy,
                 library.pinned_commit or None,
                 library.check_interval_seconds,
+                source_changed,
                 source_changed,
                 source_changed,
                 updated_by,
@@ -233,13 +238,18 @@ def record_fetch(
     error: str | None | object = UNSET,
     progress: int | None | object = UNSET,
     size_bytes: int | None | object = UNSET,
+    failed_commit: str | None | object = UNSET,
 ) -> None:
-    """The fetch's progress, as the console shows it; a deleted library is not an error."""
+    """The fetch's progress, as the console shows it; a deleted library is not an error.
+
+    ``failed_commit`` records the commit a fetch failed at for good (``""``: its ref did not resolve), or clears it.
+    """
 
     if state not in STATES:
         raise Invalid(f"Unknown fetch state {state!r}")
     sets, values = ["state = %s", "updated_at = now()"], [state]
-    for column, value in (("error", error), ("progress", progress), ("size_bytes", size_bytes)):
+    columns = (("error", error), ("progress", progress), ("size_bytes", size_bytes), ("failed_commit", failed_commit))
+    for column, value in columns:
         if value is not UNSET:
             sets.append(f"{column} = %s")
             values.append(value)
@@ -293,12 +303,22 @@ def unsettled_fetch_jobs(kind: str, limit: int = 100) -> list[str]:
     return [str(row["id"]) for row in rows]
 
 
+def failed_commits() -> dict[str, str]:
+    """Each library whose last fetch failed for good, and the commit it failed at (``""``: its ref did not resolve)."""
+
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT name, failed_commit FROM ws_kicad_libraries WHERE state = 'failed' AND failed_commit IS NOT NULL"
+        ).fetchall()
+    return {row["name"]: row["failed_commit"] for row in rows}
+
+
 def record_published(name: str, *, commit: str, ref: str, size_bytes: int | None, requested_by: str) -> None:
     """A version is now served: the row says so, and the history keeps it."""
 
     with connect() as conn:
         conn.execute(
-            "UPDATE ws_kicad_libraries SET state = 'ready', progress = 100, error = NULL, fetched_commit = %s, "
+            "UPDATE ws_kicad_libraries SET state = 'ready', progress = 100, error = NULL, failed_commit = NULL, fetched_commit = %s, "
             "size_bytes = COALESCE(%s, size_bytes), fetched_at = %s, updated_at = now(), "
             "pinned_commit = CASE WHEN update_policy = 'pinned' AND pinned_commit IS NULL THEN %s ELSE pinned_commit END "
             "WHERE name = %s",
@@ -395,6 +415,16 @@ def projects_using(variables: Iterable[str]) -> int:
             (names,),
         ).fetchone()
     return int(row["n"])
+
+
+def _served_commit(row: dict[str, Any]) -> str:
+    """The commit a git library's row serves from disk now; ``""`` when nothing of its source is published."""
+
+    try:
+        published = kicad_libraries.validate_entry(_entry(row)).published()
+    except ValueError:
+        return ""
+    return published.commit if published is not None else ""
 
 
 def _checked(fields: dict[str, Any]) -> kicad_libraries.Library:

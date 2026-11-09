@@ -17,10 +17,11 @@ from test_kicad_library_fetch import FetchCase  # noqa: E402
 class CheckTests(FetchCase):
     def setUp(self) -> None:
         super().setUp()
-        for target in ("record_check", "claim_due"):
+        for target in ("record_check", "claim_due", "failed_commits"):
             patcher = mock.patch.object(updates.store, target)
             setattr(self, target, patcher.start())
             self.addCleanup(patcher.stop)
+        self.failed_commits.return_value = {}
         patcher = mock.patch.object(updates.fetch, "request_fetch")
         self.request_fetch = patcher.start()
         self.addCleanup(patcher.stop)
@@ -65,6 +66,15 @@ class CheckTests(FetchCase):
         self.declared()
         result = updates.check_library("lsf")
         self.assertTrue(result["queued"])
+
+    def test_a_commit_a_fetch_failed_at_for_good_is_not_fetched_again_until_the_ref_moves(self) -> None:
+        self.declared()
+        self.failed_commits.return_value = {"lsf": self.first}
+        self.assertFalse(updates.check_library("lsf")["queued"])
+        self.request_fetch.assert_not_called()
+        second = self.advance()
+        self.assertTrue(updates.check_library("lsf")["queued"])
+        self.request_fetch.assert_called_once_with("lsf", commit=second, requested_by=updates.SYSTEM_USER)
 
     def test_a_check_that_cannot_reach_the_remote_records_why_and_fetches_nothing(self) -> None:
         library = self.declared(git=(self.root / "gone").as_uri())

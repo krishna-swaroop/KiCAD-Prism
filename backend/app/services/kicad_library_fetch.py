@@ -90,11 +90,16 @@ _FAILURES = {
 
 
 class FetchError(RuntimeError):
-    """A fetch that failed. ``permanent`` ones would fail the same way again."""
+    """A fetch that failed. ``permanent`` ones would fail the same way again.
 
-    def __init__(self, message: str, *, permanent: bool = False) -> None:
+    ``server`` ones are the server's to fix (git or git-lfs missing, a store it cannot write), not the repository's:
+    they record no failed commit, so the scheduled check tries again once the server is fixed.
+    """
+
+    def __init__(self, message: str, *, permanent: bool = False, server: bool = False) -> None:
         super().__init__(message)
         self.permanent = permanent
+        self.server = server
 
 
 def progress_of(line: str) -> int | None:
@@ -221,7 +226,7 @@ def resolve_remote(url: str, ref: str) -> str:
     except subprocess.TimeoutExpired as error:
         raise FetchError(f"No answer from the repository within {_REMOTE_TIMEOUT_SECONDS} seconds") from error
     except OSError as error:
-        raise FetchError(f"git could not run: {error}", permanent=True) from error
+        raise FetchError(f"git could not run: {error}", permanent=True, server=True) from error
     if done.returncode != 0:
         raise _failure(done.stderr, url, "git ls-remote failed")
     found: dict[str, str] = {}
@@ -355,7 +360,7 @@ def _ensure_store(store: Path) -> None:
     store.parent.mkdir(parents=True, exist_ok=True)
     done = subprocess.run(_git("init", "--bare", "-q", str(store)), capture_output=True, text=True, env=_environment())
     if done.returncode != 0:
-        raise FetchError(f"Could not create the library's object store: {_last_line(done.stderr)}", permanent=True)
+        raise FetchError(f"Could not create the library's object store: {_last_line(done.stderr)}", permanent=True, server=True)
 
 
 def _has_commit(store: Path, commit: str) -> bool:
@@ -419,7 +424,7 @@ def fetch_into_store(
         _git("update-ref", f"{_KEEP_REF}{commit}", commit, git_dir=store), capture_output=True, text=True, env=_environment()
     )
     if done.returncode != 0:
-        raise FetchError(f"Could not keep the fetched commit: {_last_line(done.stderr)}", permanent=True)
+        raise FetchError(f"Could not keep the fetched commit: {_last_line(done.stderr)}", permanent=True, server=True)
 
 
 class UnsafeArchive(FetchError):
@@ -658,6 +663,7 @@ def hydrate_lfs(
         raise FetchError(
             f"{len(pointers)} files in this library are stored with Git LFS, and git-lfs is not installed on the server",
             permanent=True,
+            server=True,
         )
     needed, limit = sum(size for _path, _sha, size in pointers), max_bytes()
     if already + needed > limit:
@@ -800,8 +806,9 @@ def run_fetch_job(context: JobContext) -> JobResult:
     if requested and library.update_policy == "pinned" and library.pinned_commit and requested != library.pinned_commit:
         # Queued before the library was pinned (a scheduled check, an update): a pinned library serves its pin only.
         return JobResult(message=f"{name} is pinned at {library.pinned_commit[:12]}; {requested[:12]} was not fetched")
-    kicad_library_store.record_fetch(name, state="fetching", progress=0, error=None)
+    kicad_library_store.record_fetch(name, state="fetching", progress=0, error=None, failed_commit=None)
     checked = [time.monotonic()]
+    commit = ""
 
     def on_tick() -> None:
         if time.monotonic() - checked[0] >= _TICK_SECONDS:
@@ -823,6 +830,11 @@ def run_fetch_job(context: JobContext) -> JobResult:
             return JobResult(message=f"{name} is already at {commit[:12]}")
         size = fetch_version(library, commit, on_progress=on_progress, on_tick=on_tick)
         fresh = _library(name)
+        if fresh is not None and fresh.source != library.source:
+            # Declared again with another source while this ran: this version is not that source's, and
+            # the fetch queued with the change serves it. The row waits for that one.
+            kicad_library_store.record_fetch(name, state="pending", progress=None)
+            return JobResult(message=f"{name} changed while {commit[:12]} was fetched; its own fetch serves it")
         if fresh is not None and fresh.update_policy == "pinned" and fresh.pinned_commit and fresh.pinned_commit != commit:
             # Pinned while this fetch ran: the pin is what serves, and it is usually still on disk.
             commit = fresh.pinned_commit
@@ -831,12 +843,17 @@ def run_fetch_job(context: JobContext) -> JobResult:
         kicad_library_store.record_fetch(name, state="failed", error="Cancelled")
         raise
     except FetchError as error:
-        kicad_library_store.record_fetch(name, state="failed", error=str(error)[:500])
         if error.permanent:
+            failed = {"failed_commit": commit} if not error.server else {}  # the server's to fix: the check retries
+            kicad_library_store.record_fetch(name, state="failed", error=str(error)[:500], **failed)
             raise PermanentJobError(str(error), code="library-fetch-failed") from error
+        # The job retries: still fetching, with why the last try failed. If no try is left, the end hook fails it.
+        kicad_library_store.record_fetch(name, state="fetching", error=str(error)[:500], progress=None)
         raise RetryableJobError(str(error), code="library-fetch-failed", retry_after_seconds=60) from error
     except Exception as error:
-        kicad_library_store.record_fetch(name, state="failed", error="The library could not be fetched; see the job log")
+        kicad_library_store.record_fetch(
+            name, state="fetching", error="The library could not be fetched; see the job log", progress=None
+        )
         raise RetryableJobError(str(error), code="library-fetch-failed", retry_after_seconds=60) from error
     kicad_library_store.record_published(name, commit=commit, ref=library.ref, size_bytes=size, requested_by=requested_by)
     logger.info("KiCad library %s is at %s (%s bytes)", name, commit, size)
@@ -911,6 +928,7 @@ def sweep(
                 removed.append(str(library_dir))
             continue
         published = library.published()
+        _mark_unmarked_versions(library_dir, published)
         for entry in list(library_dir.iterdir()):
             if entry.name.endswith(".partial") and entry.is_dir() and time.time() - entry.stat().st_mtime > grace:
                 remove_tree(entry, ignore_errors=True)
@@ -927,6 +945,29 @@ def sweep(
         if keep_commits is not None:
             _prune_store(library_dir / _STORE, set(keep_commits.get(library.name, ())) | ({published.commit} if published else set()))
     return removed
+
+
+def _unmarked_versions(library_dir: Path, published: kicad_libraries.Published | None) -> list[Path]:
+    """Version folders nothing serves and no ``.superseded`` marker names.
+
+    ``publish`` marks only the version it replaces, so a folder left by a
+    library removed and declared again, or by a fetch that crashed between its
+    rename and ``current.json``, would otherwise stay for good.
+    """
+
+    serving = published.directory if published is not None else None
+    return [
+        entry for entry in library_dir.iterdir()
+        if entry.is_dir() and kicad_libraries._DIRECTORY.fullmatch(entry.name) and entry.name != serving
+        and not (library_dir / f"{entry.name}{_SUPERSEDED}").exists()
+    ]
+
+
+def _mark_unmarked_versions(library_dir: Path, published: kicad_libraries.Published | None) -> None:
+    """Start the grace period of every version folder nothing serves or marks; the sweep removes it once it ends."""
+
+    for entry in _unmarked_versions(library_dir, published):
+        (library_dir / f"{entry.name}{_SUPERSEDED}").write_text(str(time.time()), encoding="utf-8")
 
 
 def _dropped_refs(store: Path, keep: set[str]) -> list[str]:
@@ -981,6 +1022,8 @@ def _needs_sweep(
         age = _age(library_dir / _REMOVED_FILE)
         return age is None or age > grace
     published = library.published()
+    if _unmarked_versions(library_dir, published):
+        return True
     for entry in library_dir.iterdir():
         if entry.name.endswith(".partial") and entry.is_dir() and time.time() - entry.stat().st_mtime > grace:
             return True

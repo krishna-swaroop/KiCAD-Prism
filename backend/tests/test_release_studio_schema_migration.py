@@ -1762,6 +1762,7 @@ class ReleaseStudioPostgresSchemaTests(unittest.TestCase):
                 (141, "pg_stat_statements"),
                 (142, "ops_profiles"),
                 (143, "kicad_libraries"),
+                (144, "kicad_library_failed_commit"),
             ],
         )
 

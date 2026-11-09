@@ -136,33 +136,39 @@ class Library:
             return None
         return Published(commit=commit, directory=directory, source=source)
 
-    @property
-    def folder(self) -> Path | None:
-        """The folder the variables point at; ``None`` while the library has nothing to serve."""
+    def served(self) -> tuple[Path, str] | None:
+        """The bound folder and its fingerprint, from one read of ``current.json``; ``None`` while nothing is served.
+
+        Read together, so a publish landing between two reads can never pair
+        one version's folder with another's fingerprint.
+        """
 
         if self.path:
             if not settings.PRISM_KICAD_LIBRARY_MOUNT_ROOT.strip() or mount_root_problem() is not None:
                 return None
             root = mount_root()
             folder = root / self.path
-            return folder if self._contained(folder, root) else None
+            return (folder, f"path:{self.path}#g{self.generation}") if self._contained(folder, root) else None
         published = self.published()
         if published is None:
             return None
         root = self.clone_dir / published.directory
         folder = root / self.subdir if self.subdir else root
-        return folder if self._contained(folder, root) else None
+        return (folder, f"git:{published.source}@{published.commit}") if self._contained(folder, root) else None
+
+    @property
+    def folder(self) -> Path | None:
+        """The folder the variables point at; ``None`` while the library has nothing to serve."""
+
+        served = self.served()
+        return served[0] if served else None
 
     @property
     def fingerprint(self) -> str | None:
         """What the bound folder is, independent of where it is mounted; ``None`` when nothing is served."""
 
-        if self.folder is None:
-            return None
-        if self.path:
-            return f"path:{self.path}#g{self.generation}"
-        published = self.published()
-        return None if published is None else f"git:{published.source}@{published.commit}"
+        served = self.served()
+        return served[1] if served else None
 
     @property
     def ready(self) -> bool:
@@ -464,9 +470,10 @@ def snapshot(environ: Mapping[str, str] | None = None) -> Snapshot:
     bindings: dict[str, Binding] = {}
     overridden: dict[str, str] = {}
     for library in configured()[0]:
-        folder, fingerprint = library.folder, library.fingerprint
-        if folder is None or fingerprint is None:
+        served = library.served()
+        if served is None:
             continue
+        folder, fingerprint = served
         for name in library.variables:
             if environment_folder(env, name) is not None:
                 overridden[name] = library.name
