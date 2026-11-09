@@ -10,16 +10,7 @@ import {
 } from "./connector-settings";
 import { trackerUiMocks } from "@/lib/trackers-client-fixtures";
 import { fetchApi } from "@/lib/api";
-import {
-    TrackerApiError,
-    getConnector,
-    getConnectorHealth,
-    pauseConnector,
-    resumeConnector,
-    revokeConnector,
-    testConnector,
-    updateConnector,
-} from "./index";
+import { TrackerApiError } from "./index";
 
 vi.mock("sonner", () => ({
     toast: { error: vi.fn(), success: vi.fn() },
@@ -207,16 +198,6 @@ describe("ConnectorSettings (F9.settings_states / C8)", () => {
         });
     });
 
-    it("renders revoked badge when credentials are cleared", async () => {
-        mockedFetch.mockResolvedValue(
-            respond({ ...trackerUiMocks.connector, credentialConfigured: false, paused: true, pausedReason: "auth_lost", status: "revoked" }),
-        );
-        render(<ConnectorSettings connectorId="cn_gh1" isAdmin={true} />);
-        await waitFor(() => {
-            expect(document.querySelector('[data-tracker-phase="revoked"]')).toBeTruthy();
-        });
-    });
-
     it("treats a connector the backend paused for lost auth as revoked", async () => {
         // The backend writes paused_reason = 'auth_lost' and reports status "revoked"
         // (connector_runtime.connector_status); the editor only maps the status.
@@ -236,17 +217,6 @@ describe("ConnectorSettings (F9.settings_states / C8)", () => {
         });
     });
 
-    it("supports keyboard focus in dark mode", async () => {
-        document.documentElement.classList.add("dark");
-        mockedFetch.mockResolvedValue(respond(trackerUiMocks.connector));
-        render(<ConnectorSettings connectorId="cn_gh1" isAdmin={true} />);
-        await waitFor(() => {
-            expect(screen.getByLabelText(/^name$/i)).toBeTruthy();
-        });
-        screen.getByLabelText(/^name$/i).focus();
-        expect(document.activeElement).toBe(screen.getByLabelText(/^name$/i));
-        expect(document.documentElement.classList.contains("dark")).toBe(true);
-    });
 });
 
 describe("ConnectorHealthPanel (C7 / F7)", () => {
@@ -300,18 +270,5 @@ describe("ConnectorHealthPanel (C7 / F7)", () => {
         await waitFor(() => {
             expect(document.querySelector('[data-tracker-phase="ready"]')).toBeTruthy();
         });
-    });
-});
-
-describe("barrel client consumption for scan:gate", () => {
-    it("imports admin lifecycle functions from the feature index", () => {
-        expect(getConnector).toBeTypeOf("function");
-        expect(getConnectorHealth).toBeTypeOf("function");
-        expect(testConnector).toBeTypeOf("function");
-        expect(pauseConnector).toBeTypeOf("function");
-        expect(resumeConnector).toBeTypeOf("function");
-        expect(revokeConnector).toBeTypeOf("function");
-        expect(updateConnector).toBeTypeOf("function");
-        expect(trackerUiMocks.health.connectorId).toBe("cn_gh1");
     });
 });

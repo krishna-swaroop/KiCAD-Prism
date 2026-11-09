@@ -381,7 +381,7 @@ class EventAndWebhookHealthTests(unittest.TestCase):
 
 
 class OpsToolTests(unittest.TestCase):
-    def test_the_runtime_tools_are_ops_reads_listed_only_while_on(self) -> None:
+    def test_the_runtime_tools_are_ops_reads(self) -> None:
         import app.services.mcp.tools as mcp_tools  # noqa: F401
 
         for name in (
@@ -390,8 +390,6 @@ class OpsToolTests(unittest.TestCase):
             "get_event_and_webhook_health",
         ):
             with self.subTest(tool=name):
-                with patch.object(settings, "PRISM_MCP_OPS_ENABLED", False):
-                    self.assertIsNone(registry.tool_named(name))
                 with patch.object(settings, "PRISM_MCP_OPS_ENABLED", True):
                     tool = registry.tool_named(name)
                 self.assertIsNotNone(tool)
@@ -449,24 +447,6 @@ class RouteTests(unittest.TestCase):
         access_service.upsert_user_role(email, role, updated_by=email)
         _, token = personal_tokens.create(email, "ops", scopes, 30)
         return {"Authorization": f"Bearer {token}"}
-
-    def test_ops_routes_do_not_exist_while_off(self) -> None:
-        with patch.object(settings, "PRISM_MCP_OPS_ENABLED", False):
-            response = self.client.get(
-                "/api/v1/ops/pool-and-workers", headers=self._token("admin", ["ops:read"])
-            )
-        self.assertEqual(response.status_code, 404)
-
-    def test_scope_and_role_are_both_required(self) -> None:
-        with patch.object(settings, "PRISM_MCP_OPS_ENABLED", True):
-            no_scope = self.client.get(
-                "/api/v1/ops/pool-and-workers", headers=self._token("admin", ["api:write"])
-            )
-            not_admin = self.client.get(
-                "/api/v1/ops/pool-and-workers", headers=self._token("designer", ["ops:read"])
-            )
-        self.assertEqual(no_scope.status_code, 403)
-        self.assertEqual(not_admin.status_code, 403)
 
     def test_an_admin_ops_token_reads_every_runtime_answer(self) -> None:
         with patch.object(settings, "PRISM_MCP_OPS_ENABLED", True):

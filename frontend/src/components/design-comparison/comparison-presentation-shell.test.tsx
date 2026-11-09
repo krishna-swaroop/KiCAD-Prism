@@ -1132,7 +1132,7 @@ describe("ComparisonPresentationShell", () => {
         });
     });
 
-    it("toggles Old/New without reloading either revision", async () => {
+    it("toggles Old/New in one viewport without reloading or moving the camera", async () => {
         // Old/New flips the already prepared session inside one viewport.
         const view = render(
             <ComparisonPresentationShell
@@ -1149,8 +1149,9 @@ describe("ComparisonPresentationShell", () => {
                     FakeEcadViewer.instances[0],
                 );
         });
-        const prepareCallsBefore =
-            FakeEcadViewer.instances[0]!.prepareComparison.mock.calls.length;
+        const first = FakeEcadViewer.instances[0]!;
+        const prepareCallsBefore = first.prepareComparison.mock.calls.length;
+        first.camera = { x: 1, y: 2, zoom: 3 } as never;
 
         view.getByRole("button", { name: /Old/ }).click();
         await waitFor(() => {
@@ -1164,31 +1165,7 @@ describe("ComparisonPresentationShell", () => {
                 "reference",
                 FakeEcadViewer.instances[0],
             );
-        expect(FakeEcadViewer.instances[0]?.prepareComparison)
-            .toHaveBeenCalledTimes(prepareCallsBefore);
-    });
-
-    it("keeps the Old/New viewport mounted across a toggle", async () => {
-        const view = render(
-            <ComparisonPresentationShell
-                {...shellProps}
-                presentationMode="old-new"
-            />,
-        );
-        await waitFor(() => {
-            expect(FakeEcadViewer.instances).toHaveLength(1);
-        });
-
-        const first = FakeEcadViewer.instances[0]!;
-        first.camera = { x: 1, y: 2, zoom: 3 } as never;
-
-        view.getByRole("button", { name: /Old/ }).click();
-        await waitFor(() => {
-            expect(
-                view.getByRole("button", { name: /Old/ }).getAttribute("aria-pressed"),
-            ).toBe("true");
-        });
-
+        expect(first.prepareComparison).toHaveBeenCalledTimes(prepareCallsBefore);
         expect(first.camera).toEqual({ x: 1, y: 2, zoom: 3 });
         expect(FakeEcadViewer.instances).toHaveLength(1);
     });

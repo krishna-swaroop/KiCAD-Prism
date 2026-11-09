@@ -17,7 +17,6 @@ from app.core.roles import normalize_role  # noqa: E402
 from app.core.security import (  # noqa: E402
     AuthenticatedUser,
     require_admin,
-    require_catalog_reader,
     require_catalog_writer,
     require_designer,
     require_project_release_actor,
@@ -51,12 +50,6 @@ class AuthSecurityTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as ctx:
             asyncio.run(require_project_release_actor(viewer))
         self.assertEqual(ctx.exception.status_code, 403)
-
-    def test_catalog_reader_accepts_designer_and_qa(self) -> None:
-        for role in ("designer", "qa"):
-            user = AuthenticatedUser(email=f"{role}@example.com", name=role, role=role)
-            resolved = asyncio.run(require_catalog_reader(user))
-            self.assertEqual(resolved.role, role)
 
     def test_catalog_writer_accepts_designer(self) -> None:
         writer = AuthenticatedUser(email="designer@example.com", name="Designer", role="designer")

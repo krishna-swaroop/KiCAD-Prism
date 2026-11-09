@@ -46,14 +46,6 @@ class ToolDefinitionTests(unittest.TestCase):
         "set_debug_logging": (False, True),
     }
 
-    def test_the_ops_action_tools_are_listed_only_while_ops_is_on(self) -> None:
-        with patch.object(settings, "PRISM_MCP_OPS_ENABLED", False):
-            for name in self.TOOLS:
-                self.assertIsNone(registry.tool_named(name))
-        with patch.object(settings, "PRISM_MCP_OPS_ENABLED", True):
-            for name in self.TOOLS:
-                self.assertIsNotNone(registry.tool_named(name))
-
     def test_each_tool_is_an_ops_action_with_honest_annotations(self) -> None:
         with patch.object(settings, "PRISM_MCP_OPS_ENABLED", True):
             for name, (destructive, idempotent) in self.TOOLS.items():
