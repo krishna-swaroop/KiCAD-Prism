@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import os
+import re
 import sys
 import unittest
 import uuid
@@ -124,11 +125,18 @@ class RegistryTests(unittest.TestCase):
         self.tool = tool
         self.addCleanup(registry._TOOLS.remove, tool)
 
-    def test_ops_tools_are_listed_only_while_on(self) -> None:
-        with patch.object(settings, "PRISM_MCP_OPS_ENABLED", False):
-            self.assertIsNone(registry.tool_named(self.tool.name))
-        with patch.object(settings, "PRISM_MCP_OPS_ENABLED", True):
-            self.assertIs(registry.tool_named(self.tool.name), self.tool)
+    def test_every_ops_tool_is_listed_only_while_on(self) -> None:
+        import app.services.mcp.tools  # noqa: F401
+
+        ops_tools = [tool for tool in registry._TOOLS if tool.ops]
+        self.assertIn(self.tool, ops_tools)
+        self.assertGreater(len(ops_tools), 11)
+        for tool in ops_tools:
+            with self.subTest(tool=tool.name):
+                with patch.object(settings, "PRISM_MCP_OPS_ENABLED", False):
+                    self.assertIsNone(registry.tool_named(tool.name))
+                with patch.object(settings, "PRISM_MCP_OPS_ENABLED", True):
+                    self.assertIs(registry.tool_named(tool.name), tool)
 
     def test_an_ops_read_is_not_a_write(self) -> None:
         self.assertTrue(self.tool.ops)
@@ -179,23 +187,35 @@ class RouteTests(unittest.TestCase):
         _, token = personal_tokens.create(email, "ops", scopes, 30)
         return {"Authorization": f"Bearer {token}"}
 
-    def test_ops_routes_do_not_exist_while_off(self) -> None:
-        with patch.object(settings, "PRISM_MCP_OPS_ENABLED", False):
-            response = self.client.get("/api/v1/ops/status", headers=self._token("admin", ["ops:read"]))
-        self.assertEqual(response.status_code, 404)
-
     def test_an_admin_token_with_ops_read_sees_the_status(self) -> None:
         with patch.object(settings, "PRISM_MCP_OPS_ENABLED", True):
             response = self.client.get("/api/v1/ops/status", headers=self._token("admin", ["ops:read"]))
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["scopes"], ["ops:read"])
 
-    def test_scope_and_role_are_both_required(self) -> None:
-        with patch.object(settings, "PRISM_MCP_OPS_ENABLED", True):
-            no_scope = self.client.get("/api/v1/ops/status", headers=self._token("admin", ["api:write"]))
-            not_admin = self.client.get("/api/v1/ops/status", headers=self._token("designer", ["ops:read"]))
-        self.assertEqual(no_scope.status_code, 403)
-        self.assertEqual(not_admin.status_code, 403)
+    def _ops_routes(self) -> list[tuple[str, str]]:
+        import app.main as main
+
+        routes = [
+            (method.upper(), re.sub(r"\{[^}]+\}", "1", path))
+            for path, operations in main.app.openapi()["paths"].items()
+            if path.startswith("/api/v1/ops/")
+            for method in sorted(operations)
+        ]
+        self.assertGreater(len(routes), 15)
+        return routes
+
+    def test_every_ops_route_is_absent_while_off_and_gated_while_on(self) -> None:
+        admin = self._token("admin", ["ops:act"])
+        no_scope = self._token("admin", ["api:write"])
+        not_admin = self._token("designer", ["ops:act"])
+        for method, path in self._ops_routes():
+            with self.subTest(route=f"{method} {path}"):
+                with patch.object(settings, "PRISM_MCP_OPS_ENABLED", False):
+                    self.assertEqual(self.client.request(method, path, headers=admin).status_code, 404)
+                with patch.object(settings, "PRISM_MCP_OPS_ENABLED", True):
+                    self.assertEqual(self.client.request(method, path, headers=no_scope).status_code, 403)
+                    self.assertEqual(self.client.request(method, path, headers=not_admin).status_code, 403)
 
 
 if __name__ == "__main__":

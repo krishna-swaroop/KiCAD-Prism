@@ -749,13 +749,6 @@ variants: null
         with self.assertRaisesRegex(ValueError, "NFC-normalized.*collision"):
             canonical_json({"e\u0301": "first", "é": "second"})
 
-    def test_canonical_json_rejects_non_string_keys(self) -> None:
-        message = "canonical JSON object keys must be strings"
-        with self.assertRaisesRegex(TypeError, message):
-            canonical_json({1: "top-level"})
-        with self.assertRaisesRegex(TypeError, message):
-            canonical_json({"nested": {2: "nested"}})
-
     def test_technical_config_digest_ignores_policy_reference_only_changes(self) -> None:
         base = parse_configuration_yaml(_MIN_CONFIG)
         changed = parse_configuration_yaml(

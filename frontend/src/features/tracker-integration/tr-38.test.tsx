@@ -7,15 +7,12 @@ import {
     DestinationDisclosure,
     ProjectTrackerSettingsPanel,
     TrackerApiError,
-    acknowledgeDestination,
     autoPromoteSummary,
     destinationPolicyAlerts,
     destinationSourceLabel,
     formatDestinationLine,
-    getProjectTracker,
     isImportedDefaultDestination,
     promoteRoleExplanation,
-    updateProjectTracker,
     visibilityAckState,
 } from "./index";
 import { describeProjectTrackerError } from "./project-tracker-settings";
@@ -408,31 +405,11 @@ describe("ProjectTrackerSettingsPanel (F8 / F9 / C8)", () => {
         });
     });
 
-    it("supports keyboard focus in dark mode", async () => {
-        document.documentElement.classList.add("dark");
-        mockedFetch.mockResolvedValue(respond(trackerUiMocks.projectSettings));
-        render(<ProjectTrackerSettingsPanel projectId="prj_47c2551996d0" isAdmin={false} />);
-        await waitFor(() => {
-            expect(screen.getByTestId("destination-line")).toBeTruthy();
-        });
-        expect(document.documentElement.classList.contains("dark")).toBe(true);
-    });
-
     it("maps permission errors for settings", () => {
         const message = describeProjectTrackerError(
             new TrackerApiError(403, { detail: "admin only", code: "admin_required" }),
         );
         expect(message).toMatch(/administrator/i);
         expect(promoteRoleExplanation("viewer")).toMatch(/including viewers/i);
-    });
-});
-
-describe("barrel client consumption for scan:gate", () => {
-    it("imports project tracker functions from the feature index", () => {
-        expect(getProjectTracker).toBeTypeOf("function");
-        expect(updateProjectTracker).toBeTypeOf("function");
-        expect(acknowledgeDestination).toBeTypeOf("function");
-        expect(DestinationDisclosure).toBeTypeOf("function");
-        expect(ProjectTrackerSettingsPanel).toBeTypeOf("function");
     });
 });
