@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -188,6 +189,8 @@ def models_outdated(opened: OpenedRevision, *, snapshot: kicad_libraries.Snapsho
 
 
 _futile_warned: set[tuple[str, str]] = set()
+#: How long a futile refresh holds: past it one more is tried, so a mount fixed on the worker is picked up.
+FUTILE_FOR = timedelta(hours=1)
 
 
 def _refresh_futile(opened: OpenedRevision, wanted: Mapping[str, str | None], recorded: Mapping[str, Any]) -> bool:
@@ -196,7 +199,8 @@ def _refresh_futile(opened: OpenedRevision, wanted: Mapping[str, str | None], re
     The worker records what it bound; this process compares what it binds. When
     they disagree for good (a path library's mount root mounted into one
     container only), another refresh would record the same and every status read
-    would queue one. It is futile until the bindings change again.
+    would queue one. It is futile until the bindings change again, or for
+    ``FUTILE_FOR`` after it ended: the worker's side may be what gets fixed.
     """
 
     bundle = rows.get_bundle(opened.project_id, opened.bundle_key) if opened.bundle_key else None
@@ -205,6 +209,9 @@ def _refresh_futile(opened: OpenedRevision, wanted: Mapping[str, str | None], re
     if not job or job["status"] != "completed" or not payload.get("refresh_models"):
         return False
     if payload.get("models_wanted") != dict(wanted):
+        return False
+    ended = job.get("ended_at")
+    if ended is None or datetime.now(timezone.utc) - ended >= FUTILE_FOR:
         return False
     key = (opened.project_id, str(opened.bundle_key))
     if key not in _futile_warned:

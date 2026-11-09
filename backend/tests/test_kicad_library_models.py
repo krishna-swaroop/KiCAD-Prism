@@ -184,12 +184,15 @@ class OutdatedTests(ModelsCase):
         self.record(LSF_KICAD_LIB=LSF_FINGERPRINT)
         opened = self.opened(write_archive(self.tmp / "a.prism"))
         refresh = {"refresh_models": True, "models_wanted": {"LSF_KICAD_LIB": None}}
-        self.bundle_job = {"status": "completed", "payload": refresh}
+        now = reader.datetime.now(reader.timezone.utc)
+        self.bundle_job = {"status": "completed", "payload": refresh, "ended_at": now}
         with self.assertLogs(reader.logger, "WARNING"):
             self.assertFalse(self.outdated(opened))
-        self.bundle_job = {"status": "failed", "payload": refresh}
+        self.bundle_job = {"status": "completed", "payload": refresh, "ended_at": now - reader.FUTILE_FOR}
+        self.assertTrue(self.outdated(opened), "an hour on, one more refresh may find the worker fixed")
+        self.bundle_job = {"status": "failed", "payload": refresh, "ended_at": now}
         self.assertTrue(self.outdated(opened), "a failed refresh proves nothing")
-        self.bundle_job = {"status": "completed", "payload": {**refresh, "models_wanted": {"LSF_KICAD_LIB": "git:x@y"}}}
+        self.bundle_job = {"status": "completed", "payload": {**refresh, "models_wanted": {"LSF_KICAD_LIB": "git:x@y"}}, "ended_at": now}
         self.assertTrue(self.outdated(opened), "bindings that changed since are worth a refresh")
 
     def test_a_refresh_carries_the_bindings_this_process_wants(self) -> None:
