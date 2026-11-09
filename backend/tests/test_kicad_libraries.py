@@ -169,6 +169,19 @@ class PublishedLayoutTests(unittest.TestCase):
         self.assertEqual(binding.folder, folder)
         self.assertEqual(binding.fingerprint, f"git:https://gitlab.com/lsf/lsf-kicad-lib.git#@{COMMIT}")
 
+    def test_the_folder_and_fingerprint_come_from_one_read_of_the_published_version(self) -> None:
+        old = publish(self.root, "lsf", COMMIT)
+        new = publish(self.root, "lsf", OTHER)
+        reads = iter([libs.Published(commit=COMMIT, directory=COMMIT, source=libs.validate_entry(row()).source)])
+        with Configured(self.root, row()):
+            library = libs.configured()[0][0]
+            real = library.last_published
+            # A publish lands after the first read: every later read sees the new version.
+            with mock.patch.object(libs.Library, "last_published", lambda self: next(reads, None) or real()):
+                binding = libs.snapshot({}).bindings["LSF_KICAD_LIB"]
+        self.assertEqual((binding.folder, binding.fingerprint.rsplit("@", 1)[1]), (old, COMMIT))
+        self.assertNotEqual(old, new)
+
     def test_the_subdir_is_the_folder_the_variable_points_at(self) -> None:
         folder = publish(self.root, "lsf", COMMIT, subdir="lsf.3dshapes")
         with Configured(self.root, row(subdir="lsf.3dshapes")):
