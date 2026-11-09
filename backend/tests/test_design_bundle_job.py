@@ -8,6 +8,7 @@ bundle key.
 from __future__ import annotations
 
 import hashlib
+from datetime import timedelta
 import json
 import tempfile
 import unittest
@@ -391,6 +392,42 @@ class DesignBundleJobTests(_Workspace, unittest.TestCase):
         self.assertTrue(jobs.settle_design_bundle_end(ended))
         self.assertIsNone(rows.get_bundle("p1", backfill_payload["bundle_key"]))
         self.assertEqual(rows.get_bundle("p1", self.queue.rows[interactive_job]["payload"]["bundle_key"])["state"], "queued")
+
+    def _refresh(self, **kwargs) -> tuple[dict, str | None]:
+        built = self.run_job(jobs.start_design_bundle_job("p1")).details
+        job_id = jobs.start_design_bundle_job(
+            "p1", requested_by=jobs.BACKFILL_REQUESTED_BY, priority=jobs.BACKFILL_PRIORITY, refresh_models=True, **kwargs
+        )
+        return built, job_id
+
+    def test_a_models_refresh_keeps_the_served_bundle_complete_and_names_its_job(self) -> None:
+        self.add_project()
+        built, job_id = self._refresh()
+        row = rows.get_bundle("p1", built["bundle_key"])
+        self.assertEqual((row["state"], row["job_id"]), ("complete", job_id))
+
+    def test_a_preempted_models_refresh_leaves_the_served_bundle(self) -> None:
+        self.add_project()
+        built, job_id = self._refresh()
+        ended = {**self.queue.get(job_id), "status": "cancelled"}
+        self.assertFalse(jobs.settle_design_bundle_end(ended))
+        self.assertTrue(jobs.bundle_ready("p1", built["bundle_key"]))
+
+    def test_a_failed_models_refresh_keeps_serving_and_waits_for_the_retry_delay(self) -> None:
+        self.add_project()
+        built, job_id = self._refresh()
+        ended = {**self.queue.get(job_id), "status": "failed", "error_message": "models failed"}
+        self.assertFalse(jobs.settle_design_bundle_end(ended))
+        self.assertTrue(jobs.bundle_ready("p1", built["bundle_key"]))
+        self.queue.rows.pop(job_id)
+        now = jobs.datetime.now(jobs.timezone.utc)
+        refresh = {"refresh_models": True, "requested_by": jobs.BACKFILL_REQUESTED_BY}
+        with mock.patch.object(rows, "job_end", return_value=("failed", now)):
+            self.assertIsNone(jobs.start_design_bundle_job("p1", **refresh))
+            self.assertIsNotNone(jobs.start_design_bundle_job("p1", retry_failed=True, **refresh))
+        self.queue.rows.clear()
+        with mock.patch.object(rows, "job_end", return_value=("failed", now - timedelta(days=2))):
+            self.assertIsNotNone(jobs.start_design_bundle_job("p1", **refresh))
 
     def test_an_interactive_enqueue_leaves_another_interactive_job_alone(self) -> None:
         old, head = self._two_commits()

@@ -16,6 +16,7 @@ is the workspace database's.
 from __future__ import annotations
 
 from contextlib import AbstractContextManager
+from datetime import datetime
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from psycopg.types.json import Jsonb
@@ -399,6 +400,26 @@ def active_project_jobs(kind: str, project_id: str, *, connect: Connect | None =
             (kind, list(_ACTIVE), project_id),
         ).fetchone()
     return int(row["n"])
+
+
+def set_bundle_job(project_id: str, bundle_key: str, job_id: str, *, connect: Connect | None = None) -> None:
+    """Point a served bundle at the job refreshing it, leaving its state and stages alone."""
+
+    with _with(connect)() as conn:
+        conn.execute(
+            "UPDATE ws_design_bundles SET job_id=%s, updated_at=NOW() WHERE project_id=%s AND bundle_key=%s",
+            (job_id, project_id, bundle_key),
+        )
+
+
+def job_end(job_id: str | None, *, connect: Connect | None = None) -> tuple[str, datetime] | None:
+    """A job's status and when it last changed; ``None`` when there is no such job."""
+
+    if not job_id:
+        return None
+    with _with(connect)() as conn:
+        row = conn.execute("SELECT status, updated_at FROM ws_jobs WHERE id=%s", (job_id,)).fetchone()
+    return (str(row["status"]), row["updated_at"]) if row else None
 
 
 def job_status(job_id: str | None, *, connect: Connect | None = None) -> str | None:
