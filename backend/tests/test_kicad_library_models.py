@@ -374,3 +374,26 @@ class ReportTests(ModelsCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ThumbnailTests(unittest.TestCase):
+    """B11: a models refresh at HEAD renders the project thumbnail again; an older commit's does not."""
+
+    def test_only_a_head_refresh_rerenders_the_thumbnail(self) -> None:
+        from app.services import project_import_service
+        from app.services.design_bundle import jobs
+
+        row = {"id": PROJECT_ID}
+        with mock.patch.object(jobs.project_revision, "locate"), \
+                mock.patch.object(jobs.project_revision, "resolve_commit", return_value=COMMIT_ID), \
+                mock.patch.object(project_import_service, "start_thumbnail_job") as thumbnail:
+            jobs._rerender_thumbnail_at_head(row, "0" * 40)
+            thumbnail.assert_not_called()
+            jobs._rerender_thumbnail_at_head(row, COMMIT_ID)
+        thumbnail.assert_called_once_with(PROJECT_ID, requested_by="kicad-library-refresh")
+
+    def test_a_thumbnail_that_cannot_be_queued_does_not_fail_the_refresh(self) -> None:
+        from app.services.design_bundle import jobs
+
+        with mock.patch.object(jobs.project_revision, "locate", side_effect=LookupError("gone")):
+            jobs._rerender_thumbnail_at_head({"id": PROJECT_ID}, COMMIT_ID)
