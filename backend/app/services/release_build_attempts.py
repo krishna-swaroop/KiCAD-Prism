@@ -485,7 +485,7 @@ def orphaned_build_job_ids(limit: int = 100) -> list[str]:
             FROM ws_jobs job
             WHERE job.kind = 'release_studio_build'
               AND job.status IN ('failed', 'cancelled')
-              AND jsonb_path_exists(job.payload, %s::jsonpath)
+              AND jsonb_path_exists(job.payload, %s::jsonpath, '{}', true)
             LIMIT %s
             """,
             (_OPEN_STEP, limit),
@@ -493,7 +493,7 @@ def orphaned_build_job_ids(limit: int = 100) -> list[str]:
     return [str(row["job_id"]) for row in rows]
 
 
-_OPEN_STEP = '$.pipeline.jobs[*].steps[*] ? (@.status == "queued" || @.status == "in_progress")'
+_OPEN_STEP = 'strict $.pipeline.jobs[*].steps[*] ? (@.status == "queued" || @.status == "in_progress")'
 
 
 LIVE_STATUSES = frozenset({"running", "cancel_requested"})
