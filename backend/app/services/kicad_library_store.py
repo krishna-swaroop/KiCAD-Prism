@@ -247,6 +247,52 @@ def record_fetch(
         conn.execute(f"UPDATE ws_kicad_libraries SET {', '.join(sets)} WHERE name = %s", (*values, name))
 
 
+#: A fetch of the library is queued or running (``%(kind)s``: the fetch job kind).
+_FETCH_ACTIVE = (
+    "EXISTS (SELECT 1 FROM ws_jobs active WHERE active.kind = %(kind)s AND active.payload->>'name' = l.name "
+    "AND active.status IN ('queued', 'running', 'retry_wait', 'cancel_requested'))"
+)
+
+
+def settle_fetch(name: str, *, kind: str, ended_at: str, state: str, error: str | None) -> bool:
+    """End a fetch the job left at ``pending``/``fetching``; returns whether it did.
+
+    A row written after the job ended, or one another queued or running fetch
+    now owns, is left alone.
+    """
+
+    if state not in ("ready", "failed"):
+        raise Invalid(f"A fetch ends ready or failed, not {state!r}")
+    with connect() as conn:
+        row = conn.execute(
+            f"UPDATE ws_kicad_libraries l SET state = %(state)s, error = %(error)s, progress = NULL, "
+            f"updated_at = now() WHERE l.name = %(name)s AND l.state IN ('pending', 'fetching') "
+            f"AND l.updated_at <= %(ended_at)s::timestamptz AND NOT {_FETCH_ACTIVE} RETURNING l.name",
+            {"state": state, "error": error, "name": name, "kind": kind, "ended_at": ended_at},
+        ).fetchone()
+    return row is not None
+
+
+def unsettled_fetch_jobs(kind: str, limit: int = 100) -> list[str]:
+    """The last ended fetch job of each library still shown as ``pending``/``fetching`` with none active."""
+
+    with connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT DISTINCT ON (l.name) j.id FROM ws_kicad_libraries l
+              JOIN ws_jobs j ON j.kind = %(kind)s AND j.payload->>'name' = l.name
+             WHERE l.state IN ('pending', 'fetching')
+               AND j.status IN ('completed', 'failed', 'cancelled')
+               AND j.updated_at >= l.updated_at
+               AND NOT {_FETCH_ACTIVE}
+             ORDER BY l.name, j.updated_at DESC
+             LIMIT %(limit)s
+            """,
+            {"kind": kind, "limit": limit},
+        ).fetchall()
+    return [str(row["id"]) for row in rows]
+
+
 def record_published(name: str, *, commit: str, ref: str, size_bytes: int | None, requested_by: str) -> None:
     """A version is now served: the row says so, and the history keeps it."""
 

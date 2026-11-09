@@ -32,6 +32,9 @@ MAX_PARTS = 2000
 MAX_ATTEMPTS = 5
 PER_RUN = 20
 KEEP_DAYS = 7
+# A check still open after this long gives up on what is left: a distributor that keeps refusing (blocked) rests the work
+# without failed tries, and would otherwise keep the check running forever. Long enough for a large BOM over a weekend.
+MAX_WAIT = timedelta(days=3)
 # The connectors the scanner queues work for (``jobs.connectors_with_work``): a disabled or paused one runs nothing.
 RUNNABLE_CONNECTOR = (
     "EXISTS (SELECT 1 FROM supply_connectors c WHERE c.id = w.connector_id AND c.enabled AND c.paused_reason = '')"
@@ -144,14 +147,20 @@ def _finish(conn) -> None:
     )
 
 
-def settle_unrunnable(conn) -> int:
-    """Fail the pending work of an open request at a connector that can no longer run it, then finish every open request with
-    nothing pending. Returns how many work rows were failed."""
+def settle_unrunnable(conn, now: datetime | None = None) -> int:
+    """Fail the pending work of an open request at a connector that can no longer run it, or of a request open longer than
+    ``MAX_WAIT``, then finish every open request with nothing pending. Returns how many work rows were failed."""
 
     failed = conn.execute(
         "UPDATE supply_read_request_work w SET state = 'failed' WHERE w.state = 'pending' "
         "AND EXISTS (SELECT 1 FROM supply_read_requests q WHERE q.id = w.request_id AND q.finished_at IS NULL) "
         f"AND NOT {RUNNABLE_CONNECTOR}"
+    ).rowcount
+    failed += conn.execute(
+        "UPDATE supply_read_request_work w SET state = 'failed' WHERE w.state = 'pending' "
+        "AND EXISTS (SELECT 1 FROM supply_read_requests q WHERE q.id = w.request_id AND q.finished_at IS NULL "
+        "AND q.created_at < %s)",
+        ((now or clock.now()) - MAX_WAIT,),
     ).rowcount
     _finish(conn)
     return failed

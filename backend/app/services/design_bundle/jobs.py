@@ -152,6 +152,19 @@ def _failure_holds(row: Mapping[str, Any] | None) -> bool:
     return (datetime.now(timezone.utc) - updated).total_seconds() < delay
 
 
+def _refresh_failure_holds(row: Mapping[str, Any] | None) -> bool:
+    """A served bundle whose last models refresh failed is not refreshed again until the retry delay passes.
+
+    The row stays ``complete`` through a refresh, so its job is what records the failure.
+    """
+
+    ended = rows.job_end(str((row or {}).get("job_id") or ""))
+    if ended is None or ended[0] != "failed":
+        return False
+    delay = settings.PRISM_DESIGN_BUNDLE_FAILED_RETRY_SECONDS
+    return delay <= 0 or (datetime.now(timezone.utc) - ended[1]).total_seconds() < delay
+
+
 def start_design_bundle_job(
     project_id: str,
     *,
@@ -195,7 +208,11 @@ def start_design_bundle_job(
                 if _alias_serves(project_id, alias):
                     return None
                 rows.delete_aliases(project_id, revision_keys=[revision_key])
-        if not retry_failed and _failure_holds(rows.get_bundle(project_id, bundle_key)):
+        current = rows.get_bundle(project_id, bundle_key)
+        if not retry_failed and _failure_holds(current):
+            return None
+        if refresh_models and not retry_failed and bundle_ready(project_id, bundle_key) \
+                and _refresh_failure_holds(current):
             return None
     queued = DESIGN_BUNDLE.enqueue(
         {
@@ -215,10 +232,15 @@ def start_design_bundle_job(
     )
     if not queued.get("deduplicated") and not queued.get("cache_hit"):
         _preempt_backfill(str(queued["job_id"]), requested_by=requested_by, priority=priority)
-    rows.upsert_bundle(
-        bundle_key=bundle_key, project_id=project_id, revision_key=revision_key, generator_digest=generator.digest,
-        commit=key.commit, state="queued", job_id=str(queued["job_id"]),
-    )
+    if refresh_models and bundle_ready(project_id, bundle_key):
+        # A refresh over a served bundle keeps it complete and serving: a refresh
+        # that is preempted or fails must not end it. The row only names the job.
+        rows.set_bundle_job(project_id, bundle_key, str(queued["job_id"]))
+    else:
+        rows.upsert_bundle(
+            bundle_key=bundle_key, project_id=project_id, revision_key=revision_key, generator_digest=generator.digest,
+            commit=key.commit, state="queued", job_id=str(queued["job_id"]),
+        )
     return str(queued["job_id"])
 
 
@@ -608,10 +630,13 @@ def run_design_bundle_job(context: JobContext) -> JobResult:
     if served is not None:
         return served
     run = _Run(context, row, key, generator)
-    rows.upsert_bundle(
-        bundle_key=run.bundle_key, project_id=project_id, revision_key=run.revision_key,
-        generator_digest=generator.digest, commit=key.commit, state="building", job_id=context.job_id,
-    )
+    if payload.get("refresh_models") and bundle_ready(project_id, run.bundle_key):
+        rows.set_bundle_job(project_id, run.bundle_key, context.job_id)
+    else:
+        rows.upsert_bundle(
+            bundle_key=run.bundle_key, project_id=project_id, revision_key=run.revision_key,
+            generator_digest=generator.digest, commit=key.commit, state="building", job_id=context.job_id,
+        )
     archive = run.open()
     if archive is None:
         archive = run.parse()
@@ -686,7 +711,8 @@ def settle_design_bundle_end(job: Mapping[str, Any]) -> bool:
 
     A cancelled backfill build leaves no row: it was preempted by an
     interactive request, so the next tick or request queues it again rather
-    than reading a failure (or waiting out the failed retry delay).
+    than reading a failure (or waiting out the failed retry delay). A models
+    refresh over a served bundle never owns its row, so its end changes nothing.
     """
 
     if job.get("status") not in ("failed", "cancelled"):

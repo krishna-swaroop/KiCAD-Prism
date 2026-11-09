@@ -31,7 +31,7 @@ import urllib.error
 import urllib.request
 from collections import deque
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Mapping
 from urllib.parse import urljoin, urlsplit
 
 from app.core.config import settings
@@ -1111,6 +1111,34 @@ def queue_missing() -> list[str]:
     return queued
 
 
+def settle_fetch_end(job: Mapping[str, Any]) -> bool:
+    """End hook: a fetch that ended without its handler finishing the row fails it.
+
+    A cancel before the job ran, or a worker that died mid-fetch, leaves the row
+    at ``pending``/``fetching``, which hides **Fetch again**. A row a newer
+    fetch owns is left alone. Idempotent.
+    """
+
+    status = job.get("status")
+    name = str((job.get("payload") or {}).get("name") or "")
+    if status not in ("completed", "failed", "cancelled") or not name:
+        return False
+    library = _library(name)
+    if status == "completed" and library is not None and library.published() is not None:
+        state, error = "ready", None
+    elif status == "cancelled":
+        state, error = "failed", "Cancelled"
+    else:
+        state, error = "failed", str(job.get("error_message") or job.get("message") or "The fetch ended unfinished")[:500]
+    return kicad_library_store.settle_fetch(
+        name, kind=FETCH_KIND, ended_at=str(job.get("updated_at") or ""), state=state, error=error
+    )
+
+
+def _unsettled_fetches() -> list[str]:
+    return kicad_library_store.unsettled_fetch_jobs(FETCH_KIND)
+
+
 FETCH = JobKind(
     FETCH_KIND,
     run_fetch_job,
@@ -1118,6 +1146,8 @@ FETCH = JobKind(
     lock=subject_lock("write"),
     priority=PRIORITY,
     max_attempts=3,
+    settle=settle_fetch_end,
+    orphans=_unsettled_fetches,
 )
 REMOVE = JobKind(REMOVE_KIND, run_remove_job, lock=subject_lock("write"), priority=PRIORITY, max_attempts=2)
 SWEEP = JobKind(SWEEP_KIND, run_sweep_job, lock=subject_lock("write"), priority=PRIORITY, max_attempts=1)

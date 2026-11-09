@@ -6,7 +6,7 @@ import os
 import sys
 import unittest
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -248,6 +248,18 @@ class OneOffTests(unittest.TestCase):
         with self.store.connection() as conn:
             state = conn.execute("SELECT state FROM supply_read_request_work WHERE connector_id = %s", (second,)).fetchone()["state"]
         self.assertEqual(state, "failed")
+
+    def test_a_check_open_past_its_wait_fails_what_is_left_and_finishes(self) -> None:
+        cid = self.connector()
+        made = self.ask([("Acme", "ABC123")])
+        with self.store.connection() as conn:
+            self.assertEqual(self.oneoff.settle_unrunnable(conn, self.now), 0, "a fresh check keeps waiting")
+            later = conn.execute("SELECT created_at FROM supply_read_requests WHERE id = %s", (made["id"],)).fetchone()["created_at"]
+            self.assertEqual(self.oneoff.settle_unrunnable(conn, later + self.oneoff.MAX_WAIT + timedelta(minutes=1)), 1)
+        shown = self.progress(made["id"])
+        self.assertEqual((shown["state"], shown["failed"]), ("done", 1))
+        with self.store.connection() as conn:
+            self.assertNotIn(cid, self.oneoff.pending_connectors(conn))
 
     def test_a_deleted_connector_finishes_the_request(self) -> None:
         first = self.connector()
