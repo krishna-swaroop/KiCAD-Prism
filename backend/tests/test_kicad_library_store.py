@@ -11,6 +11,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from psycopg.types.json import Jsonb
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.errors import Conflict, Invalid, NotFound, StaleVersion  # noqa: E402
@@ -129,6 +131,45 @@ class KicadLibraryStoreTests(unittest.TestCase):
         self.assertEqual((store.get("lsf")["state"], store.get("lsf")["progress"]), ("fetching", 40))
         with self.assertRaises(Invalid):
             store.record_fetch("lsf", state="bogus")
+
+    def add_job(self, job_id: str, status: str, *, name: str = "lsf", ended: str = "now()") -> str:
+        with self.scratch.connection() as conn:
+            conn.execute(
+                f"INSERT INTO ws_jobs (id, kind, status, payload, created_at, updated_at) "
+                f"VALUES (%s, 'kicad_library_fetch', %s, %s, now(), {ended})",
+                (job_id, status, Jsonb({"name": name})),
+            )
+            return str(conn.execute("SELECT updated_at::text AS at FROM ws_jobs WHERE id = %s", (job_id,)).fetchone()["at"])
+
+    def settle(self, ended_at: str, state: str = "failed", error: str | None = "Cancelled") -> bool:
+        return store.settle_fetch("lsf", kind="kicad_library_fetch", ended_at=ended_at, state=state, error=error)
+
+    def test_a_fetch_left_pending_by_an_ended_job_is_listed_and_failed(self) -> None:
+        store.create(LSF, updated_by="")
+        ended = self.add_job("j1", "cancelled", ended="now() + interval '1 second'")
+        self.assertEqual(store.unsettled_fetch_jobs("kicad_library_fetch"), ["j1"])
+        self.assertTrue(self.settle(ended))
+        self.assertEqual((store.get("lsf")["state"], store.get("lsf")["error"]), ("failed", "Cancelled"))
+        self.assertEqual(store.unsettled_fetch_jobs("kicad_library_fetch"), [])
+        self.assertFalse(self.settle(ended))
+
+    def test_a_fetch_another_job_owns_is_left_alone(self) -> None:
+        store.create(LSF, updated_by="")
+        ended = self.add_job("j1", "cancelled", ended="now() + interval '1 second'")
+        self.add_job("j2", "queued")
+        self.assertEqual(store.unsettled_fetch_jobs("kicad_library_fetch"), [])
+        self.assertFalse(self.settle(ended))
+        self.assertEqual(store.get("lsf")["state"], "pending")
+
+    def test_a_row_written_after_the_job_ended_is_left_alone(self) -> None:
+        ended = self.add_job("j1", "failed", ended="now() - interval '1 hour'")
+        store.create(LSF, updated_by="")
+        self.assertEqual(store.unsettled_fetch_jobs("kicad_library_fetch"), [])
+        self.assertFalse(self.settle(ended))
+
+    def test_a_fetch_ends_ready_or_failed_only(self) -> None:
+        with self.assertRaises(Invalid):
+            self.settle("2026-01-01T00:00:00+00:00", state="pending")
 
     def test_due_libraries_are_claimed_once(self) -> None:
         store.create(LSF, updated_by="")

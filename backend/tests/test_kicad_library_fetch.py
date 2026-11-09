@@ -732,5 +732,34 @@ class ProgressTests(unittest.TestCase):
         self.assertIsNone(fetch.progress_of("Cloning into 'x'..."))
 
 
+class FetchEndTests(unittest.TestCase):
+    """The end hook fails a fetch its job ended without finishing."""
+
+    def settle(self, status: str, *, published: bool = False, **job: object) -> mock.MagicMock:
+        library = mock.Mock(published=mock.Mock(return_value=object() if published else None))
+        with mock.patch.object(fetch, "_library", return_value=library), \
+                mock.patch.object(fetch.kicad_library_store, "settle_fetch", return_value=True) as settle:
+            fetch.settle_fetch_end({"status": status, "payload": {"name": "lsf"}, "updated_at": "t", **job})
+        return settle
+
+    def test_a_cancelled_fetch_fails_as_cancelled(self) -> None:
+        self.settle("cancelled").assert_called_once_with(
+            "lsf", kind=fetch.FETCH_KIND, ended_at="t", state="failed", error="Cancelled"
+        )
+
+    def test_a_failed_fetch_fails_with_the_job_error(self) -> None:
+        settle = self.settle("failed", error_message="worker lost")
+        self.assertEqual(settle.call_args.kwargs["error"], "worker lost")
+
+    def test_a_completed_fetch_with_a_served_version_is_ready(self) -> None:
+        self.assertEqual(self.settle("completed", published=True).call_args.kwargs["state"], "ready")
+
+    def test_a_running_fetch_is_not_settled(self) -> None:
+        self.settle("running").assert_not_called()
+
+    def test_the_fetch_kind_has_its_end_hook(self) -> None:
+        self.assertIs(fetch.FETCH.settle, fetch.settle_fetch_end)
+
+
 if __name__ == "__main__":
     unittest.main()
