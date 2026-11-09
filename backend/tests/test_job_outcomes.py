@@ -429,6 +429,40 @@ class ReleaseBuildRowFencingTests(unittest.TestCase):
                 self.assertEqual(settled["status"], step_status)
 
 
+    def test_a_job_cancelled_while_waiting_for_a_retry_is_found_and_its_pipeline_settled(self) -> None:
+        from app.services import release_build_attempts
+
+        pipeline = {
+            "jobs": [
+                {
+                    "id": "prepare",
+                    "name": "Prepare",
+                    "status": "in_progress",
+                    "steps": [
+                        {"id": "closure", "name": "Closure", "status": "in_progress"},
+                        {"id": "drc", "name": "DRC", "status": "queued"},
+                    ],
+                }
+            ]
+        }
+        service, job = self._claimed_job({"pipeline": pipeline})
+        self.assertEqual(
+            service.fail(
+                job["job_id"], "worker-a", job["fence"],
+                error_code="bundle_pending", error_message="waiting", transient=True, retry_after_seconds=60,
+            ),
+            "retry_wait",
+        )
+        self.assertNotIn(job["job_id"], release_build_attempts.orphaned_build_job_ids(limit=10_000))
+
+        self.assertEqual(service.request_cancel(job["job_id"]), "cancelled")
+        self.assertIn(job["job_id"], release_build_attempts.orphaned_build_job_ids(limit=10_000))
+        release_build_attempts.settle_build_job(service.get(job["job_id"]))
+        steps = service.get(job["job_id"])["payload"]["pipeline"]["jobs"][0]["steps"]
+        self.assertEqual([step["status"] for step in steps], ["cancelled", "cancelled"])
+        self.assertNotIn(job["job_id"], release_build_attempts.orphaned_build_job_ids(limit=10_000))
+
+
 @requires_scratch_postgres("the release.candidate_built producer")
 class ReleaseCandidateBuiltEventTests(unittest.TestCase):
     def setUp(self) -> None:
