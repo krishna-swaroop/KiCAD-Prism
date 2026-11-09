@@ -101,3 +101,34 @@ describe("WebGpu3dTab while the design bundle builds (V2a)", () => {
         expect(screen.queryByRole("button", { name: /Generate 3D assets/ })).toBeNull();
     });
 });
+
+describe("WebGpu3dTab after a KiCad library changed", () => {
+    beforeEach(() => fetchJson.mockReset());
+
+    it("a failed parts refresh is shown over the earlier parts", async () => {
+        fetchJson.mockResolvedValue(status({
+            status: "ready",
+            available: true,
+            bundle_url: "/bundle.json",
+            readiness: { stage: "semantic-ready", progress: 100 },
+            refreshFailure: "kicad-cli crashed",
+        }));
+        renderTab();
+        const badge = await screen.findByText("Models not updated");
+        expect(badge.closest("[title]")?.getAttribute("title")).toBe("kicad-cli crashed");
+    });
+
+    it("a refresh under way hides an earlier failure", async () => {
+        fetchJson.mockResolvedValue(status({
+            status: "ready",
+            available: true,
+            bundle_url: "/bundle.json",
+            readiness: { stage: "semantic-ready", progress: 100 },
+            refreshing: true,
+            refreshFailure: "kicad-cli crashed",
+        }));
+        renderTab();
+        await screen.findByText("Updating models: a KiCad library changed");
+        expect(screen.queryByText("Models not updated")).toBeNull();
+    });
+});
