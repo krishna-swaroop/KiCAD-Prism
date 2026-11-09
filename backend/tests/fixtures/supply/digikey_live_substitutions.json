@@ -1,0 +1,272 @@
+{
+  "provider": "digikey",
+  "calls": [
+    {
+      "method": "GET",
+      "path": "/products/v4/search/445-5982-1-ND/substitutions",
+      "answer": {
+        "ProductSubstitutesCount": 3,
+        "ProductSubstitutes": [
+          {
+            "SubstituteType": "Upgrade",
+            "ProductUrl": "/en/products/detail/tdk/C2012X5R1V685K125AC/3951669",
+            "Description": "CAP CER 6.8UF 35V X5R 0805",
+            "Manufacturer": {
+              "Id": 445,
+              "Name": "TDK"
+            },
+            "ManufacturerProductNumber": "C2012X5R1V685K125AC",
+            "UnitPrice": "0.66",
+            "QuantityAvailable": 12000,
+            "DigiKeyProductNumber": "445-14433-2-ND"
+          },
+          {
+            "SubstituteType": "Upgrade",
+            "ProductUrl": "/en/products/detail/tdk/C2012X5R1V685K125AC/3951669",
+            "Description": "CAP CER 6.8UF 35V X5R 0805",
+            "Manufacturer": {
+              "Id": 445,
+              "Name": "TDK"
+            },
+            "ManufacturerProductNumber": "C2012X5R1V685K125AC",
+            "UnitPrice": "0.66",
+            "QuantityAvailable": 1851,
+            "DigiKeyProductNumber": "445-14433-1-ND"
+          },
+          {
+            "SubstituteType": "Upgrade",
+            "ProductUrl": "/en/products/detail/tdk/C2012X5R1V685K125AC/3951669",
+            "Description": "CAP CER 6.8UF 35V X5R 0805",
+            "Manufacturer": {
+              "Id": 445,
+              "Name": "TDK"
+            },
+            "ManufacturerProductNumber": "C2012X5R1V685K125AC",
+            "UnitPrice": "0.66",
+            "DigiKeyProductNumber": "445-14433-6-ND"
+          }
+        ],
+        "SearchLocaleUsed": {
+          "Site": "IT",
+          "Language": "en",
+          "Currency": "EUR"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/products/v4/search/P120HDKR-ND/substitutions",
+      "answer": {
+        "ProductSubstitutesCount": 16,
+        "ProductSubstitutes": [
+          {
+            "SubstituteType": "Direct",
+            "ProductUrl": "/en/products/detail/yageo/RC0603FR-07120RL/726920",
+            "Description": "RES 120 OHM 1% 1/10W 0603",
+            "Manufacturer": {
+              "Id": 13,
+              "Name": "YAGEO"
+            },
+            "ManufacturerProductNumber": "RC0603FR-07120RL",
+            "UnitPrice": "0.1",
+            "QuantityAvailable": 298137,
+            "DigiKeyProductNumber": "311-120HRTR-ND"
+          },
+          {
+            "SubstituteType": "Direct",
+            "ProductUrl": "/en/products/detail/yageo/RC0603FR-07120RL/726920",
+            "Description": "RES 120 OHM 1% 1/10W 0603",
+            "Manufacturer": {
+              "Id": 13,
+              "Name": "YAGEO"
+            },
+            "ManufacturerProductNumber": "RC0603FR-07120RL",
+            "UnitPrice": "0.1",
+            "QuantityAvailable": 80,
+            "DigiKeyProductNumber": "311-120HRCT-ND"
+          },
+          {
+            "SubstituteType": "Direct",
+            "ProductUrl": "/en/products/detail/yageo/RC0603FR-07120RL/726920",
+            "Description": "RES 120 OHM 1% 1/10W 0603",
+            "Manufacturer": {
+              "Id": 13,
+              "Name": "YAGEO"
+            },
+            "ManufacturerProductNumber": "RC0603FR-07120RL",
+            "UnitPrice": "0.1",
+            "DigiKeyProductNumber": "311-120HRDKR-ND"
+          },
+          {
+            "SubstituteType": "Direct",
+            "ProductUrl": "/en/products/detail/stackpole-electronics-inc/RMCF0603FT120R/1761221",
+            "Description": "RES 120 OHM 1% 1/10W 0603",
+            "Manufacturer": {
+              "Id": 738,
+              "Name": "Stackpole Electronics Inc"
+            },
+            "ManufacturerProductNumber": "RMCF0603FT120R",
+            "UnitPrice": "0.1",
+            "QuantityAvailable": 191000,
+            "DigiKeyProductNumber": "RMCF0603FT120RTR-ND"
+          },
+          {
+            "SubstituteType": "Direct",
+            "ProductUrl": "/en/products/detail/stackpole-electronics-inc/RMCF0603FT120R/1761221",
+            "Description": "RES 120 OHM 1% 1/10W 0603",
+            "Manufacturer": {
+              "Id": 738,
+              "Name": "Stackpole Electronics Inc"
+            },
+            "ManufacturerProductNumber": "RMCF0603FT120R",
+            "UnitPrice": "0.1",
+            "QuantityAvailable": 751,
+            "DigiKeyProductNumber": "RMCF0603FT120RCT-ND"
+          },
+          {
+            "SubstituteType": "Direct",
+            "ProductUrl": "/en/products/detail/stackpole-electronics-inc/RMCF0603FT120R/1761221",
+            "Description": "RES 120 OHM 1% 1/10W 0603",
+            "Manufacturer": {
+              "Id": 738,
+              "Name": "Stackpole Electronics Inc"
+            },
+            "ManufacturerProductNumber": "RMCF0603FT120R",
+            "UnitPrice": "0.1",
+            "DigiKeyProductNumber": "RMCF0603FT120RDKR-ND"
+          },
+          {
+            "SubstituteType": "Direct",
+            "ProductUrl": "/en/products/detail/vishay-dale/CRCW0603120RFKEA/1174562",
+            "Description": "RES SMD 120 OHM 1% 1/10W 0603",
+            "Manufacturer": {
+              "Id": 541,
+              "Name": "Vishay Dale"
+            },
+            "ManufacturerProductNumber": "CRCW0603120RFKEA",
+            "UnitPrice": "0.1",
+            "QuantityAvailable": 140000,
+            "DigiKeyProductNumber": "541-120HTR-ND"
+          },
+          {
+            "SubstituteType": "Direct",
+            "ProductUrl": "/en/products/detail/vishay-dale/CRCW0603120RFKEA/1174562",
+            "Description": "RES SMD 120 OHM 1% 1/10W 0603",
+            "Manufacturer": {
+              "Id": 541,
+              "Name": "Vishay Dale"
+            },
+            "ManufacturerProductNumber": "CRCW0603120RFKEA",
+            "UnitPrice": "0.1",
+            "QuantityAvailable": 3330,
+            "DigiKeyProductNumber": "541-120HCT-ND"
+          },
+          {
+            "SubstituteType": "Direct",
+            "ProductUrl": "/en/products/detail/vishay-dale/CRCW0603120RFKEA/1174562",
+            "Description": "RES SMD 120 OHM 1% 1/10W 0603",
+            "Manufacturer": {
+              "Id": 541,
+              "Name": "Vishay Dale"
+            },
+            "ManufacturerProductNumber": "CRCW0603120RFKEA",
+            "UnitPrice": "0.1",
+            "DigiKeyProductNumber": "541-120HDKR-ND"
+          },
+          {
+            "SubstituteType": "Direct",
+            "ProductUrl": "/en/products/detail/te-connectivity-passive-product/CRG0603F120R/2380718",
+            "Description": "RES SMD 120 OHM 1% 1/10W 0603",
+            "Manufacturer": {
+              "Id": 1712,
+              "Name": "TE Connectivity Passive Product"
+            },
+            "ManufacturerProductNumber": "CRG0603F120R",
+            "UnitPrice": "0.1",
+            "QuantityAvailable": 20000,
+            "DigiKeyProductNumber": "1712-CRG0603F120RTR-ND"
+          },
+          {
+            "SubstituteType": "Direct",
+            "ProductUrl": "/en/products/detail/te-connectivity-passive-product/CRG0603F120R/2380718",
+            "Description": "RES SMD 120 OHM 1% 1/10W 0603",
+            "Manufacturer": {
+              "Id": 1712,
+              "Name": "TE Connectivity Passive Product"
+            },
+            "ManufacturerProductNumber": "CRG0603F120R",
+            "UnitPrice": "0.1",
+            "QuantityAvailable": 1996,
+            "DigiKeyProductNumber": "1712-CRG0603F120RCT-ND"
+          },
+          {
+            "SubstituteType": "Direct",
+            "ProductUrl": "/en/products/detail/te-connectivity-passive-product/CRG0603F120R/2380718",
+            "Description": "RES SMD 120 OHM 1% 1/10W 0603",
+            "Manufacturer": {
+              "Id": 1712,
+              "Name": "TE Connectivity Passive Product"
+            },
+            "ManufacturerProductNumber": "CRG0603F120R",
+            "UnitPrice": "0.1",
+            "DigiKeyProductNumber": "1712-CRG0603F120RDKR-ND"
+          },
+          {
+            "SubstituteType": "Direct",
+            "ProductUrl": "/en/products/detail/vishay-dale/CRCW0603120RFKEB/5070787",
+            "Description": "RES SMD 120 OHM 1% 1/10W 0603",
+            "Manufacturer": {
+              "Id": 541,
+              "Name": "Vishay Dale"
+            },
+            "ManufacturerProductNumber": "CRCW0603120RFKEB",
+            "UnitPrice": "0.1",
+            "DigiKeyProductNumber": "541-CRCW0603120RFKEBTR-ND"
+          },
+          {
+            "SubstituteType": "Direct",
+            "ProductUrl": "/en/products/detail/vishay-dale/CRCW0603120RFKEB/5070787",
+            "Description": "RES SMD 120 OHM 1% 1/10W 0603",
+            "Manufacturer": {
+              "Id": 541,
+              "Name": "Vishay Dale"
+            },
+            "ManufacturerProductNumber": "CRCW0603120RFKEB",
+            "UnitPrice": "0.1",
+            "QuantityAvailable": 12369,
+            "DigiKeyProductNumber": "541-CRCW0603120RFKEBCT-ND"
+          },
+          {
+            "SubstituteType": "Direct",
+            "ProductUrl": "/en/products/detail/vishay-dale/CRCW0603120RFKEB/5070787",
+            "Description": "RES SMD 120 OHM 1% 1/10W 0603",
+            "Manufacturer": {
+              "Id": 541,
+              "Name": "Vishay Dale"
+            },
+            "ManufacturerProductNumber": "CRCW0603120RFKEB",
+            "UnitPrice": "0.1",
+            "DigiKeyProductNumber": "541-CRCW0603120RFKEBDKR-ND"
+          },
+          {
+            "SubstituteType": "Direct",
+            "ProductUrl": "/en/products/detail/vishay-dale/CRCW0603120RFKEC/5070788",
+            "Description": "RES SMD 120 OHM 1% 1/10W 0603",
+            "Manufacturer": {
+              "Id": 541,
+              "Name": "Vishay Dale"
+            },
+            "ManufacturerProductNumber": "CRCW0603120RFKEC",
+            "UnitPrice": "0.00364",
+            "DigiKeyProductNumber": "CRCW0603120RFKEC-ND"
+          }
+        ],
+        "SearchLocaleUsed": {
+          "Site": "IT",
+          "Language": "en",
+          "Currency": "EUR"
+        }
+      }
+    }
+  ]
+}

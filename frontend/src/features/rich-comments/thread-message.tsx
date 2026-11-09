@@ -117,8 +117,6 @@ export function ThreadMessage({
                     title="Delete reply"
                     description="This removes the reply from the thread. Its history is kept."
                     confirmLabel="Delete reply"
-                    // Replies also render inside the floating card (z-110).
-                    layerClassName="z-[130]"
                     onConfirm={() => void deleteReply()}
                 />
             )}

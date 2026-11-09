@@ -12,7 +12,6 @@ we ever want the plugin to talk to Prism directly.
 from __future__ import annotations
 
 import json
-import subprocess
 import time
 import urllib.error
 import urllib.parse
@@ -20,6 +19,7 @@ import urllib.request
 from dataclasses import dataclass
 
 from . import identity
+from .identity import git_origin as _git_origin, normalise_url as _normalise_url
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8000"
 TIMEOUT = 5
@@ -375,41 +375,6 @@ class PrismClient:
         web UI. Keep this in step with the Route in frontend/src/App.tsx.
         """
         return f"{self.config.base_url.rstrip('/')}/project/{project_id}"
-
-
-def _git_origin(tree: str) -> str:
-    """The `origin` remote of a local checkout, or "" if it has none."""
-    try:
-        result = subprocess.run(
-            ["git", "-C", tree, "remote", "get-url", "origin"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False,
-            # Windows: stop a console window flashing up when KiCad's Python calls us.
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-    except (OSError, subprocess.SubprocessError):
-        return ""
-    return result.stdout.strip() if result.returncode == 0 else ""
-
-
-def _normalise_url(url: str) -> str:
-    """Canonical form of a git remote, for comparing two spellings of the same one.
-
-    The same NAS share really does show up as both `\\\\HOST\\share\\x` and
-    `//HOST/share/x` depending on who wrote it, and a trailing `.git` is optional
-    everywhere. Compared raw, those name the same remote and fail to match.
-
-    Deliberately conservative: fold separators, a trailing slash, a trailing `.git`,
-    and case. It does not try to equate ssh:// with https:// forms of the same host,
-    because those are genuinely different remotes to git and pretending otherwise
-    would be a guess.
-    """
-    u = url.strip().replace("\\", "/").rstrip("/")
-    if u.lower().endswith(".git"):
-        u = u[:-4]
-    return u.casefold()
 
 
 # _normalise(path) used to live here: it canonicalised a filesystem path so the

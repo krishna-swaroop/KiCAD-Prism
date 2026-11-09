@@ -711,7 +711,7 @@ describe("ReleaseStudioPanel", () => {
         await waitFor(() => expect(vi.mocked(api.publishBuild)).toHaveBeenCalledWith(
             "p1",
             "build-1",
-            { tag: "v1.0.0", title: "v1.0.0", notes: "", acknowledged_models: [] },
+            { tag: "v1.0.0", title: "v1.0.0", notes: "", acknowledged_models: [], attach_compliance_draft: false },
         ));
         expect(await screen.findByRole("link", { name: /github.com\/org\/repo\/releases\/tag\/v1/i })).toBeTruthy();
     });
@@ -764,7 +764,7 @@ describe("ReleaseStudioPanel", () => {
         await waitFor(() => expect(vi.mocked(api.publishBuild)).toHaveBeenCalledWith(
             "p1",
             "build-1",
-            { tag: "v1.0.0", title: "v1.0.0", notes: "", acknowledged_models: [key] },
+            { tag: "v1.0.0", title: "v1.0.0", notes: "", acknowledged_models: [key], attach_compliance_draft: false },
         ));
         // Once published, the acknowledgement is history, not a live control.
         expect(await screen.findByRole("link", { name: /github.com\/org\/repo\/releases\/tag\/v1/i })).toBeTruthy();

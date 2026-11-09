@@ -224,6 +224,24 @@ class ComponentCatalogPostgresIntegrationTests(unittest.TestCase):
         self.component_ids.append(str(component["id"]))
         return component
 
+    def test_component_identities_reads_manufacturer_and_mpn_for_known_ids_only(self) -> None:
+        first, second = self._component(), self._component()
+        found = self.service.component_identities([str(first["id"]), str(second["id"]), "no-such-component"])
+        self.assertEqual(set(found), {str(first["id"]), str(second["id"])})
+        self.assertEqual(found[str(first["id"])], ("Prism Integration", first["mpn"]))
+        self.assertEqual(self.service.component_identities([]), {})
+
+    def test_component_inventory_reads_the_preferred_stock_of_components_that_have_any(self) -> None:
+        stocked, bare = self._component(), self._component()
+        self.service.import_inventory_csv(
+            "component_id,manufacturer,mpn,quantity,uom,inventory_status" + chr(10)
+            + f"{stocked['id']},{stocked['manufacturer']},{stocked['mpn']},42,pcs,available" + chr(10)
+        )
+        found = self.service.component_inventory([str(stocked["id"]), str(bare["id"])])
+        self.assertEqual(set(found), {str(stocked["id"])})
+        self.assertEqual((found[str(stocked["id"])]["quantity"], found[str(stocked["id"])]["uom"]), (42.0, "pcs"))
+        self.assertEqual(self.service.component_inventory([]), {})
+
     def _install_deterministic_preview_renderer(self) -> None:
         """Keep preview evidence independent of kicad-cli availability and version."""
 

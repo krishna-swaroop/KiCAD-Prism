@@ -219,6 +219,13 @@ admin console, then run the installer and choose Tailscale. It offers two modes:
 nginx. With several proxies in a row, set `PUBLIC_BASE_URL`; it wins over any
 forwarded header.
 
+Prism sends its own security headers: `Content-Security-Policy`,
+`X-Frame-Options: SAMEORIGIN`, `Cross-Origin-Opener-Policy: same-origin`,
+`X-Content-Type-Options`, `Referrer-Policy` and `Permissions-Policy`. Pass them
+through unchanged. A proxy that replaces the Content Security Policy, or loosens
+`connect-src`, lets a page send design data to other sites. Prism cannot be
+framed by another site; serve it as its own page.
+
 ## Plain HTTP for a trial
 
 The installer's plain HTTP scheme runs Prism without TLS on one machine. The

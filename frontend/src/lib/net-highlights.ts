@@ -1,5 +1,5 @@
 import type { PrismSelection, PrismSemanticIndex, SemanticNet } from "@/types/prism-selection";
-import type { EcadNetRef } from "@/types/ecad-viewer";
+import type { EcadNetRef, SchematicNetMembers } from "@/types/ecad-viewer";
 
 /**
  * A net in the review's highlight collection. `netName` is the board net
@@ -89,6 +89,37 @@ export function highlightRefs(nets: readonly HighlightedNet[]): EcadNetRef[] {
         netCode: net.netCode,
         uuids: net.pcbUuids?.length ? net.pcbUuids : undefined,
     }));
+}
+
+/**
+ * The schematic members of each highlighted net, per sheet instance, for the
+ * schematic viewer: wires, labels and ports, junctions and sheet entries, and
+ * pins. A net the index does not know is left out.
+ */
+export function schematicMembers(
+    nets: readonly HighlightedNet[],
+    index: PrismSemanticIndex | null,
+): SchematicNetMembers[] {
+    if (!index) return [];
+    const members: SchematicNetMembers[] = [];
+    for (const net of nets) {
+        const semantic = semanticNet({ kind: "net", sourceContext: "SCH", netName: net.netName, netUid: net.netUid }, index);
+        if (!semantic) continue;
+        const pages = (semantic.schematicRefs ?? []).flatMap((ref) =>
+            ref.sheetInstancePath
+                ? [{
+                    sheetPath: ref.sheetInstancePath,
+                    uuids: [
+                        ...(ref.wireUuids ?? []),
+                        ...(ref.labelUuids ?? []),
+                        ...(ref.junctionUuids ?? []),
+                        ...(ref.pinUuids ?? []),
+                    ],
+                }]
+                : []);
+        if (pages.length) members.push({ name: semantic.name, pages });
+    }
+    return members;
 }
 
 /**

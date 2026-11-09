@@ -8,6 +8,8 @@ bindings that stay exposed, and related settings drifting apart.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import re
 import tempfile
@@ -1029,6 +1031,39 @@ class FrontendNginxTests(unittest.TestCase):
         for prefix in ("/api/", "/git/", "/oauth/", "/remote-provider/"):
             with self.subTest(prefix=prefix):
                 self.assertIn(f"location {prefix} {{", config)
+
+    def _spa_block(self) -> str:
+        config = (REPOSITORY_ROOT / "frontend" / "nginx.conf").read_text(encoding="utf-8")
+        return config.split("location / {", 1)[1].split("\n    }", 1)[0]
+
+    def test_spa_sends_security_headers(self):
+        block = self._spa_block()
+        for header in (
+            'X-Frame-Options "SAMEORIGIN"',
+            'Cross-Origin-Opener-Policy "same-origin"',
+            'X-Content-Type-Options "nosniff"',
+        ):
+            with self.subTest(header=header):
+                self.assertIn(f"add_header {header} always;", block)
+        csp = re.search(r'add_header Content-Security-Policy "([^"]+)" always;', block)
+        self.assertIsNotNone(csp)
+        directives = {
+            part.split()[0]: part.split()[1:] for part in csp.group(1).split("; ")
+        }
+        # A crafted link must not be able to send design data off-origin.
+        self.assertEqual(directives["connect-src"], ["'self'", "blob:", "data:"])
+        self.assertEqual(directives["frame-ancestors"], ["'self'"])
+        self.assertEqual(directives["object-src"], ["'none'"])
+        self.assertNotIn("'unsafe-eval'", directives["script-src"])
+        self.assertNotIn("'unsafe-inline'", directives["script-src"])
+
+    def test_csp_allows_the_index_importmap(self):
+        # The importmap is an inline script; the CSP admits it by hash.
+        html = (REPOSITORY_ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
+        inline = re.findall(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", html, re.S)
+        self.assertEqual(len(inline), 1, "only the importmap may be inline")
+        digest = base64.b64encode(hashlib.sha256(inline[0].encode()).digest()).decode()
+        self.assertIn(f"'sha256-{digest}'", self._spa_block())
 
     def test_git_location_streams_pack_data(self):
         config = (REPOSITORY_ROOT / "frontend" / "nginx.conf").read_text(encoding="utf-8")

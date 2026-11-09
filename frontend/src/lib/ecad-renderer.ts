@@ -76,11 +76,16 @@ export interface EcadRenderer {
  * The renderer is a public asset rather than a Vite module, so it is imported
  * once and shared. Held as the promise, not the module, so several previews
  * mounting at once wait on one download instead of racing separate ones.
+ *
+ * The URL is made absolute first: the dev server adds `?import` to a variable
+ * import of a root-relative path, and then refuses it as a public file
+ * imported from source.
  */
 let rendererModule: Promise<EcadRenderer> | null = null;
 
 export function loadEcadRenderer(): Promise<EcadRenderer> {
-  rendererModule ??= import(/* @vite-ignore */ ECAD_RENDERER_URL).then(
+  const url = new URL(ECAD_RENDERER_URL, window.location.href).href;
+  rendererModule ??= import(/* @vite-ignore */ url).then(
     (module) => module as unknown as EcadRenderer,
   );
   return rendererModule;

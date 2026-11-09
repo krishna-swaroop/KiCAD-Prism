@@ -1,0 +1,121 @@
+{
+ "_source": "Verbatim examples from the TME API v2 OpenAPI description (developers.tme.eu/en/api-doc/v2, fetched 2026-10-11). Not recorded from a live account.",
+ "auth_token": {
+  "access_token": "",
+  "token_type": "Bearer",
+  "expires_in": 300,
+  "refresh_token": ""
+ },
+ "products": {
+  "status": "OK",
+  "data": {
+   "elements": [
+    {
+     "product_status": [
+      "AVAILABLE_WHILE_STOCKS_LAST"
+     ],
+     "symbol": "AX-100",
+     "ean": "",
+     "customer_symbol": "",
+     "category": {
+      "id": 112610,
+      "name": "Portable digital multimeters"
+     },
+     "manufacturer_symbols": [],
+     "manufacturer": {
+      "id": 271,
+      "name": "AXIOMET / Transfer Multisort Elektronik Sp. z o.o."
+     },
+     "description": "Digital multimeter; LCD 3,5 digit (1999); 3x/s; 0÷40°C",
+     "multiples": 1,
+     "minimal_amount": 1,
+     "weight": {
+      "value": 239.4,
+      "unit": "g"
+     },
+     "unit": {
+      "id": "ST",
+      "short_name": "pcs",
+      "singular_translation": "Piece",
+      "plural_translation": null
+     },
+     "packing": {
+      "elements": [
+       {
+        "id": "CT2",
+        "translation": "Cardboard",
+        "amount": 2
+       }
+      ]
+     },
+     "assets": {
+      "primary_photo": {
+       "prime": "//ce8dc832c.cloudimg.io/v7/_cdn_/A7/25/90/00/0/610938_1.jpg?width=640&height=480&wat=1&wat_url=_tme-wrk_%2Ftme_new.png&wat_scale=100p&ci_sign=076bdcd2064eab934dbc198feae0f6966b8b46b2",
+       "thumbnail": "//ce8dc832c.cloudimg.io/v7/_cdn_/A7/25/90/00/0/610938_1.jpg?width=100&height=75&q=75&ci_sign=085b9ae47f022f053d0a471a419c1610c84d8d6d",
+       "high_resolution": "//ce8dc832c.cloudimg.io/v7/_cdn_/A7/25/90/00/0/610938_1.jpg?width=1440&height=1080&wat=1&wat_url=_tme-wrk_%2Ftme_new.png&wat_scale=100p&ci_sign=ec32cbb3f2144578ae9262a384200194e5e33558"
+      }
+     },
+     "notification": {
+      "any_increase": false,
+      "created_at": "2026-05-07T11:36:07+02:00",
+      "required_amount": 800
+     }
+    }
+   ]
+  }
+ },
+ "products_data": {
+  "status": "OK",
+  "data": {
+   "elements": [
+    {
+     "stock_quantity": 647,
+     "symbol": "02KR-6H-P",
+     "unit": {
+      "id": "ST",
+      "short_name": "pcs",
+      "singular_translation": "Piece",
+      "plural_translation": null
+     },
+     "prices": {
+      "elements": [
+       {
+        "amount": 1,
+        "price": 0.647,
+        "special": false
+       },
+       {
+        "amount": 2000,
+        "price": 0.6052,
+        "special": false
+       }
+      ],
+      "tax": {
+       "type": "VAT",
+       "rate": 23
+      },
+      "currency": "PLN",
+      "type": "GROSS"
+     },
+     "deliveries": {
+      "elements": [
+       {
+        "status": "DS_AVAILABLE_IN_STOCK",
+        "amount": 647,
+        "data": null
+       },
+       {
+        "status": "DS_DELIVERY_NEEDS_CONFIRMATION",
+        "amount": 353,
+        "data": {
+         "waiting_period": "P5W",
+         "supply_date": "2026-06-17"
+        }
+       }
+      ]
+     }
+    }
+   ]
+  }
+ }
+}

@@ -8,10 +8,29 @@ import {
   canCommentOnProjects,
   canManageProjects,
   canOpenLibraryManager,
+  canEditSupply,
+  canOpenSupply,
   canReviewCatalogQa,
+  canReviewSupply,
   canWriteCatalog,
+  authorityAvailable,
   roleHasAuthority,
+  setSupplyEnabled,
 } from "./roles";
+
+describe("the Supply switch", () => {
+  it("takes every Supply authority from every role while Supply is off, and nothing else", () => {
+    setSupplyEnabled(false);
+    try {
+      expect([canOpenSupply("admin"), canEditSupply("admin"), canReviewSupply("admin")]).toEqual([false, false, false]);
+      expect(authorityAvailable("view_supply")).toBe(false);
+      expect(canWriteCatalog("admin")).toBe(true);
+    } finally {
+      setSupplyEnabled(true);
+    }
+    expect(canOpenSupply("admin")).toBe(true);
+  });
+});
 
 describe("role authorities", () => {
   it("matches the project mutation roles enforced by the backend", () => {
@@ -19,6 +38,23 @@ describe("role authorities", () => {
     expect(canManageProjects("qa")).toBe(false);
     expect(canManageProjects("designer")).toBe(true);
     expect(canManageProjects("admin")).toBe(true);
+  });
+
+  it("matches the supply read and review role sets enforced by the backend", () => {
+    expect(canOpenSupply("viewer")).toBe(false); // supply reads follow catalog reads, which exclude viewers
+    expect(canOpenSupply("designer")).toBe(true);
+    expect(canOpenSupply("qa")).toBe(true);
+    expect(canOpenSupply("admin")).toBe(true);
+    expect(canOpenSupply(null)).toBe(false);
+
+    expect(canEditSupply("designer")).toBe(true);
+    expect(canEditSupply("qa")).toBe(false);
+    expect(canEditSupply("admin")).toBe(true);
+    expect(canEditSupply("viewer")).toBe(false);
+
+    expect(canReviewSupply("designer")).toBe(false);
+    expect(canReviewSupply("qa")).toBe(true);
+    expect(canReviewSupply("admin")).toBe(true);
   });
 
   it("matches the catalog read, write, and QA role sets", () => {

@@ -9,6 +9,7 @@ on:
       - feature/system-builder
       - feature/native-design-bundle
       - feature/scripting-mcp
+      - feature/supply
       # Work packages of the native design bundle stack on each other (ADR §9.1).
       - wp/**
       - fix/architecture-consolidation
@@ -19,6 +20,7 @@ on:
       - feature/release-studio
       - feature/native-design-bundle
       - feature/scripting-mcp
+      - feature/supply
       - fix/architecture-consolidation
   schedule:
     # Live KiCad is not on every feature commit; keep a daily executor check.

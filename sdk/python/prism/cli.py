@@ -414,6 +414,39 @@ def _compare(client: Client, args: argparse.Namespace) -> int:
     return 0
 
 
+def _read_rows(path: str, key: str) -> list[Any]:
+    """A JSON list of rows, or an object holding them under ``key``, from a file or stdin (``-``)."""
+
+    if path == "-":
+        text = sys.stdin.read()
+    else:
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+    data = json.loads(text)
+    rows = data.get(key) if isinstance(data, dict) else data
+    if not isinstance(rows, list):
+        raise ValueError(f"expected a JSON list, or an object with {key!r}")
+    return rows
+
+
+def _supply_push_offers(client: Client, args: argparse.Namespace) -> int:
+    result = client.push_connector_offers(args.connector, body={"offers": _read_rows(args.file, "offers"), "replace": args.replace})
+    if args.json:
+        _json(result)
+        return 0
+    _table(["FIELD", "VALUE"], [("Received", result.get("received")), ("Kept", result.get("kept")), ("Recorded", result.get("recorded"))])
+    return 0
+
+
+def _supply_push_levels(client: Client, args: argparse.Namespace) -> int:
+    result = client.push_inventory_levels(args.source, body={"items": _read_rows(args.file, "items")})
+    if args.json:
+        _json(result)
+        return 0
+    _table(["FIELD", "VALUE"], [("Records", result.get("records")), ("Matched", result.get("matched")), ("Unmatched", result.get("unmatched"))])
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="prism", description="KiCAD Prism from the command line.")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -526,6 +559,20 @@ def build_parser() -> argparse.ArgumentParser:
     compare.add_argument("--json", action="store_true", help="print the raw JSON")
     compare.set_defaults(handler=_compare)
 
+    supply = commands.add_parser("supply", help="Push offers and stock to Supply (a push token is enough)")
+    supply_commands = supply.add_subparsers(dest="action", required=True)
+    push_offers = supply_commands.add_parser("push-offers", help="Push offers to a CSV, LCSC or JLCPCB connector")
+    push_offers.add_argument("connector", help="connector id")
+    push_offers.add_argument("file", help="JSON file of offers, or - for stdin")
+    push_offers.add_argument("--replace", action="store_true", help="these are all the connector's offers")
+    push_offers.add_argument("--json", action="store_true", help="print the raw JSON")
+    push_offers.set_defaults(handler=_supply_push_offers)
+    push_levels = supply_commands.add_parser("push-levels", help="Push the whole stock of a push inventory source")
+    push_levels.add_argument("source", help="inventory source id")
+    push_levels.add_argument("file", help="JSON file of stock rows, or - for stdin")
+    push_levels.add_argument("--json", action="store_true", help="print the raw JSON")
+    push_levels.set_defaults(handler=_supply_push_levels)
+
     return parser
 
 
@@ -541,6 +588,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     except PrismError as error:
         print(f"{error.code}: {error.detail}", file=sys.stderr)
         return 1
+    except (OSError, ValueError) as error:
+        print(str(error), file=sys.stderr)
+        return 2
     except KeyboardInterrupt:
         return 130
 

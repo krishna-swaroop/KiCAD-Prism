@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { FillFromDistributor } from "@/features/supply/fill-from-distributor";
 import { listMetadataFields, patchComponent } from "./catalog-client";
 import { isFieldRequired } from "@/lib/catalog-field-rules";
 import type { CatalogComponent, CatalogMetadataField } from "@/types/catalog";
@@ -28,6 +29,7 @@ import {
   unknownExtraFields,
   valuesFromComponent,
 } from "./library-component-metadata-form";
+import { supplyAvailable } from "@/lib/roles";
 
 export type MetadataEditSession = {
   openedAt: string;
@@ -155,6 +157,7 @@ export function MetadataEditDialog({
                 onChange={(next) => setValues({ ...values, [field.key]: next })}
               />
             ))}
+            {supplyAvailable() ? <FillFromDistributor values={values} onApply={(changes) => setValues({ ...values, ...changes })} /> : null}
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="component-edit-unknown-extras">Additional extra fields (JSON object)</Label>
               <Textarea

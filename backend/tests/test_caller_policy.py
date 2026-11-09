@@ -65,6 +65,10 @@ EXPECTED: dict[str, tuple[set[str], frozenset[str]]] = {
     "catalog_qa": (WRITERS, frozenset({"qa", "admin"})),
     "catalog_admin": (WRITERS, frozenset({"admin"})),
     "remote_symbols": (READERS | {"provider"}, ALL),
+    "supply_read": (READERS, frozenset({"designer", "qa", "admin"})),
+    "supply_write": (WRITERS, frozenset({"designer", "admin"})),
+    "supply_follow": (WRITERS, frozenset({"designer", "qa", "admin"})),
+    "supply_approve": (WRITERS, frozenset({"qa", "admin"})),
     # Ops (ADR §11, D20): admins only, and api:write does not imply ops scopes.
     "ops_read": ({"session", "wildcard"}, frozenset({"admin"})),
     "ops_act": ({"session", "wildcard"}, frozenset({"admin"})),
@@ -79,9 +83,11 @@ AREA_ACTIONS = {
     "catalog_write": ("catalog:write", "designer"),
     "catalog_qa": ("catalog:qa", "qa"),
     "catalog_admin": ("admin", "admin"),
+    "supply_follow": ("supply:write", "qa"),
+    "supply_write": ("supply:write", "designer"),
 }
 
-HUMAN_ONLY_ACTIONS = ("release", "admin", "catalog_qa", "catalog_admin")
+HUMAN_ONLY_ACTIONS = ("release", "admin", "catalog_qa", "catalog_admin", "supply_approve")
 HUMAN_ONLY_DETAIL = "Only a person signed in to Prism can do this; open it in Prism"
 
 
@@ -201,6 +207,25 @@ class CallerPolicyTableTests(unittest.TestCase):
                     self.assertEqual(policy.role_allows(role, action), role in roles)
 
 
+class SupplySwitchTests(unittest.TestCase):
+    """PRISM_SUPPLY_ENABLED off refuses every Supply action, whoever asks, and nothing else."""
+
+    def test_off_refuses_every_supply_action_even_to_an_admin(self) -> None:
+        from unittest import mock
+
+        from app.core.config import settings
+
+        admin = _Caller(role="admin")
+        with mock.patch.object(settings, "PRISM_SUPPLY_ENABLED", False):
+            for action in sorted(policy.SUPPLY_ACTIONS):
+                self.assertEqual(policy.refusal(admin, action), "Supply is turned off on this deployment", action)
+            self.assertIsNone(policy.refusal(admin, "read"))
+            with self.assertRaises(HTTPException) as refused:
+                policy.authorize(admin, "supply_read")
+            self.assertEqual(refused.exception.status_code, 403)
+        self.assertIsNone(policy.refusal(admin, "supply_read"), "on by default")
+
+
 class OwnershipTests(unittest.TestCase):
     def test_owner_comparison_is_normalised_once(self) -> None:
         caller = _Caller(role="designer", email="Designer@Example.com")
@@ -299,6 +324,9 @@ class RoleMatrixContractTests(unittest.TestCase):
         "edit_catalog": ["designer", "admin"],
         "review_catalog_qa": ["qa", "admin"],
         "administer_catalog": ["admin"],
+        "view_supply": ["designer", "qa", "admin"],
+        "edit_supply": ["designer", "admin"],
+        "review_supply": ["qa", "admin"],
         "administer_workspace": ["admin"],
     }
 

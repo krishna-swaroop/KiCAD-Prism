@@ -1,0 +1,21 @@
+{
+  "_source": "Made up for the template adapter (providers/template.py): the API at api.example.com does not exist. Two search pages, one offers read, one part read.",
+  "provider": "example",
+  "mpn": "LM358DR",
+  "calls": [
+    {"method": "POST", "path": "/v1/search", "answer": {"results": [
+      {"asked": "LM358DR", "sku": "EX-LM358DR-CT", "mpn": "LM358DR", "manufacturer": "Texas Instruments", "description": "Dual op amp, SOIC-8", "url": "https://www.example.com/p/EX-LM358DR-CT"}
+    ], "next_page": 1}},
+    {"method": "POST", "path": "/v1/search", "answer": {"results": [
+      {"asked": "LM358DR", "sku": "EX-LM358DR-RL", "mpn": "LM358DR", "manufacturer": "Texas Instruments", "description": "Dual op amp, SOIC-8", "url": "https://www.example.com/p/EX-LM358DR-RL"}
+    ], "next_page": null}},
+    {"method": "GET", "path": "/v1/offers", "answer": {"offers": [
+      {"sku": "EX-LM358DR-CT", "mpn": "LM358DR", "manufacturer": "Texas Instruments", "stock": "12,500", "moq": 1, "multiple": 1, "packaging": "Cut Tape", "currency": "eur", "lifecycle": "Active", "rohs": "RoHS Compliant",
+       "prices": [{"qty": 1, "price": "0.42"}, {"qty": 100, "price": "0.21"}], "url": "https://www.example.com/p/EX-LM358DR-CT"},
+      {"sku": "EX-LM358DR-RL", "mpn": "LM358DR", "manufacturer": "Texas Instruments", "stock": 0, "moq": 2500, "multiple": 2500, "packaging": "Tape & Reel", "currency": "eur", "lifecycle": "Active",
+       "prices": [{"qty": 2500, "price": "0.09"}], "url": "https://www.example.com/p/EX-LM358DR-RL"}
+    ]}},
+    {"method": "GET", "path": "/v1/parts/EX-LM358DR-CT", "answer": {"description": "Dual operational amplifier", "datasheet": "https://www.example.com/ds/lm358.pdf", "package": "SOIC-8", "category": "Amplifiers",
+      "attributes": [{"name": "Channels", "value": "2"}, {"name": "Supply voltage", "value": "3 V to 32 V"}]}}
+  ]
+}

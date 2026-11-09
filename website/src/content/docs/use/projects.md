@@ -119,7 +119,9 @@ link can hold.
 
 ## Find your way around a project
 
-The project sidebar has these sections:
+The project sidebar has these sections. In **Visualizers** it shrinks to a
+column of icons to leave room for the design; rest the pointer on it to open
+it over the page, or select the button at its foot to keep it open there.
 
 | Section | What it holds |
 | --- | --- |
@@ -143,6 +145,11 @@ The project sidebar has these sections:
 ![The Assets Portal: Design Outputs and Manufacturing Outputs listed with their files, sizes and download actions](../../../assets/screenshots/assets-portal.jpg)
 
 ![The Documentation page: the Markdown documents found in the project's documentation folder, each with a size, preview and download action](../../../assets/screenshots/documentation.jpg)
+
+A workflow job commits what it changed in the project's folder, including the
+generated files, and pushes the commit to the remote. The **Assets Portal**
+lists those files. In a repository that holds several projects, the commit
+contains only the project's own folder.
 
 In **History**, expand a commit to see its changed files. Selecting a file
 does one of three things:
@@ -192,7 +199,7 @@ Project Settings overrides what Prism detected: the display name, the
 description and the file paths.
 
 1. Open the project.
-2. Select the gear icon (**Project settings**) in the project header.
+2. Select **⋯ → Project Settings** in the project header.
 3. Change the fields you need:
    - **Project Name** and **Project Description**, shown in the workspace and
      used by search.
@@ -217,6 +224,6 @@ the design data Prism keeps for each revision. See
 
 ## Open a project in desktop KiCad
 
-The external-link icon in the project header (**Open in KiCad**) opens the
-project in desktop KiCad on your computer. It needs the Prism agent installed
-on that computer; without it, the button does nothing.
+**⋯ → Open in KiCad** in the project header opens the project in desktop
+KiCad on your computer. It needs the Prism agent installed on that computer;
+without it, nothing happens.

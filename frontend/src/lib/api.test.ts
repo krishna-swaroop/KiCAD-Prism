@@ -223,4 +223,16 @@ describe("one transport", () => {
       );
     expect(offenders).toEqual([]);
   });
+
+  it("returns nothing, instead of failing to read a body, when a write answers 204", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
+    await expect(fetchJson("/api/supply/parts/p1/preferred", { method: "PUT" })).resolves.toBeUndefined();
+  });
+
+  it("returns nothing for an empty 200 and still reads a body when there is one", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 200 })));
+    await expect(fetchJson("/x")).resolves.toBeUndefined();
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(200, { ok: true })));
+    await expect(fetchJson("/x")).resolves.toEqual({ ok: true });
+  });
 });
