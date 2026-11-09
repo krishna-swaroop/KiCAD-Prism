@@ -268,6 +268,30 @@ class TriggerTests(ModelsCase):
         refresh.assert_not_called()
         self.assertFalse(answer["refreshing"])
 
+    def test_a_failed_refresh_over_a_served_bundle_is_reported(self) -> None:
+        from dataclasses import replace
+
+        from app.services import viewer_3d_bundle as v3d
+
+        failed = {"status": "failed", "payload": {"refresh_models": True}, "error_message": "kicad-cli crashed"}
+        self.assertEqual(reader._refresh_failure({"job_id": "job_1"}), None)
+        self.bundle_job = failed
+        self.assertEqual(reader._refresh_failure({"job_id": "job_1"}), "kicad-cli crashed")
+        self.bundle_job = {**failed, "payload": {}}
+        self.assertIsNone(reader._refresh_failure({"job_id": "job_1"}), "a failed full build is a failure, not this")
+        self.bundle_job = {**failed, "status": "completed"}
+        self.assertIsNone(reader._refresh_failure({"job_id": "job_1"}))
+
+        built = replace(self.opened(write_archive(self.tmp / "a.prism")), refresh_failure="kicad-cli crashed")
+        generator = mock.Mock(document=GENERATOR, digest=GENERATOR_DIGEST)
+        with mock.patch.object(v3d.cli, "generator", return_value=generator), \
+                mock.patch.object(v3d.reader, "open_revision", return_value=built), \
+                mock.patch.object(v3d.reader, "models_outdated", return_value=False), \
+                mock.patch.object(v3d.reader.rows, "touch_bundle"):
+            answer = v3d.status(PROJECT_ID, COMMIT_ID)
+        self.assertEqual(answer["refreshFailure"], "kicad-cli crashed")
+        self.assertEqual(answer["status"], "ready")
+
     def test_the_backfill_refreshes_a_head_once_per_change_in_the_bound_libraries(self) -> None:
         from types import SimpleNamespace
 

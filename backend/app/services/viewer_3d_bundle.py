@@ -167,6 +167,8 @@ def status(project_id: str, commit: str | None, *, requested_by: str = "") -> di
         "missingModels": missing,
         "refreshing": bool(opened.job_active and view.parts is not None and view.parts.state == "ready"),
     }
+    if opened.refresh_failure:
+        answer["refreshFailure"] = opened.refresh_failure
     message = _message(view)
     if message:
         answer["message"] = message
