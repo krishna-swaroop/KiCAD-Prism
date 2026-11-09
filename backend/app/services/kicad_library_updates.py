@@ -43,7 +43,9 @@ def check_library(name: str) -> dict[str, Any]:
     served = library.published()
     current = served is not None and served.commit == remote and served.source == library.source
     queued = False
-    if not current and library.update_policy == "follow":
+    # A commit a fetch already failed at for good (too large, no such folder) is not fetched again on every check.
+    failed_here = store.failed_commits().get(name) == remote
+    if not current and library.update_policy == "follow" and not failed_here:
         fetch.request_fetch(name, commit=remote, requested_by=SYSTEM_USER)
         queued = True
     return {"remoteCommit": remote, "moved": not current, "queued": queued, "error": None}

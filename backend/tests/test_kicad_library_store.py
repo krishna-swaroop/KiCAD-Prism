@@ -186,6 +186,23 @@ class KicadLibraryStoreTests(unittest.TestCase):
         with self.assertRaises(Invalid):
             self.settle("2026-01-01T00:00:00+00:00", state="pending")
 
+    def test_a_permanent_failure_records_its_commit_until_a_fetch_starts_or_publishes(self) -> None:
+        store.create(LSF, updated_by="")
+        store.record_fetch("lsf", state="failed", error="too large", failed_commit=COMMIT)
+        self.assertEqual(store.failed_commits(), {"lsf": COMMIT})
+        store.record_fetch("lsf", state="fetching", failed_commit=None)
+        self.assertEqual(store.failed_commits(), {})
+        store.record_fetch("lsf", state="failed", error="no such ref", failed_commit="")
+        self.assertEqual(store.failed_commits(), {"lsf": ""})
+        store.record_published("lsf", commit=OTHER, ref="main", size_bytes=1, requested_by="")
+        self.assertEqual(store.failed_commits(), {})
+
+    def test_a_changed_source_forgets_the_permanent_failure(self) -> None:
+        store.create(LSF, updated_by="")
+        store.record_fetch("lsf", state="failed", error="no folder", failed_commit=COMMIT)
+        store.update("lsf", {"subdir": "lsf.3dshapes"}, expected_version=None, updated_by="")
+        self.assertEqual(store.failed_commits(), {})
+
     def test_due_libraries_are_claimed_once(self) -> None:
         store.create(LSF, updated_by="")
         store.create({"name": "local", "variables": ["LOCAL_LIB"], "path": "x"}, updated_by="")

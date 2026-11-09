@@ -172,6 +172,7 @@ def update(name: str, fields: dict[str, Any], *, expected_version: int | None, u
                    update_policy = %s, pinned_commit = %s, check_interval_seconds = %s,
                    state = CASE WHEN %s THEN 'pending' ELSE state END,
                    error = CASE WHEN %s THEN NULL ELSE error END,
+                   failed_commit = CASE WHEN %s THEN NULL ELSE failed_commit END,
                    row_version = row_version + 1, updated_at = now(), updated_by = %s
              WHERE name = %s
             RETURNING {_COLUMNS}
@@ -185,6 +186,7 @@ def update(name: str, fields: dict[str, Any], *, expected_version: int | None, u
                 library.update_policy,
                 library.pinned_commit or None,
                 library.check_interval_seconds,
+                source_changed,
                 source_changed,
                 source_changed,
                 updated_by,
@@ -236,13 +238,18 @@ def record_fetch(
     error: str | None | object = UNSET,
     progress: int | None | object = UNSET,
     size_bytes: int | None | object = UNSET,
+    failed_commit: str | None | object = UNSET,
 ) -> None:
-    """The fetch's progress, as the console shows it; a deleted library is not an error."""
+    """The fetch's progress, as the console shows it; a deleted library is not an error.
+
+    ``failed_commit`` records the commit a fetch failed at for good (``""``: its ref did not resolve), or clears it.
+    """
 
     if state not in STATES:
         raise Invalid(f"Unknown fetch state {state!r}")
     sets, values = ["state = %s", "updated_at = now()"], [state]
-    for column, value in (("error", error), ("progress", progress), ("size_bytes", size_bytes)):
+    columns = (("error", error), ("progress", progress), ("size_bytes", size_bytes), ("failed_commit", failed_commit))
+    for column, value in columns:
         if value is not UNSET:
             sets.append(f"{column} = %s")
             values.append(value)
@@ -296,12 +303,22 @@ def unsettled_fetch_jobs(kind: str, limit: int = 100) -> list[str]:
     return [str(row["id"]) for row in rows]
 
 
+def failed_commits() -> dict[str, str]:
+    """Each library whose last fetch failed for good, and the commit it failed at (``""``: its ref did not resolve)."""
+
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT name, failed_commit FROM ws_kicad_libraries WHERE state = 'failed' AND failed_commit IS NOT NULL"
+        ).fetchall()
+    return {row["name"]: row["failed_commit"] for row in rows}
+
+
 def record_published(name: str, *, commit: str, ref: str, size_bytes: int | None, requested_by: str) -> None:
     """A version is now served: the row says so, and the history keeps it."""
 
     with connect() as conn:
         conn.execute(
-            "UPDATE ws_kicad_libraries SET state = 'ready', progress = 100, error = NULL, fetched_commit = %s, "
+            "UPDATE ws_kicad_libraries SET state = 'ready', progress = 100, error = NULL, failed_commit = NULL, fetched_commit = %s, "
             "size_bytes = COALESCE(%s, size_bytes), fetched_at = %s, updated_at = now(), "
             "pinned_commit = CASE WHEN update_policy = 'pinned' AND pinned_commit IS NULL THEN %s ELSE pinned_commit END "
             "WHERE name = %s",

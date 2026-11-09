@@ -750,6 +750,28 @@ class PinnedFetchTests(FetchCase):
         self.assertEqual(library.published().commit, self.first)
 
 
+class FailedFetchTests(FetchCase):
+    def setUp(self) -> None:
+        super().setUp()
+        patcher = mock.patch.object(fetch.kicad_library_store, "record_fetch")
+        self.record_fetch = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_a_permanent_failure_records_the_commit_it_failed_at(self) -> None:
+        self.declare(self.library(subdir="absent"))
+        with self.assertRaises(fetch.PermanentJobError):
+            fetch.run_fetch_job(_Context({"name": "lsf", "commit": self.first}))
+        self.assertEqual(self.record_fetch.call_args_list[0].kwargs["failed_commit"], None, "a start clears it")
+        self.assertEqual(self.record_fetch.call_args.kwargs["failed_commit"], self.first)
+
+    def test_a_transient_failure_records_no_failed_commit(self) -> None:
+        self.declare(self.library())
+        with mock.patch.object(fetch, "fetch_version", side_effect=fetch.FetchError("network down")), \
+                self.assertRaises(fetch.RetryableJobError):
+            fetch.run_fetch_job(_Context({"name": "lsf", "commit": self.first}))
+        self.assertNotIn("failed_commit", self.record_fetch.call_args.kwargs)
+
+
 class ProgressTests(unittest.TestCase):
     def test_progress_maps_git_phases_to_one_scale(self) -> None:
         self.assertEqual(fetch.progress_of("Receiving objects:  50% (10/20)"), 35)

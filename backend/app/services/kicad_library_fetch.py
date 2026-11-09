@@ -800,8 +800,9 @@ def run_fetch_job(context: JobContext) -> JobResult:
     if requested and library.update_policy == "pinned" and library.pinned_commit and requested != library.pinned_commit:
         # Queued before the library was pinned (a scheduled check, an update): a pinned library serves its pin only.
         return JobResult(message=f"{name} is pinned at {library.pinned_commit[:12]}; {requested[:12]} was not fetched")
-    kicad_library_store.record_fetch(name, state="fetching", progress=0, error=None)
+    kicad_library_store.record_fetch(name, state="fetching", progress=0, error=None, failed_commit=None)
     checked = [time.monotonic()]
+    commit = ""
 
     def on_tick() -> None:
         if time.monotonic() - checked[0] >= _TICK_SECONDS:
@@ -831,7 +832,9 @@ def run_fetch_job(context: JobContext) -> JobResult:
         kicad_library_store.record_fetch(name, state="failed", error="Cancelled")
         raise
     except FetchError as error:
-        kicad_library_store.record_fetch(name, state="failed", error=str(error)[:500])
+        kicad_library_store.record_fetch(
+            name, state="failed", error=str(error)[:500], **({"failed_commit": commit} if error.permanent else {})
+        )
         if error.permanent:
             raise PermanentJobError(str(error), code="library-fetch-failed") from error
         raise RetryableJobError(str(error), code="library-fetch-failed", retry_after_seconds=60) from error
@@ -1126,12 +1129,14 @@ def queue_missing() -> list[str]:
     queued = []
     kicad_libraries.forget_rows()
     libraries, problems = kicad_libraries.configured()
+    # A fetch that failed for good is not retried by a restart: Fetch again, a moved ref or a changed declaration is.
+    failed = kicad_library_store.failed_commits()
     for problem in problems:
         logger.warning("KiCad libraries: %s", problem)
     for library in libraries:
         if library.path and not library.ready:
             logger.warning("KiCad library %s: %s is not a folder.", library.name, library.path)
-        if library.git and not library.ready:
+        if library.git and not library.ready and library.name not in failed:
             request_fetch(library.name, requested_by="startup")
             queued.append(library.name)
     return queued
