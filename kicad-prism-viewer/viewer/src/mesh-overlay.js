@@ -33,14 +33,17 @@ export const EDGE_LIFT_M = 3e-6;
 /** The value the shaders read as "no value" (NaN in the pack). */
 const ABSENT = 3e38;
 const NO_ELEMENT = 0xffffffff;
-const VIEW_BYTES = 160;
+const VIEW_BYTES = 192;
 /** The palette's entries, then the places, in one storage table (a stage may bind only 8 storage buffers). */
 const PALETTE_ENTRIES = RAMP_SIZE;
 const PLACE_BYTES = 48;
 
 /** How the overlay looks; every field may be overridden (`resolveMeshStyle`). */
 export const DEFAULT_MESH_STYLE = Object.freeze({
-  edges: true,
+  // "copper": element edges only where the layer has copper of its conductor (a gap
+  // in the copper is a gap in the mesh drawn), with the copper's own boundary
+  // outlined; "all": every element's edges, the background mesh; "off".
+  edges: "copper",
   // "layers": each conductor's copper; "domain": the solver's domain, when the pack has one; "none".
   pieces: "layers",
   markers: true,
@@ -50,6 +53,8 @@ export const DEFAULT_MESH_STYLE = Object.freeze({
   edgeFadePx: 3,
   edgeColor: "#14181d",
   edgeOpacity: 0.85,
+  // The copper boundary where it cuts an element (edges "copper" and "all").
+  copperEdgeColor: "#7a3e0c",
   highlight: "#ff3b30",
   // An element field to colour by, or null (plain).
   colorBy: null,
@@ -72,6 +77,11 @@ export function resolveMeshStyle(style = {}, base = DEFAULT_MESH_STYLE, pack = n
   colormapStops(out.colormap);
   hexColor(out.edgeColor);
   hexColor(out.highlight);
+  hexColor(out.copperEdgeColor);
+  // Booleans as the checkbox had them.
+  if (out.edges === true) out.edges = "copper";
+  if (out.edges === false) out.edges = "off";
+  if (!["off", "copper", "all"].includes(out.edges)) throw new TypeError(`edges must be off, copper or all, not ${out.edges}`);
   if (!["layers", "domain", "none"].includes(out.pieces)) throw new TypeError(`pieces must be layers, domain or none, not ${out.pieces}`);
   for (const key of ["edgeWidth", "edgeFadePx"]) {
     if (!(Number(out[key]) >= 0 && Number(out[key]) <= 32)) throw new RangeError(`${key} must be in [0, 32]`);
@@ -149,14 +159,21 @@ struct View {
   vertexBase: u32,
   // 1 when the threshold reads a per-layer field (each place's limitBase), not a mesh one.
   limitLayer: u32,
+  // 0 no edges, 1 on copper (drawn in the piece pass, inside the pieces), 2 the whole mesh.
+  edgeMode: u32,
+  // Where the elements' corners and the nodes start in \`elementData\` (corner rows first).
+  cornersBase: u32,
+  copperEdge: vec4f,
+  nodesBase: u32,
   pad1: u32,
   pad2: u32,
+  pad3: u32,
 };
 // Per slice (edges, markers) and per layer (pieces): heights with the
 // stackup offset in, whether it is shown, the pieces' tint, and for a layer
 // where its own per-element values start (NONE: none) and the first element
 // they index from (a merged group's layer covers its pack's elements only).
-struct Place { zPiece: f32, zEdge: f32, shown: f32, tint: vec4f, colorBase: u32, limitBase: u32, elementBase: u32 };
+struct Place { zPiece: f32, zEdge: f32, shown: f32, tint: vec4f, colorBase: u32, limitBase: u32, elementBase: u32, fill: u32 };
 
 @group(0) @binding(0) var<uniform> view: View;
 // The colour ramp (PALETTE entries), then two entries a place.
@@ -169,6 +186,8 @@ struct Place { zPiece: f32, zEdge: f32, shown: f32, tint: vec4f, colorBase: u32,
 @group(0) @binding(4) var<storage, read> corners: array<u32>;
 @group(0) @binding(5) var<storage, read> owners: array<u32>;
 @group(0) @binding(6) var<storage, read> markers: array<vec4f>;
+// Each element's corner rows (E + 1 starts), its corner nodes, then the nodes (x, y as i32 bits).
+@group(0) @binding(7) var<storage, read> elementData: array<u32>;
 
 const PALETTE = ${PALETTE_ENTRIES}u;
 
@@ -177,7 +196,7 @@ const NONE = 0xffffffffu;
 fn placeAt(index: u32) -> Place {
   let low = table[PALETTE + index * 3u];
   let bases = bitcast<vec4u>(table[PALETTE + index * 3u + 2u]);
-  return Place(low.x, low.y, low.z, table[PALETTE + index * 3u + 1u], bases.x, bases.y, bases.z);
+  return Place(low.x, low.y, low.z, table[PALETTE + index * 3u + 1u], bases.x, bases.y, bases.z, bases.w);
 }
 
 /** A layer's own value for an element (§5 \`layers[].element_fields\`), or absent. */
@@ -283,34 +302,100 @@ struct PieceOut {
   @location(0) @interpolate(flat) element: u32,
   @location(1) @interpolate(flat) layer: u32,
   @location(2) value: f32,
+  // The piece triangle's barycentrics, for its copper-boundary sides.
+  @location(3) bary: vec3f,
+  // Signed distances (nm) to the owning element's sides (a triangle's fourth repeats its first):
+  // affine across the piece, so interpolation keeps them exact.
+  @location(4) sides: vec4f,
+  @location(5) @interpolate(flat) outline: u32,
+  @location(6) @interpolate(flat) heightNm: f32,
 };
 
+fn nodeAt(node: u32) -> vec2i {
+  let at = view.nodesBase + node * 2u;
+  return vec2i(bitcast<i32>(elementData[at]), bitcast<i32>(elementData[at + 1u]));
+}
+
+// Distance (nm) from p to the line through a and b, from differences, so it
+// stays exact to a nanometre for points near the element.
+fn sideDistance(p: vec2i, a: vec2i, b: vec2i) -> f32 {
+  let d = vec2f(p - a);
+  let e = vec2f(b - a);
+  return (d.x * e.y - d.y * e.x) / max(length(e), 1.0);
+}
+
 @vertex fn vs_piece(@builtin(vertex_index) vertex: u32, @builtin(instance_index) layer: u32) -> PieceOut {
-  let element = owners[vertex / 3u];
+  let owner = owners[vertex / 3u];
+  let element = owner & 0x1fffffffu;
+  let corner = vertex % 3u;
   var out: PieceOut;
   out.element = element;
   out.layer = layer;
+  out.outline = owner >> 29u;
+  out.bary = vec3f(f32(corner == 0u), f32(corner == 1u), f32(corner == 2u));
   let at = placeAt(layer);
   if (at.shown < 0.5 || !keptOn(element, at)) {
     out.position = OFF;
     return out;
   }
   let point = corners[vertex];
-  out.position = place(points[point], at.zPiece);
+  let p = points[point];
+  out.position = place(p, at.zPiece);
   // Interpolated across the piece triangle: one value an element (the mesh's,
   // or this layer's own), or one a piece vertex.
   var value = colorValue(element);
   if (view.colorMode == 2u) { value = vertexValue(point); }
   if (view.colorMode == 3u) { value = layerValue(at.colorBase, at, element); }
   out.value = value;
+  // The element's sides, for its edges drawn on this copper only.
+  let first = elementData[element];
+  let count = elementData[element + 1u] - first;
+  let c0 = nodeAt(elementData[view.cornersBase + first]);
+  let c1 = nodeAt(elementData[view.cornersBase + first + 1u]);
+  let c2 = nodeAt(elementData[view.cornersBase + first + 2u]);
+  var c3 = c0;
+  if (count > 3u) { c3 = nodeAt(elementData[view.cornersBase + first + 3u]); }
+  let last = select(c2, c3, count > 3u);
+  out.sides = vec4f(sideDistance(p, c0, c1), sideDistance(p, c1, c2), sideDistance(p, c2, select(c0, c3, count > 3u)), sideDistance(p, last, c0));
+  // About the element's smallest height: twice its area over its longest side.
+  let span = max(max(length(vec2f(c1 - c0)), length(vec2f(c2 - c1))), max(length(vec2f(last - c2)), length(vec2f(c0 - last))));
+  let area = abs(sideDistance(c2, c0, c1)) * length(vec2f(c1 - c0)) * select(0.5, 1.0, count > 3u);
+  out.heightNm = 2.0 * area / max(span, 1.0);
   return out;
 }
 
 @fragment fn fs_piece(input: PieceOut) -> @location(0) vec4f {
-  var color = placeAt(input.layer).tint.rgb;
+  // Derivatives first, in uniform control flow.
+  let sideWidth = fwidth(input.sides);
+  let baryWidth = fwidth(input.bary);
+  let at = placeAt(input.layer);
+  let selected = input.element == view.selected;
+  var color = at.tint.rgb;
   if (view.colorMode != 0u && present(input.value)) { color = ramp(input.value); }
-  if (input.element == view.selected) { color = mix(color, view.highlight.rgb, 0.45); }
-  return vec4f(color, 1.0);
+  if (selected) { color = mix(color, view.highlight.rgb, 0.45); }
+  var alpha = select(0.0, 1.0, at.fill == 1u);
+  if (view.edgeMode != 0u) {
+    // The copper's own boundary, where it cuts the element: heavier, in its own tone.
+    let open = vec3f(f32((input.outline & 1u) == 0u), f32((input.outline & 2u) == 0u), f32((input.outline & 4u) == 0u));
+    let toCopper = min(min(input.bary.x / max(baryWidth.x, 1e-7) + open.x * 1e9, input.bary.y / max(baryWidth.y, 1e-7) + open.y * 1e9), input.bary.z / max(baryWidth.z, 1e-7) + open.z * 1e9);
+    let copperLine = (1.0 - smoothstep(0.75 * view.edgeWidth - 0.5, 0.75 * view.edgeWidth + 0.5, toCopper)) * view.copperEdge.a;
+    color = mix(color, view.copperEdge.rgb, copperLine);
+    alpha = max(alpha, copperLine);
+  }
+  if (view.edgeMode == 1u) {
+    // The element's sides, only where this layer has copper (this fragment is in a piece).
+    let px = abs(input.sides) / max(sideWidth, vec4f(1e-6));
+    let nearest = min(min(px.x, px.y), min(px.z, px.w));
+    let across = input.heightNm / max(max(sideWidth.x, sideWidth.y), 1e-6);
+    let half = select(0.5 * view.edgeWidth, 1.25 * view.edgeWidth + 0.75, selected);
+    let fade = select(smoothstep(view.fadePx, 2.5 * view.fadePx, across), 1.0, selected);
+    let edge = select(view.edgeColor, view.highlight, selected);
+    let line = (1.0 - smoothstep(half - 0.5, half + 0.5, nearest)) * fade * edge.a;
+    color = mix(color, edge.rgb, line);
+    alpha = max(alpha, line);
+  }
+  if (alpha < 0.004) { discard; }
+  return vec4f(color, alpha);
 }
 
 struct RingOut {
@@ -384,7 +469,7 @@ export class MeshOverlay {
   pipelines() {
     if (this.compiled) return this.compiled;
     const { device, renderer } = this;
-    const entries = Array.from({ length: 7 }, (_, binding) => ({
+    const entries = Array.from({ length: 8 }, (_, binding) => ({
       binding,
       visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
       buffer: { type: binding === 0 ? "uniform" : "read-only-storage" },
@@ -403,7 +488,8 @@ export class MeshOverlay {
       multisample: { count: renderer.sampleCount || 1 },
     });
     this.compiled = {
-      pieces: make("pieces", "vs_piece", "fs_piece", { depthWrite: true }),
+      // Blended: with pieces off, the piece pass still draws the edges on copper.
+      pieces: make("pieces", "vs_piece", "fs_piece", { blend: true, depthWrite: true }),
       elements: make("elements", "vs_element", "fs_element", { blend: true }),
       markers: make("markers", "vs_marker", "fs_marker", { blend: true }),
     };
@@ -427,6 +513,13 @@ export class MeshOverlay {
     const nets = meshNets(pack);
     const keep = (buffer) => (this.buffers.push(buffer), buffer);
     this.nodes = keep(this.storage(pack.nodes, "mesh-nodes"));
+    // Corner rows, corners and nodes in one list (a stage binds 8 storage buffers at most).
+    const elementData = new Uint32Array(pack.cornerStart.length + pack.corners.length + pack.nodes.length);
+    elementData.set(pack.cornerStart, 0);
+    elementData.set(pack.corners, pack.cornerStart.length);
+    elementData.set(new Uint32Array(pack.nodes.buffer, pack.nodes.byteOffset, pack.nodes.length), pack.cornerStart.length + pack.corners.length);
+    this.elementBases = { corners: pack.cornerStart.length, nodes: pack.cornerStart.length + pack.corners.length };
+    this.elementData = keep(this.storage(elementData, "mesh-element-data"));
     const outline = outlineTriangles(pack);
     this.outlineStart = outline.start;
     this.outlineCorners = keep(this.storage(outline.corners, "mesh-outline-corners"));
@@ -451,7 +544,9 @@ export class MeshOverlay {
       vertices.set(layer.vertices, vertexAt);
       const base = vertexAt / 2;
       for (let k = 0; k < layer.triangles.length; k += 1) triangles[triangleAt + k] = layer.triangles[k] + base;
-      owners.set(layer.element, triangleAt / 3);
+      // Each piece triangle's element, and above it which of its sides are copper boundary.
+      const masks = copperBoundaryMasks(layer, pack);
+      for (let k = 0; k < layer.element.length; k += 1) owners[triangleAt / 3 + k] = (layer.element[k] | (masks[k] << 29)) >>> 0;
       this.layers.push({
         sliceKey: layer.sliceKey,
         tint: layer.tint,
@@ -573,7 +668,7 @@ export class MeshOverlay {
     }
     const group = (points, corners, owners) => this.device.createBindGroup({
       layout: this.layout,
-      entries: [this.view, this.table, values, points, corners, owners, this.rings].map((buffer, binding) => ({ binding, resource: { buffer } })),
+      entries: [this.view, this.table, values, points, corners, owners, this.rings, this.elementData].map((buffer, binding) => ({ binding, resource: { buffer } })),
     });
     this.bindGroups = {
       elements: group(this.nodes, this.outlineCorners, this.outlineOwners),
@@ -638,11 +733,16 @@ export class MeshOverlay {
     const colorLayer = this.scopeOf(style.colorBy) === "layer" ? style.colorBy : null;
     const limitLayer = this.scopeOf(this.thresholdField()) === "layer" ? this.thresholdField() : null;
     const shownLayers = [];
+    // The piece pass draws the pieces, and the edges on copper: with pieces off it
+    // still runs over the conductors' copper, unfilled. The domain, when chosen, is the copper they clip to.
+    const clipTo = style.pieces === "none" ? "layers" : style.pieces;
+    const fill = style.pieces !== "none";
+    const run = fill || style.edges !== "off";
     this.layers.forEach((layer, index) => {
       const slot = this.slices.length + index;
-      const visible = style.pieces === (layer.domain ? "domain" : "layers") && this.sliceShown(layer.sliceKey, visibleLayers);
+      const visible = run && clipTo === (layer.domain ? "domain" : "layers") && this.sliceShown(layer.sliceKey, visibleLayers);
       write(slot, this.sliceZ(layer.sliceKey, layerOffsets, false), 0, visible, [...layer.tint, 1],
-        [this.layerBase(index, colorLayer), this.layerBase(index, limitLayer), layer.elementBase, 0]);
+        [this.layerBase(index, colorLayer), this.layerBase(index, limitLayer), layer.elementBase, fill ? 1 : 0]);
       if (visible && layer.count) shownLayers.push({ slot, layer });
     });
     this.device.queue.writeBuffer(this.table, PALETTE_ENTRIES * 16, floats);
@@ -658,7 +758,15 @@ export class MeshOverlay {
         triangles += layer.count / 3;
       }
     }
-    const edges = style.edges ? this.edgeRanges.filter((range) => shown.has(range.slot) && range.count) : [];
+    let edges = style.edges === "all" ? this.edgeRanges.filter((range) => shown.has(range.slot) && range.count) : [];
+    // Otherwise the selected element alone, whole, so a selection shows where it has no copper.
+    const sel = this.selected;
+    if (style.edges !== "all" && sel >= 0 && sel < this.pack.elementCount) {
+      const first = this.outlineStart[sel] * 3;
+      const count = (this.outlineStart[sel + 1] - this.outlineStart[sel]) * 3;
+      const own = this.pack.edgeRanges.filter((range) => sel >= range.first && sel < range.first + range.count);
+      edges = own.map((range) => ({ slot: this.slices.indexOf(range.sliceKey), first, count })).filter((range) => shown.has(range.slot));
+    }
     if (edges.length) {
       pass.setPipeline(pipelines.elements);
       pass.setBindGroup(0, this.bindGroups.elements);
@@ -699,6 +807,10 @@ export class MeshOverlay {
     words[35] = this.fieldBase(limitLayer ? null : this.thresholdField());
     words[36] = this.values?.vertexBase ?? 0;
     words[37] = limitLayer ? 1 : 0;
+    words[38] = { off: 0, copper: 1, all: 2 }[style.edges];
+    words[39] = this.elementBases?.corners ?? 0;
+    floats.set([...hexColor(style.copperEdgeColor), 0.95], 40);
+    words[44] = this.elementBases?.nodes ?? 0;
     this.device.queue.writeBuffer(this.view, 0, this.viewScratch);
   }
 
@@ -758,4 +870,62 @@ export function outlineTriangles(pack) {
     owners[t] = (e | (3 << 29)) >>> 0;
   }
   return { start, corners: out, owners };
+}
+
+/**
+ * Which sides of a layer's piece triangles are copper boundary, as bit masks
+ * (bit k: the side opposite corner k), for drawing the copper's outline:
+ * a side no other piece triangle of the layer shares (by its end points'
+ * positions), unless it lies on a side of its own element, where the
+ * element's edge is drawn already (the neighbour element's pieces may split
+ * that side elsewhere). `layer` = { vertices, triangles, element }.
+ */
+export function copperBoundaryMasks(layer, pack) {
+  const { vertices: v, triangles: t, element } = layer;
+  const count = t.length / 3;
+  // Vertices by position (a writer may repeat a point per triangle), then sides by those ids.
+  const ids = new Int32Array(v.length / 2);
+  const seen = new Map();
+  for (let k = 0; k < ids.length; k += 1) {
+    const at = `${v[k * 2]},${v[k * 2 + 1]}`;
+    let id = seen.get(at);
+    if (id === undefined) seen.set(at, (id = seen.size));
+    ids[k] = id;
+  }
+  const span = seen.size + 1;
+  const key = (a, b) => (ids[a] < ids[b] ? ids[a] * span + ids[b] : ids[b] * span + ids[a]);
+  const uses = new Map();
+  for (let k = 0; k < count; k += 1) {
+    for (let c = 0; c < 3; c += 1) {
+      const side = key(t[k * 3 + (c + 1) % 3], t[k * 3 + (c + 2) % 3]);
+      uses.set(side, (uses.get(side) || 0) + 1);
+    }
+  }
+  const masks = new Uint8Array(count);
+  for (let k = 0; k < count; k += 1) {
+    const e = element[k];
+    for (let c = 0; c < 3; c += 1) {
+      const a = t[k * 3 + (c + 1) % 3];
+      const b = t[k * 3 + (c + 2) % 3];
+      if (uses.get(key(a, b)) !== 1) continue;
+      if (onElementSide(pack, e, v[a * 2], v[a * 2 + 1], v[b * 2], v[b * 2 + 1])) continue;
+      masks[k] |= 1 << c;
+    }
+  }
+  return masks;
+}
+
+/** Whether the segment (ax, ay)-(bx, by) lies along a side of element `e`, within 2 nm. */
+function onElementSide(pack, e, ax, ay, bx, by) {
+  const first = pack.cornerStart[e];
+  const sides = pack.cornerStart[e + 1] - first;
+  for (let k = 0; k < sides; k += 1) {
+    const p = pack.corners[first + k] * 2;
+    const q = pack.corners[first + (k + 1) % sides] * 2;
+    const [px, py, qx, qy] = [pack.nodes[p], pack.nodes[p + 1], pack.nodes[q], pack.nodes[q + 1]];
+    const length = Math.hypot(qx - px, qy - py) || 1;
+    const off = (x, y) => Math.abs((qx - px) * (y - py) - (qy - py) * (x - px)) / length;
+    if (off(ax, ay) <= 2 && off(bx, by) <= 2) return true;
+  }
+  return false;
 }

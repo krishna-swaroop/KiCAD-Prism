@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { demoMeshPack, demoQuadtreePacks } from "../../tests/browser/mesh/fixture.mjs";
-import { DEFAULT_MESH_STYLE, EDGE_LIFT_M, MeshOverlay, PIECE_LIFT_M, meshSlicePlacements, netTint, outlineTriangles, resolveMeshStyle } from "./mesh-overlay.js";
+import { DEFAULT_MESH_STYLE, EDGE_LIFT_M, MeshOverlay, PIECE_LIFT_M, copperBoundaryMasks, meshSlicePlacements, netTint, outlineTriangles, resolveMeshStyle } from "./mesh-overlay.js";
 import { mergeMeshPacks, openMeshPack } from "./mesh-pack.js";
 import { Renderer } from "./renderer.js";
 
@@ -82,8 +82,17 @@ test("the overlay draws per shown slice and layer, and accounts its memory", asy
   const calls = [];
   const pass = { setPipeline: (p) => calls.push(p.label), setBindGroup() {}, draw: (...args) => calls.push(args) };
   const offsets = new Float32Array(256);
+  // By default edges are drawn on copper, in the piece pass: two piece layers and the markers.
+  assert.equal(overlay.encode(pass, new Float32Array(16), offsets, new Set([1, 3])).draws, 3);
+  // Pieces off: the piece pass still runs for the edges on copper; edges off too: markers only.
+  overlay.setStyle({ pieces: "none" });
+  assert.equal(overlay.encode(pass, new Float32Array(16), offsets, new Set([1, 3])).draws, 3);
+  overlay.setStyle({ edges: "off" });
+  assert.equal(overlay.encode(pass, new Float32Array(16), offsets, new Set([1, 3])).draws, 1);
+  overlay.setStyle({ pieces: "layers", edges: "all" });
+  calls.length = 0;
   const counted = overlay.encode(pass, new Float32Array(16), offsets, new Set([1, 3]));
-  // Two piece layers, two slices of edges, one marker draw.
+  // The whole mesh: two piece layers, two slices of edges, one marker draw.
   assert.equal(counted.draws, 5);
   assert.deepEqual(calls.filter(Array.isArray).slice(2, 4), [[pack.elementCount * 3, 1, 0, 0], [pack.elementCount * 3, 1, 0, 1]]);
   // A hidden layer draws nothing of its own; the separation moves it.
@@ -129,6 +138,7 @@ test("a quadtree group draws each pack's edges on its own slice only, and colour
   const overlay = new MeshOverlay(renderer);
   const packs = await Promise.all(demoQuadtreePacks().map((bytes) => openMeshPack(bytes)));
   overlay.setPack(mergeMeshPacks(packs.map((pack, k) => ({ key: `p${k}`, pack }))));
+  overlay.setStyle({ edges: "all" });
   const draws = [];
   const pass = { setPipeline() {}, setBindGroup() {}, draw: (...args) => draws.push(args) };
   overlay.encode(pass, new Float32Array(16), new Float32Array(256), new Set([1, 3]));
@@ -141,4 +151,23 @@ test("a quadtree group draws each pack's edges on its own slice only, and colour
   assert.equal(overlay.layerBase(0, "potential_v"), 0);
   assert.equal(overlay.layerBase(1, "potential_v"), packs[0].elementCount);
   assert.equal(overlay.layerBase(0, "nothing"), 0xffffffff);
+});
+
+test("the copper's boundary inside an element is outlined; sides it shares or that lie on the element's are not", () => {
+  // One element, the square (0,0)-(10,10) as two triangles; copper is its left half,
+  // two triangles with a shared diagonal, each with repeated (unshared) vertex copies.
+  const pack = { nodes: new Int32Array([0, 0, 10, 0, 10, 10, 0, 10]), corners: new Uint32Array([0, 1, 2, 3]), cornerStart: new Uint32Array([0, 4]) };
+  const layer = {
+    vertices: new Int32Array([0, 0, 5, 0, 5, 10, 0, 0, 5, 10, 0, 10]),
+    triangles: new Uint32Array([0, 1, 2, 3, 4, 5]),
+    element: new Uint32Array([0, 0]),
+  };
+  const masks = copperBoundaryMasks(layer, pack);
+  // Triangle 0 (0,0)-(5,0)-(5,10): the side x = 5 (opposite corner 0) is boundary; (0,0)-(5,0) lies on the element; the diagonal is shared.
+  assert.equal(masks[0], 0b001);
+  // Triangle 1 (0,0)-(5,10)-(0,10): its side x = 5 is... none: (5,10)-(0,10) and (0,10)-(0,0) lie on the element.
+  assert.equal(masks[1], 0);
+  assert.equal(resolveMeshStyle({ edges: true }).edges, "copper");
+  assert.equal(resolveMeshStyle({ edges: false }).edges, "off");
+  assert.throws(() => resolveMeshStyle({ edges: "some" }), /edges must be/);
 });

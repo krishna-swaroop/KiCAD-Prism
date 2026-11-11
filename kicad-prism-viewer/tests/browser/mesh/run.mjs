@@ -212,19 +212,22 @@ async function check(chrome, server, outDir, summary) {
   }
 }
 
-/** Frame times by the pixel-diff harness's orbit: mesh off, then each pack shown, plain. */
+/**
+ * Frame times by the pixel-diff harness's orbit: mesh off, then each pack
+ * shown, plain, with its edges on copper (the default), the whole mesh and none.
+ */
 async function perf(chrome, server, summary) {
-  const cases = [null, ...packs.map((pack) => pack.name)];
-  for (const key of cases) {
+  const cases = [{ key: null, edges: null }, ...packs.flatMap((pack) => ["copper", "all", "off"].map((edges) => ({ key: pack.name, edges })))];
+  for (const { key, edges } of cases) {
     const page = await mount(chrome, server);
     try {
       await page.evaluate("window.__vtProbe.applyView('default')");
-      await page.evaluate(`window.__vtProbe.element.setMeshPack(${JSON.stringify(key)})`);
+      await page.evaluate(`window.__vtProbe.element.setMeshPack(${JSON.stringify(key)}); ${edges ? `window.__vtProbe.element.setMeshStyle({ edges: ${JSON.stringify(edges)} })` : ""}`);
       await settle(page, `perf ${key}`);
       const result = await page.evaluate(`window.__vtProbe.orbit(${JSON.stringify({ orbitMs: options.orbitMs })})`);
       const mesh = JSON.parse(await page.evaluate("JSON.stringify(window.__vtProbe.element.meshStats())"));
-      summary.perf.push({ pack: key, meshGpuMB: +(mesh.gpuMemoryBytes / 1048576).toFixed(1), ...result });
-      log(`${key ?? "no mesh"}: interval p50 ${result.intervalP50Ms} / p95 ${result.intervalP95Ms} ms, cpu p95 ${result.cpuP95Ms} ms, gpu submit p50 ${result.gpuSubmitP50Ms} / p95 ${result.gpuSubmitP95Ms} ms, ${result.triangles} tris, mesh ${(mesh.gpuMemoryBytes / 1048576).toFixed(1)} MB`);
+      summary.perf.push({ pack: key, edges, meshGpuMB: +(mesh.gpuMemoryBytes / 1048576).toFixed(1), ...result });
+      log(`${key ?? "no mesh"}${edges ? ` (edges ${edges})` : ""}: interval p50 ${result.intervalP50Ms} / p95 ${result.intervalP95Ms} ms, cpu p95 ${result.cpuP95Ms} ms, gpu submit p50 ${result.gpuSubmitP50Ms} / p95 ${result.gpuSubmitP95Ms} ms, ${result.triangles} tris, mesh ${(mesh.gpuMemoryBytes / 1048576).toFixed(1)} MB`);
     } finally {
       await page.close();
     }

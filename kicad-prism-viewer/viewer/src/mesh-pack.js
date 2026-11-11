@@ -196,6 +196,7 @@ export function meshPackSummary(pack, key) {
     layers: pack.layers.map((layer) => ({ sliceKey: layer.sliceKey, netKey: layer.netKey, pieceTriangles: layer.pieceCount, fields: (layer.fields || []).map((field) => field.name) })),
     group: pack.group ?? null,
     quads: pack.quadCount || 0,
+    domain: Boolean(pack.domain),
     fields: colourFields(pack),
     markers: pack.markers.length,
     summary: header.summary ?? null,

@@ -18,6 +18,9 @@
   #warn { color: #fbbf24; margin: 6px 0; }
   #warn:empty { display: none; }
   #legend { margin: 4px 0 6px 88px; }
+  #covers { margin: 4px 0; }
+  .tag { margin-left: auto; color: #8a97a8; font-size: 11px; }
+  .tag[hidden] { display: none; }
   #legend[hidden] { display: none; }
   #ramp { height: 10px; border-radius: 2px; }
   .ends { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; color: #b6c0cc; }
@@ -36,8 +39,9 @@
   <h2>Mesh</h2>
   <label><input type="checkbox" id="mesh" checked> Mesh</label>
   <label><span>Pack</span><select id="pack"></select></label>
-  <label><input type="checkbox" id="edges" checked> Edges</label>
-  <label><span>Pieces</span><select id="pieces"><option value="layers">Layers</option><option value="domain">Domain</option><option value="none">None</option></select></label>
+  <label><span>Edges</span><select id="edges"><option value="copper">On copper</option><option value="all">Whole mesh</option><option value="off">Off</option></select></label>
+  <label><span>Pieces</span><select id="pieces"><option value="layers">Conductors</option><option value="domain">Solved domain</option><option value="none">None</option></select></label>
+  <dl id="covers"></dl>
   <label><input type="checkbox" id="markers" checked> Markers</label>
   <label><input type="checkbox" id="marker-ids"> Marker ids</label>
   <h2>Colour</h2>
@@ -139,7 +143,7 @@
       $("high").textContent = fmt(coloured.range?.[1] ?? null);
     }
     viewer.setMeshStyle({
-      edges: $("edges").checked,
+      edges: $("edges").value,
       pieces: $("pieces").value,
       markers: $("markers").checked,
       colorBy: $("color-by").value || null,
@@ -149,8 +153,23 @@
     stats();
   }
 
+  function coverage() {
+    const summary = $("mesh").checked ? viewer.meshPacks().find((item) => item.key === $("pack").value) : null;
+    // Slices and nets the shown mesh covers (its whole group).
+    const members = summary?.groupMembers ? viewer.meshPacks().filter((item) => summary.groupMembers.includes(item.key)) : summary ? [summary] : [];
+    const covered = new Map();
+    for (const member of members) for (const layer of member.layers) covered.set(layer.sliceKey, [...(covered.get(layer.sliceKey) || []), layer.netKey]);
+    $("covers").replaceChildren(...[...covered].flatMap(([slice, nets]) => [Object.assign(document.createElement("dt"), { textContent: slice }), Object.assign(document.createElement("dd"), { textContent: nets.join(", ") })]));
+    const layerIds = new Set(Object.values(summary?.sliceLayers || {}).map(Number));
+    for (const tag of document.querySelectorAll("#layers .tag")) tag.hidden = !summary || layerIds.has(Number(tag.dataset.layer));
+    const domain = $("pieces").querySelector('option[value="domain"]');
+    domain.hidden = !members.some((member) => member.domain);
+    if (domain.hidden && $("pieces").value === "domain") $("pieces").value = "layers";
+  }
+
   function showPack() {
     viewer.setMeshPack($("mesh").checked ? $("pack").value : null);
+    coverage();
     fillFields();
     worst.list = [];
     worst.at = -1;
@@ -256,9 +275,12 @@
     const label = document.createElement("label");
     const box = Object.assign(document.createElement("input"), { type: "checkbox", checked: layer.visible });
     box.addEventListener("input", () => viewer.setLayerVisible(layer.id, box.checked));
-    label.append(box, layer.name);
+    const tag = Object.assign(document.createElement("span"), { className: "tag", textContent: "not in this mesh", hidden: true });
+    tag.dataset.layer = String(layer.id);
+    label.append(box, layer.name, tag);
     $("layers").append(label);
   }
+  coverage();
   setInterval(stats, 1000);
   showPack();
   window.meshHost = { viewer, summaries, index };

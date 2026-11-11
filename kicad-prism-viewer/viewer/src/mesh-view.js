@@ -42,7 +42,10 @@ export function meshPortMembers(scene) {
     const summary = meshPackSummary(pack, key);
     const drawn = overlay();
     const group = pack.group ? groupOf(key).map((item) => item.key) : null;
-    return { ...summary, groupMembers: group, shown: key === shown || Boolean(shown && group?.includes(shown)), unmatchedSlices: key === shown && drawn ? drawn.unmatchedSlices() : null };
+    const isShown = key === shown || Boolean(shown && group?.includes(shown));
+    // The board layer each slice the shown mesh covers draws on, so a host can mark the layers it does not.
+    const sliceLayers = isShown && drawn?.pack ? Object.fromEntries([...drawn.slicePlacements()].map(([slice, placed]) => [slice, placed.layerId])) : null;
+    return { ...summary, groupMembers: group, shown: isShown, sliceLayers, unmatchedSlices: key === shown && drawn ? drawn.unmatchedSlices() : null };
   };
   const shownSlices = () => {
     const drawn = overlay();

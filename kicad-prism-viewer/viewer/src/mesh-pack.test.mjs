@@ -65,6 +65,11 @@ test("reads a deflated pack as written, and an inflated one as it is", async () 
   assert.equal(pack.nodes.buffer, buffer);
 });
 
+test("keys a reader does not know (spec 11 §6 lines, links, unmodelled) are ignored", async () => {
+  const pack = await openMeshPack(twoElements({ header: { lines: [{ offset: 7 }], links: { count: "x" }, unmodelled: [{ kind: "trace" }] } }));
+  assert.equal(pack.elementCount, 2);
+});
+
 test("a pack with no element fields is valid", async () => {
   const pack = await openMeshPack(twoElements({ fields: [] }));
   assert.deepEqual(pack.fields, []);

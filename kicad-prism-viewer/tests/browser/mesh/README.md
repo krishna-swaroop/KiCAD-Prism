@@ -19,7 +19,12 @@ With no `--board` and `--pack`, it serves the analytic fixture board and two syn
 The page builds the element from this worktree and loads every pack into it. Its controls:
 
 - mesh on or off, and which pack is shown;
-- edges, pieces (layers, the solver's domain, or none), markers and marker ids;
+- edges: on copper (the default: element edges only where the layer has copper of its
+  conductor, with the copper's boundary outlined), the whole mesh, or off;
+- pieces: the conductors, the solved domain (when the pack has one; edges then clip to it), or
+  none;
+- the slices and nets the pack covers, with each copper layer it does not cover tagged;
+- markers and marker ids;
 - colour by an element field, the colormap, and a threshold (hide below or above);
 - step through the worst elements by a field;
 - the board, the parts, the stackup separation and each copper layer.
