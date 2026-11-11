@@ -66,8 +66,8 @@ pub use selection::{PcbFamily, PcbSelection};
 pub use setup::{PcbSetup, PcbStackup, PcbStackupLayer, PcbStackupSublayer};
 pub use vias::{PcbFrontBackOptionalBool, PcbVia};
 pub use zones::{
-    PcbZone, PcbZoneFilledPolygon, PcbZoneKeepout, PcbZoneLayerProperty, PcbZoneOutlineArc,
-    PcbZonePlacement, PcbZonePlacementSource, PcbZonePolygon,
+    PcbZone, PcbZoneFilledPolygon, PcbZoneHatchFill, PcbZoneKeepout, PcbZoneLayerProperty,
+    PcbZoneOutlineArc, PcbZonePlacement, PcbZonePlacementSource, PcbZonePolygon,
 };
 
 /// Resource ceilings for one native PCB read or focused edit.

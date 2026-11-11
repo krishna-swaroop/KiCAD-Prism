@@ -74,6 +74,13 @@ fn zones_surface_fill_settings_that_a_rewriter_must_not_drop() {
             "arc_segments",
         ]
     );
+    assert_eq!(zone.corner_smoothing.as_deref(), Some("fillet"));
+    assert_eq!(zone.corner_radius, Some(0.25));
+    let hatch = zone.hatch_fill.expect("hatched fill");
+    assert_eq!(
+        (hatch.thickness, hatch.gap, hatch.orientation),
+        (Some(0.2), Some(0.3), Some(45.0))
+    );
 }
 
 fn assert_placement_declaration_fidelity() {

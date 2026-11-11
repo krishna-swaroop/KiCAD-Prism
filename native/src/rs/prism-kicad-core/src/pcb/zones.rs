@@ -81,6 +81,16 @@ pub struct PcbZoneFilledPolygon {
     pub source_range: Range<usize>,
 }
 
+/// Hatched-fill settings of a zone whose fill `(mode hatch)`; values the
+/// file omits stay `None`. Read-only facts: the tokens stay listed in
+/// [`PcbZone::unmodeled_fill_settings`], which zone rewriters check.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PcbZoneHatchFill {
+    pub thickness: Option<f64>,
+    pub gap: Option<f64>,
+    pub orientation: Option<f64>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct PcbZone {
     pub net: PcbNetRef,
@@ -107,6 +117,15 @@ pub struct PcbZone {
     pub thermal_bridge_width: f64,
     pub island_removal_mode: Option<i64>,
     pub island_area_min: Option<f64>,
+    /// Fill corner smoothing (`(smoothing chamfer|fillet)`) as written;
+    /// `None` without the token or for `none`. Like `corner_radius` and
+    /// `hatch_fill`, a read-only fact also listed in
+    /// `unmodeled_fill_settings`.
+    pub corner_smoothing: Option<String>,
+    /// Fill corner smoothing radius (`(radius ...)`) as written.
+    pub corner_radius: Option<f64>,
+    /// Present when the fill is hatched (`(mode hatch)`).
+    pub hatch_fill: Option<PcbZoneHatchFill>,
     /// Explicit fill children whose semantics are not represented by the
     /// promoted typed fields. Consumers that rewrite zones must reject or
     /// deliberately map these tokens rather than assuming a solid fill.
@@ -208,6 +227,10 @@ pub(super) fn zone_from_span(
             .unwrap_or(0.5),
         island_removal_mode: optional_child_i64(source, &fill_children, "island_removal_mode")?,
         island_area_min: optional_child_f64(source, &fill_children, "island_area_min")?,
+        corner_smoothing: optional_child_string(source, &fill_children, "smoothing")?
+            .filter(|mode| mode != "none"),
+        corner_radius: optional_child_f64(source, &fill_children, "radius")?,
+        hatch_fill: hatch_fill(source, &fill_children)?,
         unmodeled_fill_settings,
         keepout: keepout_from_children(source, &children, limits)?,
         placement: placement_from_children(source, &children, limits)?,
@@ -216,6 +239,17 @@ pub(super) fn zone_from_span(
         filled_polygons: collections.filled_polygons,
         source_range: span.range.clone(),
     })
+}
+
+fn hatch_fill(source: &str, children: &[FormSpan]) -> Result<Option<PcbZoneHatchFill>, Error> {
+    if optional_child_string(source, children, "mode")?.as_deref() != Some("hatch") {
+        return Ok(None);
+    }
+    Ok(Some(PcbZoneHatchFill {
+        thickness: optional_child_f64(source, children, "hatch_thickness")?,
+        gap: optional_child_f64(source, children, "hatch_gap")?,
+        orientation: optional_child_f64(source, children, "hatch_orientation")?,
+    }))
 }
 
 fn unmodeled_fill_settings(source: &str, children: &[FormSpan]) -> Result<Vec<String>, Error> {
