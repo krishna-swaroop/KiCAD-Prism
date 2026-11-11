@@ -28,6 +28,7 @@ export function encodeMeshPack(parts) {
     ...parts.header,
     nodes: { count: parts.nodes.length / 2, offset: place(parts.nodes) },
     triangles: { count: parts.triangles.length / 3, offset: place(parts.triangles) },
+    ...(parts.quads ? { quads: { count: parts.quads.length / 4, offset: place(parts.quads) } } : {}),
     layers: parts.layers.map((layer) => ({
       slice_key: layer.slice_key,
       net_key: layer.net_key,
@@ -35,6 +36,7 @@ export function encodeMeshPack(parts) {
       piece_triangles: { count: layer.triangles.length / 3, offset: place(layer.triangles) },
       piece_element: { offset: place(layer.element) },
       piece_id: { offset: place(layer.piece) },
+      ...(layer.fields ? { element_fields: layer.fields.map((field) => ({ name: field.name, unit: field.unit, dtype: "f32", offset: place(field.values) })) } : {}),
     })),
     element_fields: (parts.fields || []).map((field) => ({ name: field.name, unit: field.unit, dtype: "f32", offset: place(field.values) })),
     markers: parts.markers || [],
@@ -208,5 +210,73 @@ export function demoMeshPack({ pitchMm = 2, width = 40, height = 30, label = "de
       { name: "pieces", unit: "1", values: pieces },
     ],
     markers: [{ kind: "port", id: 17, x: centre[0], y: centre[1], radius: 500_000, slice_keys: ["copper.front", "copper.back"], net_key: "GND" }],
+  });
+}
+
+/**
+ * A DC-style quadtree mesh (spec 11 §5) over the fixture board, one pack a
+ * copper slice, both in group "dc": 4 mm cells, those within `refineMm` of
+ * the board's centre split in four (hanging nodes where they meet a coarse
+ * cell), copper in every cell of the slice's rectangle, and a per-layer
+ * `potential_v` falling with distance from the centre (NaN off copper).
+ */
+export function demoQuadtreePacks({ cellMm = 4, refineMm = 6 } = {}) {
+  const slices = [
+    { slice_key: "copper.front", net_key: "GND", rect: [4, 4, 36, 26], top: 0.02 },
+    { slice_key: "copper.back", net_key: "GND", rect: [8, 8, 32, 22], top: 0.01 },
+  ];
+  return slices.map(({ slice_key, net_key, rect, top }) => {
+    const nodes = [];
+    const index = new Map();
+    const node = (x, y) => {
+      const key = `${x},${y}`;
+      if (!index.has(key)) {
+        index.set(key, nodes.length / 2);
+        nodes.push(Math.round(x * MM), Math.round(y * MM));
+      }
+      return index.get(key);
+    };
+    const cells = [];
+    for (let y = 0; y < 30; y += cellMm) {
+      for (let x = 0; x < 40; x += cellMm) {
+        const size = Math.min(cellMm, 30 - y);
+        const near = Math.hypot(x + cellMm / 2 - 20, y + size / 2 - 15) < refineMm;
+        if (near && size === cellMm) {
+          const half = cellMm / 2;
+          for (const [dx, dy] of [[0, 0], [half, 0], [0, half], [half, half]]) cells.push([x + dx, y + dy, half, half]);
+        } else cells.push([x, y, cellMm, size]);
+      }
+    }
+    const quads = new Uint32Array(cells.length * 4);
+    cells.forEach(([x, y, w, h], k) => quads.set([node(x, y), node(x + w, y), node(x + w, y + h), node(x, y + h)], k * 4));
+    const potential = new Float32Array(cells.length).fill(NaN);
+    const vertices = [];
+    const triangles = [];
+    const element = [];
+    cells.forEach(([x, y, w, h], k) => {
+      if (x < rect[0] || y < rect[1] || x + w > rect[2] || y + h > rect[3]) return;
+      potential[k] = top * (1 - Math.hypot(x + w / 2 - 20, y + h / 2 - 15) / 25);
+      const base = vertices.length / 2;
+      for (const [px, py] of [[x, y], [x + w, y], [x + w, y + h], [x, y + h]]) vertices.push(Math.round(px * MM), Math.round(py * MM));
+      triangles.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      element.push(k, k);
+    });
+    return encodeMeshPack({
+      header: { bundle_sha256: "", producer: { engine: "fixture", revision: "0" }, label: `dc ${slice_key}`, kind: "quadtree", group: "dc" },
+      nodes: Int32Array.from(nodes),
+      triangles: new Uint32Array(0),
+      quads,
+      layers: [{
+        slice_key,
+        net_key,
+        vertices: Int32Array.from(vertices),
+        triangles: Uint32Array.from(triangles),
+        element: Uint32Array.from(element),
+        piece: new Uint32Array(element.length),
+        fields: [{ name: "potential_v", unit: "V", values: potential }],
+      }],
+      fields: [],
+      markers: [],
+    });
   });
 }

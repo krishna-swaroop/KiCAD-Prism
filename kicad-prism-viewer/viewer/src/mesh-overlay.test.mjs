@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { demoMeshPack } from "../../tests/browser/mesh/fixture.mjs";
-import { DEFAULT_MESH_STYLE, EDGE_LIFT_M, MeshOverlay, PIECE_LIFT_M, meshSlicePlacements, netTint, resolveMeshStyle } from "./mesh-overlay.js";
-import { openMeshPack } from "./mesh-pack.js";
+import { demoMeshPack, demoQuadtreePacks } from "../../tests/browser/mesh/fixture.mjs";
+import { DEFAULT_MESH_STYLE, EDGE_LIFT_M, MeshOverlay, PIECE_LIFT_M, meshSlicePlacements, netTint, outlineTriangles, resolveMeshStyle } from "./mesh-overlay.js";
+import { mergeMeshPacks, openMeshPack } from "./mesh-pack.js";
 import { Renderer } from "./renderer.js";
 
 // A two-layer board as planBoardSlices lays it out: copper slabs, mask and silk on both sides.
@@ -106,4 +106,39 @@ test("the overlay draws per shown slice and layer, and accounts its memory", asy
   overlay.setPack(null);
   assert.ok(device.created.filter((buffer) => !buffer.destroyed).length < buffers);
   assert.equal(overlay.gpuMemoryBytes(), 0);
+});
+
+test("outline triangles never draw a quad's diagonal", () => {
+  // A triangle (0) and a quad (1).
+  const pack = { corners: new Uint32Array([0, 1, 2, 3, 4, 5, 6]), cornerStart: new Uint32Array([0, 3, 7]), elementCount: 2 };
+  const { start, corners, owners } = outlineTriangles(pack);
+  assert.deepEqual([...start], [0, 1, 3]);
+  assert.deepEqual([...corners], [0, 1, 2, 3, 4, 5, 3, 5, 6]);
+  const element = (owner) => owner & 0x1fffffff;
+  const sides = (owner) => owner >>> 29;
+  assert.deepEqual([...owners].map(element), [0, 1, 1]);
+  // Triangle: all sides. Quad halves (3,4,5) and (3,5,6): the side 3-5 is opposite corner 1, then corner 2.
+  assert.deepEqual([...owners].map(sides), [0b111, 0b101, 0b011]);
+});
+
+test("a quadtree group draws each pack's edges on its own slice only, and colours by a layer's values", async () => {
+  globalThis.GPUBufferUsage ??= { UNIFORM: 1, STORAGE: 2, COPY_DST: 4 };
+  globalThis.GPUShaderStage ??= { VERTEX: 1, FRAGMENT: 2 };
+  const device = fakeDevice();
+  const renderer = { device, format: "bgra8unorm", depthFormat: "depth32float", sampleCount: 4, canvas: { width: 800, height: 600 }, analytic: { slices }, invalidate() {} };
+  const overlay = new MeshOverlay(renderer);
+  const packs = await Promise.all(demoQuadtreePacks().map((bytes) => openMeshPack(bytes)));
+  overlay.setPack(mergeMeshPacks(packs.map((pack, k) => ({ key: `p${k}`, pack }))));
+  const draws = [];
+  const pass = { setPipeline() {}, setBindGroup() {}, draw: (...args) => draws.push(args) };
+  overlay.encode(pass, new Float32Array(16), new Float32Array(256), new Set([1, 3]));
+  const halves = (pack) => pack.elementCount * 2 * 3;
+  // Two piece layers, then the edges: the front pack's on slot 0, the back pack's on slot 1.
+  assert.deepEqual(draws.slice(2), [[halves(packs[0]), 1, 0, 0], [halves(packs[1]), 1, halves(packs[0]), 1]]);
+  assert.equal(overlay.setStyle({ colorBy: "potential_v" }).colorBy, "potential_v");
+  assert.equal(overlay.scopeOf("potential_v"), "layer");
+  assert.ok(overlay.colorRange()[1] > 0.019);
+  assert.equal(overlay.layerBase(0, "potential_v"), 0);
+  assert.equal(overlay.layerBase(1, "potential_v"), packs[0].elementCount);
+  assert.equal(overlay.layerBase(0, "nothing"), 0xffffffff);
 });

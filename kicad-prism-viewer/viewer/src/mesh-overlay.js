@@ -24,7 +24,7 @@
 
 import { DEFAULT_ANALYTIC_STYLE, RAMP_SIZE, colormapStops, sampleColormap } from "./analytic-colormaps.js";
 import { EMPHASIS_PALETTE } from "./net-emphasis.js";
-import { finiteRange, meshField, meshNets, meshSlices } from "./mesh-pack.js";
+import { colourFields, meshField, meshNets, meshSlices } from "./mesh-pack.js";
 
 /** How far above its copper face (outward, metres) a layer's pieces draw, and its edges and markers. */
 export const PIECE_LIFT_M = 2e-6;
@@ -36,7 +36,7 @@ const NO_ELEMENT = 0xffffffff;
 const VIEW_BYTES = 160;
 /** The palette's entries, then the places, in one storage table (a stage may bind only 8 storage buffers). */
 const PALETTE_ENTRIES = RAMP_SIZE;
-const PLACE_BYTES = 32;
+const PLACE_BYTES = 48;
 
 /** How the overlay looks; every field may be overridden (`resolveMeshStyle`). */
 export const DEFAULT_MESH_STYLE = Object.freeze({
@@ -87,7 +87,7 @@ export function resolveMeshStyle(style = {}, base = DEFAULT_MESH_STYLE, pack = n
   }
   if (pack) {
     for (const name of [out.colorBy, out.threshold && (out.threshold.field ?? out.colorBy)]) {
-      if (name && !meshField(pack, name)) throw new Error(`the mesh pack has no element field ${name}`);
+      if (name && !colourFields(pack).some((field) => field.name === name)) throw new Error(`the mesh pack has no element field ${name}`);
     }
     if (out.threshold && !(out.threshold.field ?? out.colorBy)) throw new Error("a threshold needs a field (threshold.field or colorBy)");
   }
@@ -143,17 +143,20 @@ struct View {
   selected: u32,
   colorMode: u32,
   thresholdMode: u32,
-  // Where each value list starts in \`values\`: the colour field, the threshold's, the piece vertices'.
+  // Where each mesh value list starts in \`values\`: the colour field, the threshold's, the piece vertices'.
   colorBase: u32,
   limitBase: u32,
   vertexBase: u32,
-  pad0: u32,
+  // 1 when the threshold reads a per-layer field (each place's limitBase), not a mesh one.
+  limitLayer: u32,
   pad1: u32,
   pad2: u32,
 };
 // Per slice (edges, markers) and per layer (pieces): heights with the
-// stackup offset in, whether it is shown, and the pieces' tint.
-struct Place { zPiece: f32, zEdge: f32, shown: f32, pad: f32, tint: vec4f };
+// stackup offset in, whether it is shown, the pieces' tint, and for a layer
+// where its own per-element values start (NONE: none) and the first element
+// they index from (a merged group's layer covers its pack's elements only).
+struct Place { zPiece: f32, zEdge: f32, shown: f32, tint: vec4f, colorBase: u32, limitBase: u32, elementBase: u32 };
 
 @group(0) @binding(0) var<uniform> view: View;
 // The colour ramp (PALETTE entries), then two entries a place.
@@ -169,9 +172,18 @@ struct Place { zPiece: f32, zEdge: f32, shown: f32, pad: f32, tint: vec4f };
 
 const PALETTE = ${PALETTE_ENTRIES}u;
 
+const NONE = 0xffffffffu;
+
 fn placeAt(index: u32) -> Place {
-  let low = table[PALETTE + index * 2u];
-  return Place(low.x, low.y, low.z, low.w, table[PALETTE + index * 2u + 1u]);
+  let low = table[PALETTE + index * 3u];
+  let bases = bitcast<vec4u>(table[PALETTE + index * 3u + 2u]);
+  return Place(low.x, low.y, low.z, table[PALETTE + index * 3u + 1u], bases.x, bases.y, bases.z);
+}
+
+/** A layer's own value for an element (§5 \`layers[].element_fields\`), or absent. */
+fn layerValue(base: u32, at: Place, element: u32) -> f32 {
+  if (base == NONE) { return ABSENT; }
+  return values[base + element - at.elementBase];
 }
 
 fn colorValue(element: u32) -> f32 { return values[view.colorBase + element]; }
@@ -183,12 +195,23 @@ const OFF = vec4f(2.0, 2.0, 2.0, 1.0);
 
 fn present(value: f32) -> bool { return value < 1e38; }
 
-fn kept(element: u32) -> bool {
-  if (view.thresholdMode == 0u) { return true; }
-  let value = limitValue(element);
+fn passes(value: f32) -> bool {
   if (!present(value)) { return false; }
   if (view.thresholdMode == 1u) { return value >= view.threshold; }
   return value <= view.threshold;
+}
+
+/** Whether an element shows: a threshold on a mesh field hides it everywhere. */
+fn kept(element: u32) -> bool {
+  if (view.thresholdMode == 0u || view.limitLayer == 1u) { return true; }
+  return passes(limitValue(element));
+}
+
+/** Whether a piece shows: its element is kept, and a threshold on a per-layer field keeps it on its layer. */
+fn keptOn(element: u32, at: Place) -> bool {
+  if (view.thresholdMode == 0u) { return true; }
+  if (view.limitLayer == 1u) { return passes(layerValue(at.limitBase, at, element)); }
+  return kept(element);
 }
 
 fn ramp(value: f32) -> vec3f {
@@ -207,13 +230,20 @@ struct EdgeOut {
   @builtin(position) position: vec4f,
   @location(0) bary: vec3f,
   @location(1) @interpolate(flat) element: u32,
+  @location(2) @interpolate(flat) outline: u32,
 };
 
+// Elements are drawn as outline triangles: a triangle as itself, a quad as
+// two halves. Each carries its element (low 29 bits) and which of its sides
+// are the element's outline (bit k: the side opposite corner k), so a quad's
+// diagonal is never drawn.
 @vertex fn vs_element(@builtin(vertex_index) vertex: u32, @builtin(instance_index) slot: u32) -> EdgeOut {
-  let element = vertex / 3u;
+  let owner = owners[vertex / 3u];
+  let element = owner & 0x1fffffffu;
   let corner = vertex % 3u;
   var out: EdgeOut;
   out.element = element;
+  out.outline = owner >> 29u;
   out.bary = vec3f(f32(corner == 0u), f32(corner == 1u), f32(corner == 2u));
   let at = placeAt(slot);
   if (at.shown < 0.5 || !kept(element)) {
@@ -226,7 +256,8 @@ struct EdgeOut {
 
 @fragment fn fs_element(input: EdgeOut) -> @location(0) vec4f {
   let width = fwidth(input.bary);
-  let distance = input.bary / max(width, vec3f(1e-7));
+  let inner = vec3f(f32((input.outline & 1u) == 0u), f32((input.outline & 2u) == 0u), f32((input.outline & 4u) == 0u));
+  let distance = input.bary / max(width, vec3f(1e-7)) + inner * 1e9;
   let nearest = min(distance.x, min(distance.y, distance.z));
   // About the element's smallest height, in pixels.
   let across = 1.0 / max(width.x, max(width.y, width.z));
@@ -260,14 +291,18 @@ struct PieceOut {
   out.element = element;
   out.layer = layer;
   let at = placeAt(layer);
-  if (at.shown < 0.5 || !kept(element)) {
+  if (at.shown < 0.5 || !keptOn(element, at)) {
     out.position = OFF;
     return out;
   }
   let point = corners[vertex];
   out.position = place(points[point], at.zPiece);
-  // Interpolated across the piece triangle: one value an element, or one a vertex.
-  out.value = select(colorValue(element), vertexValue(point), view.colorMode == 2u);
+  // Interpolated across the piece triangle: one value an element (the mesh's,
+  // or this layer's own), or one a piece vertex.
+  var value = colorValue(element);
+  if (view.colorMode == 2u) { value = vertexValue(point); }
+  if (view.colorMode == 3u) { value = layerValue(at.colorBase, at, element); }
+  out.value = value;
   return out;
 }
 
@@ -375,7 +410,10 @@ export class MeshOverlay {
     return this.compiled;
   }
 
-  /** Show `pack` (read by mesh-pack.js), or nothing for null. Uploads its geometry once. */
+  /**
+   * Show `pack` (read by mesh-pack.js, or a merged group), or nothing for
+   * null. Uploads its geometry once.
+   */
   setPack(pack) {
     if (pack === this.pack) return;
     this.release();
@@ -389,9 +427,17 @@ export class MeshOverlay {
     const nets = meshNets(pack);
     const keep = (buffer) => (this.buffers.push(buffer), buffer);
     this.nodes = keep(this.storage(pack.nodes, "mesh-nodes"));
-    this.triangles = keep(this.storage(pack.triangles, "mesh-triangles"));
+    const outline = outlineTriangles(pack);
+    this.outlineStart = outline.start;
+    this.outlineCorners = keep(this.storage(outline.corners, "mesh-outline-corners"));
+    this.outlineOwners = keep(this.storage(outline.owners, "mesh-outline-owners"));
+    this.edgeRanges = pack.edgeRanges.map((range) => ({
+      slot: this.slices.indexOf(range.sliceKey),
+      first: outline.start[range.first] * 3,
+      count: (outline.start[range.first + range.count] - outline.start[range.first]) * 3,
+    }));
     // Every piece layer's arrays end to end, their indices made global; the domain last.
-    const sources = [...pack.layers.map((layer) => ({ ...layer, tint: netTint(nets.indexOf(layer.netKey)) }))];
+    const sources = pack.layers.map((layer) => ({ ...layer, tint: netTint(nets.indexOf(layer.netKey)) }));
     if (pack.domain) for (const key of this.slices) sources.push({ ...pack.domain, sliceKey: key, tint: [0.78, 0.79, 0.8], domain: true });
     const vertexTotal = sources.reduce((sum, layer) => sum + layer.vertices.length, 0);
     const triangleTotal = sources.reduce((sum, layer) => sum + layer.triangles.length, 0);
@@ -406,7 +452,15 @@ export class MeshOverlay {
       const base = vertexAt / 2;
       for (let k = 0; k < layer.triangles.length; k += 1) triangles[triangleAt + k] = layer.triangles[k] + base;
       owners.set(layer.element, triangleAt / 3);
-      this.layers.push({ sliceKey: layer.sliceKey, tint: layer.tint, domain: Boolean(layer.domain), first: triangleAt, count: layer.triangles.length });
+      this.layers.push({
+        sliceKey: layer.sliceKey,
+        tint: layer.tint,
+        domain: Boolean(layer.domain),
+        fields: layer.domain ? [] : layer.fields || [],
+        elementBase: layer.elementBase || 0,
+        first: triangleAt,
+        count: layer.triangles.length,
+      });
       vertexAt += layer.vertices.length;
       triangleAt += layer.triangles.length;
     }
@@ -424,7 +478,8 @@ export class MeshOverlay {
     this.rings = keep(this.storage(Float32Array.from(rings), "mesh-markers"));
     this.placeCount = this.slices.length + this.layers.length;
     this.placeData = new Float32Array(this.placeCount * (PLACE_BYTES / 4));
-    this.table = keep(this.device.createBuffer({ label: "mesh-table", size: PALETTE_ENTRIES * 16 + Math.max(32, this.placeData.byteLength), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST }));
+    this.placeWords = new Uint32Array(this.placeData.buffer);
+    this.table = keep(this.device.createBuffer({ label: "mesh-table", size: PALETTE_ENTRIES * 16 + Math.max(PLACE_BYTES, this.placeData.byteLength), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST }));
     this.writePalette();
     this.placements = null;
     this.placementsFor = null;
@@ -455,35 +510,51 @@ export class MeshOverlay {
   }
 
   /**
-   * Every element field end to end (NaN as absent), then one absent value
-   * where the piece vertices' list will go: uploaded the first time the
-   * style colours or thresholds, then only the bases change.
+   * Every value list end to end (NaN as absent): the mesh's element fields,
+   * then each layer's own, then one absent value where the piece vertices'
+   * list will go. Uploaded the first time the style colours or thresholds;
+   * after that only the bases change.
    */
   valuesBuffer() {
     const { pack } = this;
     if (!this.style.colorBy && !this.style.threshold) return this.values?.buffer || this.empty;
     if (this.values) return this.values.buffer;
-    const count = pack.elementCount;
-    const upload = new Float32Array(pack.fields.length * count + 4).fill(ABSENT);
-    pack.fields.forEach((field, index) => {
-      const at = index * count;
-      for (let k = 0; k < count; k += 1) if (Number.isFinite(field.values[k])) upload[at + k] = field.values[k];
-    });
-    this.values = { buffer: this.storage(upload, "mesh-values"), vertexBase: pack.fields.length * count };
+    const lists = [...pack.fields.map((field) => ({ field, layer: null })), ...this.layers.flatMap((layer) => layer.fields.map((field) => ({ field, layer })))];
+    const total = lists.reduce((sum, { field }) => sum + field.values.length, 0);
+    const upload = new Float32Array(total + 4).fill(ABSENT);
+    const bases = new Map();
+    let at = 0;
+    for (const { field, layer } of lists) {
+      for (let k = 0; k < field.values.length; k += 1) if (Number.isFinite(field.values[k])) upload[at + k] = field.values[k];
+      bases.set(layer ? `${this.layers.indexOf(layer)}:${field.name}` : field.name, at);
+      at += field.values.length;
+    }
+    this.values = { buffer: this.storage(upload, "mesh-values"), bases, vertexBase: total };
     return this.values.buffer;
   }
 
-  /** Where a field's values start in the values buffer. */
+  /** Where a mesh field's values start in the values buffer (the absent slot for none). */
   fieldBase(name) {
-    const index = name && this.pack ? this.pack.fields.findIndex((field) => field.name === name) : -1;
-    return index >= 0 ? index * this.pack.elementCount : this.values?.vertexBase ?? 0;
+    return (name && this.values?.bases.get(name)) ?? this.values?.vertexBase ?? 0;
   }
 
-  /** The colour range in force: the style's, else the field's own. */
+  /** Where a layer's own values of `name` start, or NONE. */
+  layerBase(index, name) {
+    const base = name ? this.values?.bases.get(`${index}:${name}`) : undefined;
+    return base ?? NO_ELEMENT;
+  }
+
+  /** "element" for a mesh field, "layer" for a per-layer one, null for none. */
+  scopeOf(name) {
+    if (!name || !this.pack) return null;
+    return meshField(this.pack, name) ? "element" : "layer";
+  }
+
+  /** The colour range in force: the style's, else the field's own (over every layer for a per-layer one). */
   colorRange() {
     const { colorBy, range } = this.style;
     if (!colorBy || !this.pack) return [0, 1];
-    return range || finiteRange(meshField(this.pack, colorBy).values) || [0, 1];
+    return range || colourFields(this.pack).find((field) => field.name === colorBy)?.range || [0, 1];
   }
 
   thresholdField() {
@@ -491,12 +562,12 @@ export class MeshOverlay {
     return threshold ? threshold.field ?? colorBy : null;
   }
 
-  /** Bind groups for the current pack and the fields the style reads. */
+  /** Bind groups for the current pack and the values the style reads. */
   applyStyle() {
     if (!this.pack) return;
     this.pipelines();
     const values = this.valuesBuffer();
-    if (this.bindGroups && this.bindGroups.values === values) {
+    if (this.bindGroups?.values === values) {
       this.renderer.invalidate?.();
       return;
     }
@@ -505,7 +576,7 @@ export class MeshOverlay {
       entries: [this.view, this.table, values, points, corners, owners, this.rings].map((buffer, binding) => ({ binding, resource: { buffer } })),
     });
     this.bindGroups = {
-      elements: group(this.nodes, this.triangles, this.empty),
+      elements: group(this.nodes, this.outlineCorners, this.outlineOwners),
       pieces: group(this.pieceVertices, this.pieceTriangles, this.pieceOwners),
       values,
     };
@@ -548,26 +619,34 @@ export class MeshOverlay {
     if (!this.pack || !this.bindGroups) return { draws: 0, triangles: 0 };
     const pipelines = this.pipelines();
     const { style } = this;
-    // Per slice, then per piece layer.
-    const data = this.placeData;
+    const floats = this.placeData;
+    const words = this.placeWords;
     const stride = PLACE_BYTES / 4;
-    const shownSlices = [];
+    const shown = new Set();
+    const write = (slot, zPiece, zEdge, visible, tint, bases) => {
+      const at = slot * stride;
+      floats.set([zPiece ?? 0, zEdge ?? 0, visible ? 1 : 0, 0], at);
+      floats.set(tint, at + 4);
+      words.set(bases, at + 8);
+    };
+    // Per slice, then per piece layer.
     this.slices.forEach((key, slot) => {
-      const shown = this.sliceShown(key, visibleLayers);
-      data.set([this.sliceZ(key, layerOffsets, false) ?? 0, this.sliceZ(key, layerOffsets, true) ?? 0, shown ? 1 : 0, 0, 0, 0, 0, 0], slot * stride);
-      if (shown) shownSlices.push(slot);
+      const visible = this.sliceShown(key, visibleLayers);
+      write(slot, this.sliceZ(key, layerOffsets, false), this.sliceZ(key, layerOffsets, true), visible, [0, 0, 0, 0], [NO_ELEMENT, NO_ELEMENT, 0, 0]);
+      if (visible) shown.add(slot);
     });
-    const piecesOn = style.pieces;
+    const colorLayer = this.scopeOf(style.colorBy) === "layer" ? style.colorBy : null;
+    const limitLayer = this.scopeOf(this.thresholdField()) === "layer" ? this.thresholdField() : null;
     const shownLayers = [];
     this.layers.forEach((layer, index) => {
       const slot = this.slices.length + index;
-      const wanted = piecesOn === (layer.domain ? "domain" : "layers");
-      const shown = wanted && this.sliceShown(layer.sliceKey, visibleLayers);
-      data.set([this.sliceZ(layer.sliceKey, layerOffsets, false) ?? 0, 0, shown ? 1 : 0, 0, ...layer.tint, 1], slot * stride);
-      if (shown && layer.count) shownLayers.push({ slot, layer });
+      const visible = style.pieces === (layer.domain ? "domain" : "layers") && this.sliceShown(layer.sliceKey, visibleLayers);
+      write(slot, this.sliceZ(layer.sliceKey, layerOffsets, false), 0, visible, [...layer.tint, 1],
+        [this.layerBase(index, colorLayer), this.layerBase(index, limitLayer), layer.elementBase, 0]);
+      if (visible && layer.count) shownLayers.push({ slot, layer });
     });
-    this.device.queue.writeBuffer(this.table, PALETTE_ENTRIES * 16, data);
-    this.writeView(matrix);
+    this.device.queue.writeBuffer(this.table, PALETTE_ENTRIES * 16, floats);
+    this.writeView(matrix, { colorLayer, limitLayer });
     let draws = 0;
     let triangles = 0;
     if (shownLayers.length) {
@@ -579,16 +658,17 @@ export class MeshOverlay {
         triangles += layer.count / 3;
       }
     }
-    if (style.edges && shownSlices.length && this.pack.elementCount) {
+    const edges = style.edges ? this.edgeRanges.filter((range) => shown.has(range.slot) && range.count) : [];
+    if (edges.length) {
       pass.setPipeline(pipelines.elements);
       pass.setBindGroup(0, this.bindGroups.elements);
-      for (const slot of shownSlices) {
-        pass.draw(this.pack.elementCount * 3, 1, 0, slot);
+      for (const range of edges) {
+        pass.draw(range.count, 1, range.first, range.slot);
         draws += 1;
-        triangles += this.pack.elementCount;
+        triangles += range.count / 3;
       }
     }
-    if (style.markers && this.ringCount && shownSlices.length) {
+    if (style.markers && this.ringCount && shown.size) {
       pass.setPipeline(pipelines.markers);
       pass.setBindGroup(0, this.bindGroups.elements);
       pass.draw(6, this.ringCount);
@@ -598,7 +678,7 @@ export class MeshOverlay {
     return { draws, triangles };
   }
 
-  writeView(matrix) {
+  writeView(matrix, { colorLayer = null, limitLayer = null } = {}) {
     const floats = new Float32Array(this.viewScratch);
     const words = new Uint32Array(this.viewScratch);
     const { style } = this;
@@ -612,11 +692,13 @@ export class MeshOverlay {
     floats.set(this.colorRange(), 28);
     floats[30] = style.threshold?.value ?? 0;
     words[31] = this.selected >= 0 ? this.selected : NO_ELEMENT;
-    words[32] = style.colorBy ? 1 : 0;
+    // 0 plain, 1 a mesh field, 3 a per-layer field; 2 (per piece vertex) awaits solved fields.
+    words[32] = style.colorBy ? (colorLayer ? 3 : 1) : 0;
     words[33] = style.threshold ? (style.threshold.hide === "above" ? 2 : 1) : 0;
-    words[34] = this.fieldBase(style.colorBy);
-    words[35] = this.fieldBase(this.thresholdField());
+    words[34] = this.fieldBase(colorLayer ? null : style.colorBy);
+    words[35] = this.fieldBase(limitLayer ? null : this.thresholdField());
     words[36] = this.values?.vertexBase ?? 0;
+    words[37] = limitLayer ? 1 : 0;
     this.device.queue.writeBuffer(this.view, 0, this.viewScratch);
   }
 
@@ -642,4 +724,38 @@ export class MeshOverlay {
     this.view.destroy();
     this.empty.destroy();
   }
+}
+
+/**
+ * The triangles that draw the elements' outlines: a triangle as itself, a
+ * quad (a, b, c, d) as (a, b, c) and (a, c, d). Each carries its element in
+ * the low 29 bits of `owners` and, above them, which sides are outline (bit
+ * k: the side opposite corner k), so the diagonal stays undrawn. `start[e]`
+ * is element e's first outline triangle. A quadtree's hanging nodes need
+ * nothing: each cell outlines its own four corners.
+ */
+export function outlineTriangles(pack) {
+  const { corners, cornerStart, elementCount } = pack;
+  const start = new Uint32Array(elementCount + 1);
+  for (let e = 0; e < elementCount; e += 1) start[e + 1] = start[e] + (cornerStart[e + 1] - cornerStart[e] - 2);
+  const total = start[elementCount];
+  const out = new Uint32Array(total * 3);
+  const owners = new Uint32Array(total);
+  for (let e = 0; e < elementCount; e += 1) {
+    const first = cornerStart[e];
+    const sides = cornerStart[e + 1] - first;
+    let t = start[e];
+    if (sides === 3) {
+      out.set(corners.subarray(first, first + 3), t * 3);
+      owners[t] = (e | (7 << 29)) >>> 0;
+      continue;
+    }
+    const [a, b, c, d] = corners.subarray(first, first + 4);
+    out.set([a, b, c], t * 3);
+    owners[t] = (e | (5 << 29)) >>> 0;
+    t += 1;
+    out.set([a, c, d], t * 3);
+    owners[t] = (e | (3 << 29)) >>> 0;
+  }
+  return { start, corners: out, owners };
 }

@@ -172,6 +172,29 @@ async function check(chrome, server, outDir, summary) {
     await evaluate("element.setMeshSelection(null); return true;");
     await capture("unpicked");
     ok("the selected element is highlighted", differs("unpicked", "picked") > 50, `${differs("unpicked", "picked")} px`);
+    // A group (spec 11 §5: a quadtree mesh, one pack a slice) shows together, coloured by a per-layer value.
+    const grouped = packsLoaded.find((item) => item.group);
+    if (grouped) {
+      const layerField = grouped.fields.find((item) => item.scope === "layer")?.name;
+      await evaluate(`element.setMeshSelection(null); element.setMeshPack(${JSON.stringify(grouped.key)}); element.setMeshStyle({ colorBy: ${JSON.stringify(layerField ?? null)}, threshold: null });
+        const layers = element.getViewState()?.layers || [];
+        for (const layer of layers) element.setLayerVisible(layer.id, true);
+        return true;`);
+      // Framed on the highest value: a cell with copper under the centre.
+      const hottest = layerField ? (await evaluate(`return element.meshWorst({ field: ${JSON.stringify(layerField)}, count: 1 });`))[0] : null;
+      summary.groupTarget = hottest;
+      if (hottest) await evaluate(`element.frameMeshElement(${hottest.index}, { context: 10 }); element.setMeshSelection(null); return true;`);
+      await settleCamera(page);
+      await capture("group", { shot: "group-colour-by" });
+      ok("a group draws", differs("board", "group") > 1000, `${differs("board", "group")} px`);
+      const at = await evaluate(`
+        const canvas = element.shadowRoot.getElementById("viewport");
+        const rect = canvas.getBoundingClientRect();
+        return element.meshElementAt(rect.left + rect.width / 2, rect.top + rect.height / 2);`);
+      summary.groupPick = at;
+      ok("a group's pick reads the layer's own value", at?.copper?.some((item) => item.fields && Object.values(item.fields).some((value) => value != null)), JSON.stringify(at?.copper));
+      ok("a group's pick names its source pack", Boolean(at?.source), at?.source);
+    }
     await evaluate("element.setMeshPack(null); return true;");
     await capture("mesh-off");
     summary.meshStats = await evaluate("return element.meshStats();");

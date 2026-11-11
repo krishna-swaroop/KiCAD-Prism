@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { deflateMeshPack, demoMeshPack, encodeMeshPack } from "../../tests/browser/mesh/fixture.mjs";
+import { deflateMeshPack, demoMeshPack, demoQuadtreePacks, encodeMeshPack } from "../../tests/browser/mesh/fixture.mjs";
 import {
   elementAt,
   elementInfo,
+  colourFields,
+  elementCorners,
   finiteRange,
+  mergeMeshPacks,
   inflateMeshPack,
   isInflatedMeshPack,
   meshNets,
@@ -141,4 +144,45 @@ test("the demo mesh covers its board and cuts elements on the copper's sides", a
     const [cx, cy] = elementInfo(pack, e).centroidMm;
     assert.equal(elementAt(pack, cx * 1e6, cy * 1e6), e);
   }
+});
+
+test("quad elements follow the triangles, and a quadtree's cells are found with hanging nodes", async () => {
+  const [front] = await Promise.all(demoQuadtreePacks().map((bytes) => openMeshPack(bytes)));
+  assert.equal(front.triangleCount, 0);
+  assert.ok(front.quadCount > 0);
+  assert.equal(front.elementCount, front.quadCount);
+  assert.equal(front.group, "dc");
+  assert.equal(elementCorners(front, 0).length, 4);
+  // Every cell is found at its centre, coarse or fine.
+  for (let e = 0; e < front.elementCount; e += 1) {
+    const [cx, cy] = elementInfo(front, e).centroidMm;
+    assert.equal(elementAt(front, cx * 1e6, cy * 1e6), e);
+  }
+  const fine = elementAt(front, 19.5e6, 14.5e6);
+  const coarse = elementAt(front, 2e6, 2e6);
+  assert.ok(elementInfo(front, fine).boundsMm[2] - elementInfo(front, fine).boundsMm[0] < elementInfo(front, coarse).boundsMm[2] - elementInfo(front, coarse).boundsMm[0]);
+});
+
+test("a group merges into one pack with each pack's elements on its own slice", async () => {
+  const packs = await Promise.all(demoQuadtreePacks().map((bytes) => openMeshPack(bytes)));
+  const merged = mergeMeshPacks(packs.map((pack, k) => ({ key: `p${k}`, pack })));
+  assert.equal(merged.elementCount, packs[0].elementCount + packs[1].elementCount);
+  assert.deepEqual(merged.edgeRanges, [
+    { sliceKey: "copper.front", first: 0, count: packs[0].elementCount },
+    { sliceKey: "copper.back", first: packs[0].elementCount, count: packs[1].elementCount },
+  ]);
+  assert.equal(merged.layers[1].elementBase, packs[0].elementCount);
+  assert.ok(merged.layers[1].element.every((e) => e >= packs[0].elementCount));
+  const second = packs[0].elementCount + 3;
+  assert.deepEqual(elementCorners(merged, second), elementCorners(packs[1], 3));
+  assert.equal(elementInfo(merged, second).source, "p1");
+  assert.equal(elementInfo(merged, second).sourceIndex, 3);
+  // Per-layer values: listed, ranked over both layers, read per layer.
+  assert.deepEqual(colourFields(merged).map((field) => [field.name, field.scope]), [["potential_v", "layer"]]);
+  const worst = worstElements(merged, "potential_v", { count: 2 });
+  assert.equal(worst[0].layer, 0, "the front plane's potential is the higher");
+  const info = elementInfo(merged, worst[0].index);
+  assert.equal(info.layers[0].sliceKey, "copper.front");
+  assert.equal(info.layers[0].fields.potential_v, worst[0].value);
+  assert.equal(mergeMeshPacks([{ key: "one", pack: packs[0] }]), packs[0]);
 });

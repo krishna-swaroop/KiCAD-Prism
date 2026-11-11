@@ -8,11 +8,17 @@
  *
  *   nodes            int32 x, y per node (nanometres, board frame, Y down)
  *   triangles        uint32 a, b, c per element (corner nodes)
+ *   quads            uint32 a, b, c, d per element, optional (§5); elements
+ *                    are numbered over the triangles, then the quads
  *   layers[]         per conductor on a slice: its copper inside each element,
  *                    triangulated (piece vertices, piece triangles, each piece
- *                    triangle's element and connected piece)
+ *                    triangle's element and connected piece), and optional
+ *                    float32 values per element on that conductor (§5)
  *   element_fields[] float32 per element, every one optional
  *   markers          ports and the like, in the JSON header
+ *
+ * Packs of one `group` (a quadtree mesh is one pack a slice) are shown
+ * together: `mergeMeshPacks` joins them into one pack-shaped whole.
  *
  * Everything here runs without a GPU: the overlay (mesh-overlay.js) uploads
  * the views as they are, and picking, ranking and framing read them here.
@@ -68,10 +74,19 @@ export function readMeshPack(buffer) {
     return new Type(buffer, dataStart + offset, count);
   };
   const nodeCount = count(header.nodes, "nodes");
-  const elementCount = count(header.triangles, "triangles");
+  // A quadtree pack (§5) may carry quads alone.
+  const triangleCount = header.triangles || !header.quads ? count(header.triangles, "triangles") : 0;
+  const quadCount = header.quads ? count(header.quads, "quads") : 0;
+  const elementCount = triangleCount + quadCount;
   const nodes = view(Int32Array, header.nodes, nodeCount * 2, "nodes");
-  const triangles = view(Uint32Array, header.triangles, elementCount * 3, "triangles");
+  const triangles = header.triangles ? view(Uint32Array, header.triangles, triangleCount * 3, "triangles") : new Uint32Array(0);
   checkIndices(triangles, nodeCount, "triangles");
+  const quads = quadCount ? view(Uint32Array, header.quads, quadCount * 4, "quads") : new Uint32Array(0);
+  checkIndices(quads, nodeCount, "quads");
+  const valuesOf = (field, what) => {
+    if ((field.dtype || "f32") !== "f32") throw new Error(`${what} ${field.name}: dtype ${field.dtype} is not f32`);
+    return { name: String(field.name), unit: field.unit ?? "", values: view(Float32Array, field, elementCount, `${what} ${field.name}`) };
+  };
   const pieces = (layer, what) => {
     const vertexCount = count(layer.piece_vertices, `${what} piece_vertices`);
     const pieceCount = count(layer.piece_triangles, `${what} piece_triangles`);
@@ -88,23 +103,38 @@ export function readMeshPack(buffer) {
     checkIndices(out.triangles, vertexCount, `${what} piece_triangles`);
     checkIndices(out.element, elementCount, `${what} piece_element`);
     if (Number.isFinite(Number(layer.exact_area_nm2))) out.exactAreaNm2 = Number(layer.exact_area_nm2);
+    // §5: values per element on this conductor (NaN where it has no copper), and its element range in a merged group.
+    out.fields = (layer.element_fields || []).map((field) => valuesOf(field, `${what} element field`));
+    out.elementBase = 0;
     return out;
   };
   const layers = (header.layers || []).map((layer, index) => pieces(layer, `layers[${index}] (${layer.slice_key}, ${layer.net_key})`));
   // Resolution 2: the solver's domain, optional, with the same piece arrays and no slice of its own.
   const domain = header.domain ? pieces({ slice_key: "", net_key: "", ...header.domain }, "domain") : null;
-  const fields = (header.element_fields || []).map((field) => {
-    if ((field.dtype || "f32") !== "f32") throw new Error(`element field ${field.name}: dtype ${field.dtype} is not f32`);
-    return { name: String(field.name), unit: field.unit ?? "", values: view(Float32Array, field, elementCount, `element field ${field.name}`) };
-  });
+  const fields = (header.element_fields || []).map((field) => valuesOf(field, "element field"));
+  // Every element's corners, triangles then quads, as compressed rows.
+  const cornerStart = new Uint32Array(elementCount + 1);
+  for (let e = 0; e < elementCount; e += 1) cornerStart[e + 1] = cornerStart[e] + (e < triangleCount ? 3 : 4);
+  const corners = new Uint32Array(triangles.length + quads.length);
+  corners.set(triangles, 0);
+  corners.set(quads, triangles.length);
+  const layerSlices = [...new Set(layers.map((layer) => layer.sliceKey))];
   return {
     header,
     buffer,
     dataStart,
     nodes,
     triangles,
+    quads,
+    corners,
+    cornerStart,
     nodeCount,
+    triangleCount,
+    quadCount,
     elementCount,
+    group: header.group == null ? null : String(header.group),
+    // Which elements draw their edges on which slice: all of them on each of the pack's layer slices.
+    edgeRanges: layerSlices.map((sliceKey) => ({ sliceKey, first: 0, count: elementCount })),
     layers,
     domain,
     fields,
@@ -163,8 +193,10 @@ export function meshPackSummary(pack, key) {
     nodes: pack.nodeCount,
     elements: pack.elementCount,
     pieceTriangles: pack.layers.reduce((sum, layer) => sum + layer.pieceCount, 0),
-    layers: pack.layers.map((layer) => ({ sliceKey: layer.sliceKey, netKey: layer.netKey, pieceTriangles: layer.pieceCount })),
-    fields: pack.fields.map((field) => ({ name: field.name, unit: field.unit, range: finiteRange(field.values) })),
+    layers: pack.layers.map((layer) => ({ sliceKey: layer.sliceKey, netKey: layer.netKey, pieceTriangles: layer.pieceCount, fields: (layer.fields || []).map((field) => field.name) })),
+    group: pack.group ?? null,
+    quads: pack.quadCount || 0,
+    fields: colourFields(pack),
     markers: pack.markers.length,
     summary: header.summary ?? null,
   };
@@ -182,14 +214,18 @@ export function meshField(pack, name) {
  */
 export function worstElements(pack, fieldName, { count = 20, order = null } = {}) {
   const field = meshField(pack, fieldName);
-  if (!field) throw new Error(`the mesh pack has no element field ${fieldName}`);
   const ascending = (order || WORST_ORDER[fieldName] || "descending") === "ascending";
-  const values = field.values;
-  const indices = [];
-  for (let k = 0; k < values.length; k += 1) if (Number.isFinite(values[k])) indices.push(k);
+  // A mesh field ranks elements; a per-layer one ranks (element, layer) pairs over every layer that has it.
+  const lists = field ? [{ values: field.values, base: 0, layer: null }]
+    : layerFields(pack, fieldName).map(({ layer, field: values }) => ({ values: values.values, base: layer.elementBase || 0, layer: pack.layers.indexOf(layer) }));
+  if (!lists.length) throw new Error(`the mesh pack has no element field ${fieldName}`);
+  const items = [];
+  for (const list of lists) {
+    for (let k = 0; k < list.values.length; k += 1) if (Number.isFinite(list.values[k])) items.push({ index: list.base + k, value: list.values[k], ...(list.layer == null ? {} : { layer: list.layer }) });
+  }
   // A bounded selection would beat a full sort only for tiny counts; 300k sorts in tens of ms.
-  indices.sort(ascending ? (a, b) => values[a] - values[b] || a - b : (a, b) => values[b] - values[a] || a - b);
-  return indices.slice(0, Math.max(0, count)).map((index) => ({ index, value: values[index] }));
+  items.sort(ascending ? (a, b) => a.value - b.value || a.index - b.index : (a, b) => b.value - a.value || a.index - b.index);
+  return items.slice(0, Math.max(0, count));
 }
 
 /** Whether a threshold `{ value, hide: "below" | "above" }` keeps `value` (NaN is never kept). */
@@ -199,13 +235,14 @@ export function thresholdKeeps(threshold, value) {
   return threshold.hide === "above" ? value <= threshold.value : value >= threshold.value;
 }
 
-/** An element's corners in nanometres: [[x, y] x3]. */
+/** An element's corner nodes, in order (three or four). */
+export function elementNodes(pack, index) {
+  return Array.from(pack.corners.subarray(pack.cornerStart[index], pack.cornerStart[index + 1]));
+}
+
+/** An element's corners in nanometres: [[x, y]] (three or four). */
 export function elementCorners(pack, index) {
-  const { nodes, triangles } = pack;
-  return [0, 1, 2].map((corner) => {
-    const node = triangles[index * 3 + corner];
-    return [nodes[node * 2], nodes[node * 2 + 1]];
-  });
+  return elementNodes(pack, index).map((node) => [pack.nodes[node * 2], pack.nodes[node * 2 + 1]]);
 }
 
 /** An element's numbers and shape, as a host reads them. */
@@ -217,16 +254,28 @@ export function elementInfo(pack, index) {
     const value = field.values[index];
     fields[field.name] = Number.isFinite(value) ? value : null;
   }
+  // Per-layer values, by layer: `{ sliceKey, netKey, fields }` where the layer has one here.
+  const layers = [];
+  for (const layer of pack.layers) {
+    const local = index - (layer.elementBase || 0);
+    if (!layer.fields?.length || local < 0 || local >= layer.fields[0].values.length) continue;
+    const values = Object.fromEntries(layer.fields.map((field) => [field.name, Number.isFinite(field.values[local]) ? field.values[local] : null]));
+    if (Object.values(values).some((value) => value !== null)) layers.push({ sliceKey: layer.sliceKey, netKey: layer.netKey, fields: values });
+  }
   const xs = corners.map((c) => c[0]);
   const ys = corners.map((c) => c[1]);
+  const mean = (values) => values.reduce((sum, value) => sum + value, 0) / values.length / 1e6;
+  const source = pack.sources?.find((item) => index >= item.elementBase && index < item.elementBase + item.elementCount);
   return {
     index,
-    nodes: [0, 1, 2].map((corner) => pack.triangles[index * 3 + corner]),
+    ...(source ? { source: source.key, sourceIndex: index - source.elementBase } : {}),
+    nodes: elementNodes(pack, index),
     cornersMm: corners.map(([x, y]) => [x / 1e6, y / 1e6]),
-    centroidMm: [(xs[0] + xs[1] + xs[2]) / 3e6, (ys[0] + ys[1] + ys[2]) / 3e6],
+    centroidMm: [mean(xs), mean(ys)],
     boundsMm: [Math.min(...xs) / 1e6, Math.min(...ys) / 1e6, Math.max(...xs) / 1e6, Math.max(...ys) / 1e6],
     fields,
-    units: Object.fromEntries(pack.fields.map((field) => [field.name, field.unit])),
+    ...(layers.length ? { layers } : {}),
+    units: Object.fromEntries(colourFields(pack).map((field) => [field.name, field.unit])),
   };
 }
 
@@ -250,7 +299,7 @@ export function inTriangle(ax, ay, bx, by, cx, cy, px, py) {
  * `cells[start[c] .. start[c + 1])` are the elements touching cell c. Built
  * once per pack; a point lookup then tests a handful of triangles.
  */
-export function buildElementGrid(nodes, triangles, elementCount) {
+export function buildElementGrid(nodes, corners, cornerStart, elementCount) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (let k = 0; k < nodes.length; k += 2) {
     if (nodes[k] < x0) x0 = nodes[k];
@@ -271,11 +320,18 @@ export function buildElementGrid(nodes, triangles, elementCount) {
   const counts = new Uint32Array(nx * ny + 1);
   const cell = (value, origin, step, limit) => Math.min(limit - 1, Math.max(0, Math.floor((value - origin) / step)));
   for (let e = 0; e < elementCount; e += 1) {
-    const a = triangles[e * 3] * 2, b = triangles[e * 3 + 1] * 2, c = triangles[e * 3 + 2] * 2;
-    const i0 = cell(Math.min(nodes[a], nodes[b], nodes[c]), x0, sx, nx);
-    const i1 = cell(Math.max(nodes[a], nodes[b], nodes[c]), x0, sx, nx);
-    const j0 = cell(Math.min(nodes[a + 1], nodes[b + 1], nodes[c + 1]), y0, sy, ny);
-    const j1 = cell(Math.max(nodes[a + 1], nodes[b + 1], nodes[c + 1]), y0, sy, ny);
+    let lx = Infinity, ly = Infinity, hx = -Infinity, hy = -Infinity;
+    for (let k = cornerStart[e]; k < cornerStart[e + 1]; k += 1) {
+      const x = nodes[corners[k] * 2], y = nodes[corners[k] * 2 + 1];
+      if (x < lx) lx = x;
+      if (x > hx) hx = x;
+      if (y < ly) ly = y;
+      if (y > hy) hy = y;
+    }
+    const i0 = cell(lx, x0, sx, nx);
+    const i1 = cell(hx, x0, sx, nx);
+    const j0 = cell(ly, y0, sy, ny);
+    const j1 = cell(hy, y0, sy, ny);
     span.set([i0, i1, j0, j1], e * 4);
     for (let j = j0; j <= j1; j += 1) for (let i = i0; i <= i1; i += 1) counts[j * nx + i + 1] += 1;
   }
@@ -292,8 +348,8 @@ export function buildElementGrid(nodes, triangles, elementCount) {
 
 /** The element containing (x, y) nanometres that `accept(index)` allows, or -1. */
 export function elementAt(pack, x, y, accept = null) {
-  pack.grid ??= buildElementGrid(pack.nodes, pack.triangles, pack.elementCount);
-  const { grid, nodes, triangles } = pack;
+  pack.grid ??= buildElementGrid(pack.nodes, pack.corners, pack.cornerStart, pack.elementCount);
+  const { grid, nodes, corners, cornerStart } = pack;
   if (!grid.nx) return -1;
   const fx = (x - grid.x0) / grid.sx;
   const fy = (y - grid.y0) / grid.sy;
@@ -302,8 +358,13 @@ export function elementAt(pack, x, y, accept = null) {
   const c = Math.min(grid.ny - 1, Math.floor(fy)) * grid.nx + Math.min(grid.nx - 1, Math.floor(fx));
   for (let k = grid.start[c]; k < grid.start[c + 1]; k += 1) {
     const e = grid.cells[k];
-    const a = triangles[e * 3] * 2, b = triangles[e * 3 + 1] * 2, d = triangles[e * 3 + 2] * 2;
-    if (inTriangle(nodes[a], nodes[a + 1], nodes[b], nodes[b + 1], nodes[d], nodes[d + 1], x, y) && (!accept || accept(e))) return e;
+    const first = cornerStart[e];
+    const a = corners[first] * 2;
+    // A triangle, or a quad as its two halves about the first corner.
+    for (let c = first + 1; c + 1 < cornerStart[e + 1]; c += 1) {
+      const b = corners[c] * 2, d = corners[c + 1] * 2;
+      if (inTriangle(nodes[a], nodes[a + 1], nodes[b], nodes[b + 1], nodes[d], nodes[d + 1], x, y) && (!accept || accept(e))) return e;
+    }
   }
   return -1;
 }
@@ -345,4 +406,84 @@ export function meshSlices(pack) {
 /** The distinct net keys of the pack's layers, in order. */
 export function meshNets(pack) {
   return [...new Set(pack.layers.map((layer) => layer.netKey))];
+}
+
+/**
+ * Packs of one group (§5) as one pack-shaped whole: nodes, elements and
+ * pieces end to end (indices moved), mesh fields joined by name (NaN where
+ * a pack lacks one), layers keeping their own per-element values with the
+ * element range they index from (`elementBase`). Each pack's elements draw
+ * their edges on its own slices only (`edgeRanges`); `sources` maps merged
+ * element indices back to each pack's. One pack comes back as it is.
+ */
+export function mergeMeshPacks(entries) {
+  if (entries.length === 1) return entries[0].pack;
+  const nodeTotal = entries.reduce((sum, { pack }) => sum + pack.nodeCount, 0);
+  const elementTotal = entries.reduce((sum, { pack }) => sum + pack.elementCount, 0);
+  const cornerTotal = entries.reduce((sum, { pack }) => sum + pack.corners.length, 0);
+  const nodes = new Int32Array(nodeTotal * 2);
+  const corners = new Uint32Array(cornerTotal);
+  const cornerStart = new Uint32Array(elementTotal + 1);
+  const names = [];
+  for (const { pack } of entries) for (const field of pack.fields) if (!names.some((item) => item.name === field.name)) names.push({ name: field.name, unit: field.unit });
+  const fields = names.map(({ name, unit }) => ({ name, unit, values: new Float32Array(elementTotal).fill(NaN) }));
+  const layers = [];
+  const markers = [];
+  const edgeRanges = [];
+  const sources = [];
+  let nodeBase = 0;
+  let elementBase = 0;
+  let cornerBase = 0;
+  for (const { key, pack } of entries) {
+    nodes.set(pack.nodes, nodeBase * 2);
+    for (let k = 0; k < pack.corners.length; k += 1) corners[cornerBase + k] = pack.corners[k] + nodeBase;
+    for (let e = 0; e < pack.elementCount; e += 1) cornerStart[elementBase + e + 1] = cornerBase + pack.cornerStart[e + 1];
+    for (const field of pack.fields) fields.find((item) => item.name === field.name).values.set(field.values, elementBase);
+    for (const layer of pack.layers) {
+      const element = new Uint32Array(layer.element.length);
+      for (let k = 0; k < element.length; k += 1) element[k] = layer.element[k] + elementBase;
+      layers.push({ ...layer, element, elementBase: elementBase + layer.elementBase, byElement: undefined, source: key });
+    }
+    markers.push(...pack.markers);
+    for (const range of pack.edgeRanges) edgeRanges.push({ ...range, first: range.first + elementBase });
+    sources.push({ key, elementBase, elementCount: pack.elementCount });
+    nodeBase += pack.nodeCount;
+    elementBase += pack.elementCount;
+    cornerBase += pack.corners.length;
+  }
+  const first = entries[0].pack;
+  return {
+    header: { ...first.header, label: first.header.group ? `group ${first.header.group}` : first.header.label },
+    nodes,
+    corners,
+    cornerStart,
+    nodeCount: nodeTotal,
+    elementCount: elementTotal,
+    group: first.group,
+    edgeRanges,
+    layers,
+    domain: null,
+    fields,
+    markers,
+    sources,
+  };
+}
+
+/** The per-layer value lists named `name` (§5 `layers[].element_fields`), with their layers. */
+export function layerFields(pack, name) {
+  return pack.layers.map((layer) => ({ layer, field: layer.fields?.find((item) => item.name === name) || null })).filter((item) => item.field);
+}
+
+/** Every value list a pack can colour or rank by: mesh fields, then per-layer ones, by name. */
+export function colourFields(pack) {
+  const out = pack.fields.map((field) => ({ name: field.name, unit: field.unit, scope: "element", range: finiteRange(field.values) }));
+  for (const layer of pack.layers) {
+    for (const field of layer.fields || []) {
+      const known = out.find((item) => item.name === field.name);
+      const range = finiteRange(field.values);
+      if (!known) out.push({ name: field.name, unit: field.unit, scope: "layer", range });
+      else if (known.scope === "layer" && range) known.range = known.range ? [Math.min(known.range[0], range[0]), Math.max(known.range[1], range[1])] : range;
+    }
+  }
+  return out;
 }

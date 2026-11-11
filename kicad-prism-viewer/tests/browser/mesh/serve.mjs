@@ -15,7 +15,7 @@ import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inflateRawSync } from "node:zlib";
 import { buildElement } from "../pixel-diff/build-element.mjs";
-import { deflateMeshPack, demoMeshPack } from "./fixture.mjs";
+import { deflateMeshPack, demoMeshPack, demoQuadtreePacks } from "./fixture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const viewerRoot = resolve(here, "../../..");
@@ -96,13 +96,14 @@ function viewerDocument(cacheKey, assets) {
   return { schema: "prism.viewer_3d.analytic.a0", cache_key: cacheKey, readiness: { stage: "semantic-ready", progress: 100 }, asset_base: "./", assets };
 }
 
-/** Mesh packs to serve: files, directories of `*.meshpack`, or "demo" (the fixture's, plain and fine). */
+/** Mesh packs to serve: files, directories of `*.meshpack`, or "demo" (the fixture's: plain, fine, and a quadtree group). */
 export function openPacks(specs) {
   const packs = [];
   for (const spec of specs) {
     if (spec === "demo") {
       packs.push({ name: "demo-2mm.meshpack", bytes: deflateMeshPack(demoMeshPack()) });
       packs.push({ name: "demo-1mm.meshpack", bytes: deflateMeshPack(demoMeshPack({ pitchMm: 1, label: "demo background, finer", pass: 2 })) });
+      demoQuadtreePacks().forEach((bytes, k) => packs.push({ name: `demo-dc-${k ? "back" : "front"}.meshpack`, bytes: deflateMeshPack(bytes) }));
       continue;
     }
     const path = resolve(spec);

@@ -4,7 +4,7 @@
 // they need of the mounted board, so this file has no DOM or camera of its own.
 
 import { MeshOverlay } from "./mesh-overlay.js";
-import { elementAt, elementInfo, meshField, meshPackSummary, openMeshPack, pieceAt, thresholdKeeps, worstElements } from "./mesh-pack.js";
+import { elementAt, elementInfo, meshField, meshPackSummary, mergeMeshPacks, openMeshPack, pieceAt, thresholdKeeps, worstElements } from "./mesh-pack.js";
 
 /**
  * @param {object} scene
@@ -21,6 +21,13 @@ export function meshPortMembers(scene) {
   // The style a host set, kept while no pack is shown and applied to the next.
   let style = {};
   let selection = -1;
+  // What is drawn: the shown pack, or its whole group merged (spec 11 §5).
+  let drawnPack = null;
+  const groupOf = (key) => {
+    const pack = packs.get(key);
+    if (!pack?.group) return [{ key, pack }];
+    return [...packs].filter(([, other]) => other.group === pack.group).map(([name, other]) => ({ key: name, pack: other }));
+  };
 
   const overlay = () => {
     const renderer = scene.renderer();
@@ -28,13 +35,14 @@ export function meshPortMembers(scene) {
     renderer.meshOverlay ??= new MeshOverlay(renderer);
     return renderer.meshOverlay;
   };
-  const current = () => (shown ? packs.get(shown) : null);
+  const current = () => (shown ? drawnPack : null);
   const describe = (key) => {
     const pack = packs.get(key);
     if (!pack) return null;
     const summary = meshPackSummary(pack, key);
     const drawn = overlay();
-    return { ...summary, shown: key === shown, unmatchedSlices: key === shown && drawn ? drawn.unmatchedSlices() : null };
+    const group = pack.group ? groupOf(key).map((item) => item.key) : null;
+    return { ...summary, groupMembers: group, shown: key === shown || Boolean(shown && group?.includes(shown)), unmatchedSlices: key === shown && drawn ? drawn.unmatchedSlices() : null };
   };
   const shownSlices = () => {
     const drawn = overlay();
@@ -47,7 +55,8 @@ export function meshPortMembers(scene) {
     const drawn = overlay();
     const threshold = drawn?.style.threshold;
     const name = drawn?.thresholdField();
-    if (!threshold || !name) return null;
+    // A per-layer threshold hides copper, not elements: every element stays pickable.
+    if (!threshold || !name || !meshField(pack, name)) return null;
     const values = meshField(pack, name).values;
     return (index) => thresholdKeeps(threshold, values[index]);
   };
@@ -65,6 +74,7 @@ export function meshPortMembers(scene) {
     const drawn = overlay();
     shown = key != null && packs.has(String(key)) ? String(key) : null;
     selection = -1;
+    drawnPack = shown ? mergeMeshPacks(groupOf(shown)) : null;
     if (!drawn) return shown ? describe(shown) : null;
     drawn.setPack(current());
     if (shown) {
@@ -89,10 +99,9 @@ export function meshPortMembers(scene) {
       const pack = await openMeshPack(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
       const name = String(key ?? (pack.header.label || `mesh ${packs.size + 1}`));
       packs.set(name, pack);
-      if (name === shown) {
-        overlay()?.setPack(pack);
-        overlay()?.setStyle(style);
-      }
+      // A pack replacing the shown one, or joining its group, redraws it.
+      const joins = shown && pack.group && packs.get(shown)?.group === pack.group;
+      if (name === shown || joins) show(shown);
       return describe(name);
     },
     /** Every loaded pack's summary, in load order. */
@@ -131,17 +140,27 @@ export function meshPortMembers(scene) {
         .map((key) => ({ key, t: (drawn.sliceZ(key, offsets) - ray.origin[2]) / ray.direction[2] }))
         .filter((hit) => hit.t > 0)
         .sort((a, b) => a.t - b.t);
-      const accept = kept(pack);
+      const keep = kept(pack);
       for (const { key, t } of hits) {
         const x = (ray.origin[0] + t * ray.direction[0]) * 1e9;
         const y = -(ray.origin[1] + t * ray.direction[1]) * 1e9;
+        // Only elements drawn on this slice (a group's packs each have their own).
+        const ranges = pack.edgeRanges.filter((range) => range.sliceKey === key);
+        const accept = (index) => ranges.some((range) => index >= range.first && index < range.first + range.count) && (!keep || keep(index));
         const index = elementAt(pack, x, y, accept);
         if (index < 0) continue;
         const copper = pack.layers
           .filter((layer) => layer.sliceKey === key)
-          .map((layer) => ({ netKey: layer.netKey, hit: pieceAt(pack, layer, index, x, y) }))
+          .map((layer) => ({ layer, hit: pieceAt(pack, layer, index, x, y) }))
           .filter((item) => item.hit)
-          .map((item) => ({ netKey: item.netKey, piece: item.hit.piece }));
+          .map(({ layer, hit }) => ({
+            netKey: layer.netKey,
+            piece: hit.piece,
+            ...(layer.fields?.length ? { fields: Object.fromEntries(layer.fields.map((field) => {
+              const value = field.values[index - (layer.elementBase || 0)];
+              return [field.name, Number.isFinite(value) ? value : null];
+            })) } : {}),
+          }));
         return { ...info(pack, index, key), pointMm: [x / 1e6, y / 1e6], copper };
       }
       return null;
@@ -156,7 +175,10 @@ export function meshPortMembers(scene) {
       const pack = current();
       const drawn = overlay();
       const element = pack ? elementInfo(pack, Number(index)) : null;
-      const [key] = shownSlices().length ? shownSlices() : drawn?.slices || [];
+      // The element's own slice, shown first.
+      const own = pack ? pack.edgeRanges.filter((range) => Number(index) >= range.first && Number(index) < range.first + range.count).map((range) => range.sliceKey) : [];
+      const visible = shownSlices();
+      const key = own.find((slice) => visible.includes(slice)) || own[0] || visible[0];
       const z = key ? drawn.sliceZ(key, scene.layerOffsets()) : null;
       if (!element || z == null) return false;
       const [x0, y0, x1, y1] = element.boundsMm;

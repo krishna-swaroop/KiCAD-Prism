@@ -17,6 +17,10 @@
   .row { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
   #warn { color: #fbbf24; margin: 6px 0; }
   #warn:empty { display: none; }
+  #legend { margin: 4px 0 6px 88px; }
+  #legend[hidden] { display: none; }
+  #ramp { height: 10px; border-radius: 2px; }
+  .ends { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; color: #b6c0cc; }
   dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; font-variant-numeric: tabular-nums; }
   dt { color: #8a97a8; }
   dd { margin: 0; text-align: right; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -39,6 +43,7 @@
   <h2>Colour</h2>
   <label><span>Colour by</span><select id="color-by"></select></label>
   <label><span>Colormap</span><select id="colormap"></select></label>
+  <div id="legend"><div id="ramp"></div><div class="ends"><span id="low"></span><span id="high"></span></div></div>
   <label><input type="checkbox" id="threshold-on"> Threshold</label>
   <label><span>Hide</span><select id="threshold-hide"><option value="below">Below</option><option value="above">Above</option></select></label>
   <label><span>Value</span><input type="number" id="threshold-value" step="any"></label>
@@ -72,12 +77,17 @@
   viewer.setShowComponents(false);
 
   const summaries = [];
+  const unread = [];
   for (const pack of index.packs) {
-    const bytes = new Uint8Array(await (await fetch(`/packs/${encodeURIComponent(pack.name)}`)).arrayBuffer());
-    summaries.push(await viewer.loadMeshPack(bytes, { key: pack.name }));
+    try {
+      const bytes = new Uint8Array(await (await fetch(`/packs/${encodeURIComponent(pack.name)}`)).arrayBuffer());
+      summaries.push(await viewer.loadMeshPack(bytes, { key: pack.name }));
+    } catch (error) {
+      unread.push(`${pack.name}: ${error.message}`);
+    }
   }
   const option = (value, text = value) => Object.assign(document.createElement("option"), { value, textContent: text });
-  for (const summary of summaries) $("pack").append(option(summary.key, summary.label ? `${summary.label} (${summary.key})` : summary.key));
+  for (const summary of summaries) $("pack").append(option(summary.key, `${summary.label || summary.key}${summary.group ? ` · group ${summary.group}` : ""}`));
   for (const name of Object.keys(viewer.analyticColormaps().colormaps)) $("colormap").append(option(name));
   $("colormap").value = viewer.analyticColormaps().defaults.fieldColormap;
 
@@ -102,6 +112,7 @@
     if (summary && !summary.bundleSha256) out.push("No bundle");
     const unmatched = viewer.meshStats()?.unmatchedSlices || [];
     if (unmatched.length) out.push(`Slices not on board: ${unmatched.join(", ")}`);
+    if (unread.length) out.push(`Unread: ${unread.join("; ")}`);
     $("warn").textContent = out.join(" · ");
   }
 
@@ -119,6 +130,14 @@
     const threshold = $("threshold-on").checked && field && $("threshold-value").value !== ""
       ? { field, value: Number($("threshold-value").value), hide: $("threshold-hide").value }
       : null;
+    const colormaps = viewer.analyticColormaps().colormaps;
+    const coloured = current()?.fields.find((item) => item.name === $("color-by").value);
+    $("legend").hidden = !coloured;
+    if (coloured) {
+      $("ramp").style.background = `linear-gradient(to right, ${colormaps[$("colormap").value].join(", ")})`;
+      $("low").textContent = fmt(coloured.range?.[0] ?? null);
+      $("high").textContent = fmt(coloured.range?.[1] ?? null);
+    }
     viewer.setMeshStyle({
       edges: $("edges").checked,
       pieces: $("pieces").value,
@@ -147,7 +166,9 @@
       rows.push(["Element", element.index]);
       if (element.sliceKey) rows.push(["Slice", element.sliceKey]);
       if (element.pointMm) rows.push(["At (mm)", element.pointMm.map((v) => v.toFixed(4)).join(", ")]);
+      if (element.source) rows.push(["Pack", `${element.source} #${element.sourceIndex}`]);
       if (element.copper) rows.push(["Copper", element.copper.map((item) => `${item.netKey}#${item.piece}`).join(" ") || "—"]);
+      for (const item of element.copper || []) for (const [name, value] of Object.entries(item.fields || {})) rows.push([`${item.netKey} ${name}${element.units[name] && element.units[name] !== "1" ? ` (${element.units[name]})` : ""}`, fmt(value)]);
       rows.push(["Centroid (mm)", element.centroidMm.map((v) => v.toFixed(4)).join(", ")]);
       for (const [name, value] of Object.entries(element.fields)) rows.push([element.units[name] && element.units[name] !== "1" ? `${name} (${element.units[name]})` : name, fmt(value)]);
     }
