@@ -6,7 +6,7 @@
 
 use super::chunking::{chunk_operations, operation_bounds, operation_net, operation_product};
 use crate::generated::materialization_document::{
-    BindingEntry, HoleOperation, MaterialOperation, MaterialProduct, MaterializationDocumentA0,
+    BindingEntry, HoleOperation, MaterialOperation, MaterialProduct, MaterializationDocumentA1,
     MaterializationScope, Nm, NmBounds, NonNegativeNm,
 };
 use crate::generated::materialization_request::{
@@ -172,9 +172,9 @@ pub(super) fn intersects(a: &NmBounds, b: &NmBounds) -> bool {
 /// re-index and re-chunk them with the same rules the producer uses, remap
 /// the binding table, and record `scope` in canonical form.
 pub fn filter_document(
-    complete: &MaterializationDocumentA0,
+    complete: &MaterializationDocumentA1,
     scope: &MaterializationScope,
-) -> MaterializationDocumentA0 {
+) -> MaterializationDocumentA1 {
     let slice_order: BTreeMap<String, u32> = complete
         .stack
         .slices

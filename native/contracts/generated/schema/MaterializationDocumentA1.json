@@ -1,0 +1,1901 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "urn:wavenumber:schema:kicad_monkey.materialization.document:a1",
+    "type": "object",
+    "properties": {
+        "schema": {
+            "type": "string",
+            "const": "kicad_monkey.materialization.a1"
+        },
+        "type": {
+            "type": "string",
+            "const": "kicad_monkey.materialization.document"
+        },
+        "version": {
+            "type": "string",
+            "const": "a1"
+        },
+        "producer": {
+            "$ref": "#/$defs/MaterializationProducer"
+        },
+        "source": {
+            "$ref": "#/$defs/MaterializationSource"
+        },
+        "coordinate_system": {
+            "$ref": "#/$defs/MaterializationCoordinateSystem"
+        },
+        "scope": {
+            "$ref": "#/$defs/MaterializationScope"
+        },
+        "stack": {
+            "$ref": "#/$defs/Stack"
+        },
+        "nets": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/Net"
+            }
+        },
+        "net_classes": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/NetClass"
+            }
+        },
+        "diff_pairs": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/DiffPair"
+            }
+        },
+        "components": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/Component"
+            }
+        },
+        "operations": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/MaterialOperation"
+            }
+        },
+        "binding": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/BindingEntry"
+            }
+        },
+        "chunks": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/ChunkEntry"
+            }
+        },
+        "diagnostics": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/MaterializationDiagnostic"
+            }
+        },
+        "design_facts": {
+            "$ref": "#/$defs/DesignFacts",
+            "description": "Present in every a1 document. Optional only so that an a1 reader can\nhold an a0 document in this model: absent means a0, whose producer did\nnot report these facts."
+        }
+    },
+    "required": [
+        "schema",
+        "type",
+        "version",
+        "producer",
+        "source",
+        "coordinate_system",
+        "scope",
+        "stack",
+        "nets",
+        "net_classes",
+        "diff_pairs",
+        "components",
+        "operations",
+        "binding",
+        "chunks",
+        "diagnostics"
+    ],
+    "unevaluatedProperties": {
+        "not": {}
+    },
+    "description": "Analytic materialization a1: a0 plus `design_facts`. The material is\nunchanged; a1 adds facts in the header only. An a1 reader also reads a0\ndocuments, which have no `design_facts`.",
+    "title": "Materialization document a1",
+    "$defs": {
+        "MaterializationProducer": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "name",
+                "version"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            }
+        },
+        "MaterializationSource": {
+            "type": "object",
+            "properties": {
+                "sha256": {
+                    "type": "string"
+                },
+                "source_bytes": {
+                    "type": "string"
+                },
+                "project_sha256": {
+                    "type": "string"
+                },
+                "project_bytes": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "sha256",
+                "source_bytes"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "The board file, and the project file when one was given: net classes come\nonly from the project."
+        },
+        "MaterializationCoordinateSystem": {
+            "type": "object",
+            "properties": {
+                "unit": {
+                    "type": "string",
+                    "const": "nm"
+                },
+                "x_axis": {
+                    "type": "string",
+                    "const": "board_right"
+                },
+                "y_axis": {
+                    "type": "string",
+                    "const": "board_down"
+                }
+            },
+            "required": [
+                "unit",
+                "x_axis",
+                "y_axis"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            }
+        },
+        "MaterializationScope": {
+            "type": "object",
+            "properties": {
+                "products": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/MaterialProduct"
+                    }
+                },
+                "slice_keys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Absent means every slice."
+                },
+                "net_keys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Absent means every net."
+                },
+                "region": {
+                    "$ref": "#/$defs/NmBounds"
+                },
+                "tile_size_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "complete": {
+                    "type": "boolean",
+                    "description": "True exactly when every product is named and there is no slice, net, or region filter."
+                }
+            },
+            "required": [
+                "products",
+                "tile_size_nm",
+                "complete"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "What a document holds. It is canonical: products are distinct and in\n`MaterialProduct` declaration order, and slice and net keys are distinct\nand sorted by byte value. Every operation, component, and product-tagged\ndiagnostic lies within it: a named product, a listed slice (a hole spans\none), a listed net, and bounds meeting `region`."
+        },
+        "Stack": {
+            "type": "object",
+            "properties": {
+                "slices": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/StackSlice"
+                    }
+                },
+                "regions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/StackRegion"
+                    },
+                    "minItems": 1
+                },
+                "board_thickness_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "copper_finish": {
+                    "type": "string"
+                },
+                "impedance_controlled": {
+                    "type": "boolean",
+                    "description": "KiCad's board-level impedance-control flag (`dielectric_constraints`)."
+                },
+                "edge_plating": {
+                    "type": "boolean",
+                    "description": "KiCad's board-level plated-edge flag (`edge_plating`). KiCad stores no\nplated-edge geometry; fabrication plates the profile."
+                }
+            },
+            "required": [
+                "slices",
+                "regions"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            }
+        },
+        "Net": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "net_class": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "key",
+                "name"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Resolved electrical net. The empty key is the no-net assignment."
+        },
+        "NetClass": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "constituents": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "minItems": 1
+                },
+                "track_width_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "clearance_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "diff_pair_width_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "diff_pair_gap_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "diff_pair_via_gap_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "via_diameter_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "via_drill_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "microvia_diameter_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "microvia_drill_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                }
+            },
+            "required": [
+                "name",
+                "constituents"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Effective design rules of a KiCad net class. A net matched by several\nclasses gets a composite class: `constituents` are the matched classes by\npriority, with `Default` last when it supplied a value, `name` joins them\nwith commas, and each rule comes from the first constituent that sets it.\nA single class lists only itself."
+        },
+        "DiffPair": {
+            "type": "object",
+            "properties": {
+                "base_name": {
+                    "type": "string"
+                },
+                "positive_net_key": {
+                    "type": "string"
+                },
+                "negative_net_key": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "base_name",
+                "positive_net_key",
+                "negative_net_key"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Two nets paired by KiCad's suffix rule: after any trailing digits and\nunderscores, `+` or `P` marks the positive net and `-` or `N` the\nnegative one, and both nets exist."
+        },
+        "Component": {
+            "type": "object",
+            "properties": {
+                "refdes": {
+                    "type": "string"
+                },
+                "footprint": {
+                    "type": "string"
+                },
+                "side": {
+                    "$ref": "#/$defs/BoardSide"
+                },
+                "affine": {
+                    "$ref": "#/$defs/Affine2D"
+                },
+                "source_uid": {
+                    "type": "string"
+                },
+                "body_bounds": {
+                    "$ref": "#/$defs/NmBounds",
+                    "description": "Body extent in footprint-local coordinates, from courtyard or fabrication outline."
+                },
+                "body_height_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "net_tie_groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/PadGroup"
+                    },
+                    "description": "Net-tie pad groups: copper in the footprint may join these pads' nets."
+                },
+                "jumper_groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/PadGroup"
+                    },
+                    "description": "Jumper pad groups, connected inside the part without board copper."
+                }
+            },
+            "required": [
+                "refdes",
+                "footprint",
+                "side",
+                "affine",
+                "source_uid",
+                "net_tie_groups",
+                "jumper_groups"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            }
+        },
+        "MaterialOperation": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/SurfaceOperation"
+                },
+                {
+                    "$ref": "#/$defs/HoleOperation"
+                }
+            ]
+        },
+        "BindingEntry": {
+            "type": "object",
+            "properties": {
+                "operation_index": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295
+                },
+                "source_kind": {
+                    "$ref": "#/$defs/BindingSourceKind"
+                },
+                "source_uid": {
+                    "type": "string"
+                },
+                "refdes": {
+                    "type": "string"
+                },
+                "pad_number": {
+                    "type": "string"
+                },
+                "net_key": {
+                    "type": "string"
+                },
+                "tied_net_keys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Nets a net-tie bridge joins: the nets of the net-tie pads its copper\ntouches. The nets stay separate; consumers decide whether to join them."
+                },
+                "die_length_nm": {
+                    "$ref": "#/$defs/NonNegativeNm",
+                    "description": "Pad-to-die length of the pad's pin."
+                },
+                "die_delay_ps": {
+                    "type": "number",
+                    "description": "Pad-to-die delay of the pad's pin, in picoseconds."
+                }
+            },
+            "required": [
+                "operation_index",
+                "source_kind",
+                "source_uid"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Links one operation to the KiCad object that produced it. Required for\nsimulation and picking; geometry consumers may ignore it."
+        },
+        "ChunkEntry": {
+            "type": "object",
+            "properties": {
+                "slice_key": {
+                    "type": "string"
+                },
+                "tile_x": {
+                    "type": "integer",
+                    "minimum": -2147483648,
+                    "maximum": 2147483647
+                },
+                "tile_y": {
+                    "type": "integer",
+                    "minimum": -2147483648,
+                    "maximum": 2147483647
+                },
+                "bounds": {
+                    "$ref": "#/$defs/NmBounds"
+                },
+                "net_keys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "first_operation_index": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295
+                },
+                "operation_count": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295
+                }
+            },
+            "required": [
+                "slice_key",
+                "tile_x",
+                "tile_y",
+                "bounds",
+                "net_keys",
+                "first_operation_index",
+                "operation_count"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Operations of one (slice, tile) occupy a contiguous index range. An\noperation belongs to the tile containing the centre of its bounds (floor\ndivision by `tile_size_nm`); the chunk bounds cover every operation in it.\nChunks are non-empty, start at operation 0, follow each other without\ngaps, and are ordered by slice order, tile row, then tile column.\n`net_keys` are the distinct nets of the chunk's operations, sorted."
+        },
+        "MaterializationDiagnostic": {
+            "type": "object",
+            "properties": {
+                "severity": {
+                    "$ref": "#/$defs/DiagnosticSeverity"
+                },
+                "code": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "product": {
+                    "$ref": "#/$defs/MaterialProduct"
+                },
+                "source_uid": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "severity",
+                "code",
+                "message"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "A finding of the producer. `product` scopes it so selective results filter it like operations."
+        },
+        "DesignFacts": {
+            "type": "object",
+            "properties": {
+                "max_error_nm": {
+                    "$ref": "#/$defs/NonNegativeNm",
+                    "description": "KiCad's arc-approximation error (`max_error`) from the project file."
+                },
+                "copper_edge_clearance_nm": {
+                    "$ref": "#/$defs/NonNegativeNm",
+                    "description": "Minimum copper-to-board-edge clearance (`min_copper_edge_clearance`) from the project file."
+                },
+                "zones": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/ZoneFacts"
+                    }
+                },
+                "pad_rules": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/PadRules"
+                    }
+                },
+                "footprint_rules": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/FootprintRules"
+                    }
+                },
+                "courtyards": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/Courtyard"
+                    },
+                    "description": "By component in file order, front before back."
+                }
+            },
+            "required": [
+                "zones",
+                "pad_rules",
+                "footprint_rules",
+                "courtyards"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Design rules and regions that are not material: they draw nothing and\nare not operations. Board facts like `nets`: every document of a board\nholds all of them whatever its scope. Arrays are in file order."
+        },
+        "MaterialProduct": {
+            "type": "string",
+            "enum": [
+                "copper",
+                "holes",
+                "dielectric",
+                "solder_mask",
+                "paste",
+                "silkscreen",
+                "components"
+            ],
+            "description": "Selectable products. Every operation belongs to exactly one product. The\nboard profile has no product of its own: it is the add operation of every\ndielectric and solder-mask slice, with cutouts subtracted there."
+        },
+        "NmBounds": {
+            "type": "object",
+            "properties": {
+                "min_x_nm": {
+                    "$ref": "#/$defs/Nm"
+                },
+                "min_y_nm": {
+                    "$ref": "#/$defs/Nm"
+                },
+                "max_x_nm": {
+                    "$ref": "#/$defs/Nm"
+                },
+                "max_y_nm": {
+                    "$ref": "#/$defs/Nm"
+                }
+            },
+            "required": [
+                "min_x_nm",
+                "min_y_nm",
+                "max_x_nm",
+                "max_y_nm"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Axis-aligned bounds in the board frame, inclusive."
+        },
+        "NonNegativeNm": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647,
+            "description": "Non-negative length in integer nanometres."
+        },
+        "StackSlice": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string"
+                },
+                "role": {
+                    "$ref": "#/$defs/SliceRole"
+                },
+                "order": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295
+                },
+                "kicad_layer": {
+                    "type": "string"
+                },
+                "side": {
+                    "$ref": "#/$defs/BoardSide"
+                },
+                "thickness_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "material_name": {
+                    "type": "string"
+                },
+                "relative_permittivity": {
+                    "type": "number"
+                },
+                "loss_tangent": {
+                    "type": "number"
+                },
+                "dielectric_kind": {
+                    "$ref": "#/$defs/DielectricKind",
+                    "description": "A dielectric's construction, when the stackup states it."
+                }
+            },
+            "required": [
+                "key",
+                "role",
+                "order"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "One physical slice of the rigid board stack. `order` is zero at the front\noutermost slice and increases toward the back. Z positions are derived\nfrom the ordered thicknesses and are never stored. Absent values are\nunknown, never defaulted."
+        },
+        "StackRegion": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string"
+                },
+                "kind": {
+                    "$ref": "#/$defs/StackRegionKind"
+                },
+                "slice_keys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "minItems": 1
+                },
+                "boundary": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/PlanarRegion2d"
+                    }
+                },
+                "bend_lines": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/BendLine"
+                    }
+                }
+            },
+            "required": [
+                "key",
+                "kind",
+                "slice_keys",
+                "bend_lines"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Part of the board with its own build-up. `slice_keys` lists the slices\npresent there in stack order. A slice that only one region lists exists\nonly in that region. Without `boundary` the region is the whole board\nprofile. A rigid board has exactly one rigid region holding every slice."
+        },
+        "BoardSide": {
+            "type": "string",
+            "enum": [
+                "front",
+                "back"
+            ]
+        },
+        "Affine2D": {
+            "type": "object",
+            "properties": {
+                "m11": {
+                    "type": "number"
+                },
+                "m12": {
+                    "type": "number"
+                },
+                "m21": {
+                    "type": "number"
+                },
+                "m22": {
+                    "type": "number"
+                },
+                "tx_nm": {
+                    "$ref": "#/$defs/Nm"
+                },
+                "ty_nm": {
+                    "$ref": "#/$defs/Nm"
+                }
+            },
+            "required": [
+                "m11",
+                "m12",
+                "m21",
+                "m22",
+                "tx_nm",
+                "ty_nm"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "One fully composed local-to-board transform. A shape's local coordinates\nmap to board coordinates as x' = m11*x + m12*y + tx_nm and\ny' = m21*x + m22*y + ty_nm. Reflection, rotation, and non-uniform scale are\nordinary cases of the same matrix."
+        },
+        "PadGroup": {
+            "type": "object",
+            "properties": {
+                "pad_numbers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "minItems": 1
+                }
+            },
+            "required": [
+                "pad_numbers"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Pad numbers of one footprint that KiCad connects as a group."
+        },
+        "SurfaceOperation": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "const": "surface"
+                },
+                "index": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295
+                },
+                "action": {
+                    "$ref": "#/$defs/MaterialAction"
+                },
+                "material": {
+                    "$ref": "#/$defs/SurfaceMaterial"
+                },
+                "slice_key": {
+                    "type": "string"
+                },
+                "net_key": {
+                    "type": "string"
+                },
+                "shape": {
+                    "$ref": "#/$defs/Shape2d"
+                },
+                "offset_nm": {
+                    "$ref": "#/$defs/Nm",
+                    "description": "Signed offset of `shape` in its local frame, before `affine`: the\nMinkowski sum with a disk of this radius when positive, or the erosion\nby it when negative, with round corners. It is present only where the\noffset shape has no closed form in this vocabulary: KiCad's polygonal\ninflation of trapezoid, chamfered, and custom pad openings, and the\nmask opening of a copper graphic grown by its margin. Never zero."
+                },
+                "group_key": {
+                    "type": "string",
+                    "description": "Item that this operation's subtracts are confined to, such as one\nknockout text whose glyph strokes are cut from its own box. It is the\nitem's source UID, so it survives filtering unchanged."
+                },
+                "affine": {
+                    "$ref": "#/$defs/Affine2D"
+                },
+                "bounds": {
+                    "$ref": "#/$defs/NmBounds",
+                    "description": "Board-frame bounds holding the whole shape after `affine` and any growing offset."
+                }
+            },
+            "required": [
+                "kind",
+                "index",
+                "action",
+                "material",
+                "slice_key",
+                "shape",
+                "affine",
+                "bounds"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Add or remove one shape of material on one slice whose role matches the\nmaterial (copper on conductor slices, and so on). Conductive material\nalways carries `net_key`; operations on different nets are never merged.\n\nOperations combine without regard to order. Per slice and material\n(and per net for conductive material), operations that share a\n`group_key` form one item whose subtracts remove only that item's own\nadds; the material is then the union of the ungrouped adds and every\ngroup's result, minus the union of the ungrouped subtracts."
+        },
+        "HoleOperation": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "const": "hole"
+                },
+                "index": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295
+                },
+                "shape": {
+                    "$ref": "#/$defs/Shape2d"
+                },
+                "affine": {
+                    "$ref": "#/$defs/Affine2D"
+                },
+                "plating": {
+                    "$ref": "#/$defs/HolePlating"
+                },
+                "start_slice_key": {
+                    "type": "string"
+                },
+                "end_slice_key": {
+                    "type": "string"
+                },
+                "net_key": {
+                    "type": "string"
+                },
+                "plating_thickness_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "protection": {
+                    "$ref": "#/$defs/HoleProtection"
+                },
+                "backdrills": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/Backdrill"
+                    }
+                },
+                "post_machining": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/PostMachining"
+                    }
+                },
+                "castellated": {
+                    "type": "boolean",
+                    "description": "The hole belongs to a castellated pad, cut by the board edge in fabrication."
+                },
+                "bounds": {
+                    "$ref": "#/$defs/NmBounds"
+                }
+            },
+            "required": [
+                "kind",
+                "index",
+                "shape",
+                "affine",
+                "plating",
+                "start_slice_key",
+                "end_slice_key",
+                "backdrills",
+                "post_machining",
+                "bounds"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Drilled or milled hole spanning the conductor slices `start_slice_key` to\n`end_slice_key` inclusive, in either order."
+        },
+        "BindingSourceKind": {
+            "type": "string",
+            "enum": [
+                "track",
+                "track_arc",
+                "via",
+                "pad",
+                "zone_fill",
+                "board_graphic",
+                "footprint_graphic",
+                "board_text",
+                "footprint_text",
+                "profile",
+                "derived"
+            ]
+        },
+        "DiagnosticSeverity": {
+            "type": "string",
+            "enum": [
+                "info",
+                "warning",
+                "error"
+            ]
+        },
+        "ZoneFacts": {
+            "type": "object",
+            "properties": {
+                "source_uid": {
+                    "type": "string",
+                    "description": "The zone's binding `source_uid`: its UUID, or `zone@<offset>` when the UUID is nil or repeats an earlier zone's."
+                },
+                "name": {
+                    "type": "string"
+                },
+                "net_key": {
+                    "type": "string",
+                    "description": "Absent for no net."
+                },
+                "footprint_source_uid": {
+                    "type": "string",
+                    "description": "The owning footprint's component `source_uid`, for a footprint's rule area."
+                },
+                "slice_keys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "minItems": 1,
+                    "description": "Conductor slices of the zone's copper layers, in stack order."
+                },
+                "priority": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4294967295
+                },
+                "outline": {
+                    "$ref": "#/$defs/PlanarRegion2d"
+                },
+                "fill": {
+                    "$ref": "#/$defs/ZoneFillRules"
+                },
+                "keepout": {
+                    "$ref": "#/$defs/RuleAreaKeepouts"
+                }
+            },
+            "required": [
+                "source_uid",
+                "slice_keys",
+                "priority",
+                "outline"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "One zone or rule area on copper, as drawn. `outline` is the authored\noutline in the board frame with its arcs: KiCad reads the first\n`(polygon)` as the outline and later ones as holes in it. Exactly one of\n`fill` (a copper zone) and `keepout` (a rule area) is present."
+        },
+        "PadRules": {
+            "type": "object",
+            "properties": {
+                "source_uid": {
+                    "type": "string"
+                },
+                "clearance_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "pad_connection": {
+                    "$ref": "#/$defs/PadConnection"
+                },
+                "thermal_gap_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "thermal_spoke_width_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "thermal_spoke_angle_deg": {
+                    "type": "number"
+                },
+                "layers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/PadstackLayerRules"
+                    },
+                    "description": "Padstack layers that set a rule, in file order."
+                }
+            },
+            "required": [
+                "source_uid",
+                "layers"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "A pad's own zone rules, keyed by the pad's binding `source_uid`. A value\nis present only when the pad sets it instead of inheriting it; a pad that\nsets nothing has no record."
+        },
+        "FootprintRules": {
+            "type": "object",
+            "properties": {
+                "source_uid": {
+                    "type": "string"
+                },
+                "clearance_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "pad_connection": {
+                    "$ref": "#/$defs/PadConnection"
+                },
+                "thermal_gap_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "thermal_spoke_width_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                }
+            },
+            "required": [
+                "source_uid"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "A footprint's zone rules for its pads, keyed by the component's\n`source_uid`. Present only for values it sets; a footprint that sets\nnothing has no record."
+        },
+        "Courtyard": {
+            "type": "object",
+            "properties": {
+                "source_uid": {
+                    "type": "string",
+                    "description": "The component's `source_uid`."
+                },
+                "side": {
+                    "$ref": "#/$defs/BoardSide"
+                },
+                "regions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/PlanarRegion2d"
+                    },
+                    "minItems": 1
+                }
+            },
+            "required": [
+                "source_uid",
+                "side",
+                "regions"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "A component's courtyard on one side, closed as KiCad closes it, in the\nboard frame: the graphics on `F.CrtYd` (front) or `B.CrtYd` (back),\nchained end to end within 0.01 mm."
+        },
+        "Nm": {
+            "type": "integer",
+            "minimum": -2147483648,
+            "maximum": 2147483647,
+            "description": "Board-frame length in integer nanometres. The range matches KiCad's own\n32-bit internal-unit limit, so the packed encoding stores it losslessly."
+        },
+        "SliceRole": {
+            "type": "string",
+            "enum": [
+                "conductor",
+                "dielectric",
+                "solder_mask",
+                "paste",
+                "silkscreen",
+                "coverlay",
+                "adhesive",
+                "stiffener"
+            ],
+            "description": "Physical role of a slice. `coverlay`, `adhesive`, and `stiffener` occur\nonly in flexible or stiffened stack regions."
+        },
+        "DielectricKind": {
+            "type": "string",
+            "enum": [
+                "core",
+                "prepreg"
+            ],
+            "description": "How a dielectric slice is built: a cured `core` laminate or a `prepreg`\nbonding ply (KiCad's stackup layer `type`)."
+        },
+        "StackRegionKind": {
+            "type": "string",
+            "enum": [
+                "rigid",
+                "flex"
+            ]
+        },
+        "PlanarRegion2d": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "const": "planar_region_2d"
+                },
+                "outer": {
+                    "$ref": "#/$defs/Contour"
+                },
+                "holes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/Contour"
+                    }
+                }
+            },
+            "required": [
+                "kind",
+                "outer",
+                "holes"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "One analytic outer contour with optional hole contours."
+        },
+        "BendLine": {
+            "type": "object",
+            "properties": {
+                "start_nm": {
+                    "$ref": "#/$defs/NmPoint"
+                },
+                "end_nm": {
+                    "$ref": "#/$defs/NmPoint"
+                },
+                "radius_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "angle_deg": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "start_nm",
+                "end_nm",
+                "radius_nm",
+                "angle_deg"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Fold line of a flexible region, for 3D views; flat analyses ignore it."
+        },
+        "MaterialAction": {
+            "type": "string",
+            "enum": [
+                "add",
+                "subtract"
+            ]
+        },
+        "SurfaceMaterial": {
+            "type": "string",
+            "enum": [
+                "copper",
+                "dielectric",
+                "solder_mask",
+                "paste",
+                "silkscreen"
+            ]
+        },
+        "Shape2d": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/Disk2d"
+                },
+                {
+                    "$ref": "#/$defs/Rect2d"
+                },
+                {
+                    "$ref": "#/$defs/RoundedRect2d"
+                },
+                {
+                    "$ref": "#/$defs/ChamferedRect2d"
+                },
+                {
+                    "$ref": "#/$defs/Trapezoid2d"
+                },
+                {
+                    "$ref": "#/$defs/Capsule2d"
+                },
+                {
+                    "$ref": "#/$defs/Annulus2d"
+                },
+                {
+                    "$ref": "#/$defs/SweptPath2d"
+                },
+                {
+                    "$ref": "#/$defs/PlanarRegion2d"
+                }
+            ],
+            "description": "Closed analytic shape vocabulary. Lowering is a consumer operation."
+        },
+        "HolePlating": {
+            "type": "string",
+            "enum": [
+                "plated",
+                "unplated"
+            ]
+        },
+        "HoleProtection": {
+            "type": "object",
+            "properties": {
+                "front": {
+                    "$ref": "#/$defs/SideProtection"
+                },
+                "back": {
+                    "$ref": "#/$defs/SideProtection"
+                },
+                "filled": {
+                    "$ref": "#/$defs/ProtectionState"
+                },
+                "capped": {
+                    "$ref": "#/$defs/ProtectionState"
+                }
+            },
+            "required": [
+                "front",
+                "back",
+                "filled",
+                "capped"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            }
+        },
+        "Backdrill": {
+            "type": "object",
+            "properties": {
+                "side": {
+                    "$ref": "#/$defs/BoardSide"
+                },
+                "diameter_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "until_slice_key": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "side"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Controlled-depth removal of barrel plating from one side."
+        },
+        "PostMachining": {
+            "type": "object",
+            "properties": {
+                "side": {
+                    "$ref": "#/$defs/BoardSide"
+                },
+                "mode": {
+                    "$ref": "#/$defs/PostMachiningMode"
+                },
+                "diameter_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "depth_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "angle_deg": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "side",
+                "mode"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Counterbore or countersink machined from one side. A countersink's\n`angle_deg` is the full included cone angle. Without `depth_nm`, a\ncountersink runs to its cone apex."
+        },
+        "ZoneFillRules": {
+            "type": "object",
+            "properties": {
+                "clearance_nm": {
+                    "$ref": "#/$defs/NonNegativeNm",
+                    "description": "Zone-to-other-net clearance (`connect_pads (clearance)`)."
+                },
+                "min_width_nm": {
+                    "$ref": "#/$defs/NonNegativeNm",
+                    "description": "Minimum fill width (`min_thickness`)."
+                },
+                "pad_connection": {
+                    "$ref": "#/$defs/PadConnection"
+                },
+                "thermal_gap_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "thermal_spoke_width_nm": {
+                    "$ref": "#/$defs/NonNegativeNm",
+                    "description": "Thermal spoke width (`thermal_bridge_width`)."
+                },
+                "island_removal": {
+                    "$ref": "#/$defs/IslandRemoval"
+                },
+                "island_min_area_mm2": {
+                    "type": "number",
+                    "description": "Island area threshold as written, in mm²."
+                },
+                "corner_smoothing": {
+                    "$ref": "#/$defs/CornerSmoothing"
+                },
+                "corner_radius_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "hatch": {
+                    "$ref": "#/$defs/ZoneHatchFill",
+                    "description": "Present when the zone fills with a hatch instead of solid copper."
+                }
+            },
+            "required": [
+                "clearance_nm",
+                "min_width_nm",
+                "pad_connection",
+                "thermal_gap_nm",
+                "thermal_spoke_width_nm",
+                "island_removal"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Fill rules of a copper zone, as KiCad's zone filler reads them. Values\nKiCad's parser defaults when the file omits them carry that default."
+        },
+        "RuleAreaKeepouts": {
+            "type": "object",
+            "properties": {
+                "tracks": {
+                    "type": "boolean"
+                },
+                "vias": {
+                    "type": "boolean"
+                },
+                "pads": {
+                    "type": "boolean"
+                },
+                "copper_pour": {
+                    "type": "boolean"
+                },
+                "footprints": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "tracks",
+                "vias",
+                "pads",
+                "copper_pour",
+                "footprints"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "What a rule area forbids: each flag is true where KiCad's keep-out says `not_allowed`."
+        },
+        "PadConnection": {
+            "type": "string",
+            "enum": [
+                "none",
+                "thermal_reliefs",
+                "solid",
+                "thru_hole_only"
+            ],
+            "description": "How copper joins the zone fills of its net: KiCad's `ZONE_CONNECTION`.\nA zone's `(connect_pads)` without a mode is `thermal_reliefs`; `yes` and\n`full` are `solid`, `no` is `none`. A pad's `(zone_connect N)` is 0\n`none`, 1 `thermal_reliefs`, 2 `solid`, 3 `thru_hole_only`."
+        },
+        "PadstackLayerRules": {
+            "type": "object",
+            "properties": {
+                "kicad_layer": {
+                    "type": "string"
+                },
+                "clearance_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "pad_connection": {
+                    "$ref": "#/$defs/PadConnection"
+                },
+                "thermal_gap_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "thermal_spoke_width_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "thermal_spoke_angle_deg": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "kicad_layer"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Zone rules a padstack layer sets for itself (`(padstack (layer ...))`).\n`kicad_layer` is the selector as written: a copper layer name, or `Inner`\nfor every inner layer in KiCad's front/inner/back mode."
+        },
+        "Contour": {
+            "type": "object",
+            "properties": {
+                "start_nm": {
+                    "$ref": "#/$defs/NmPoint"
+                },
+                "segments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/PathSegment"
+                    },
+                    "minItems": 1
+                }
+            },
+            "required": [
+                "start_nm",
+                "segments"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Closed contour of line, arc, and cubic segments starting at `start_nm`.\nWhen the last segment does not end at `start_nm`, a straight closing\nsegment back to it is implied."
+        },
+        "NmPoint": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/Nm"
+            },
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "Point in KiCad's board frame: X to the right, Y down, in nanometres."
+        },
+        "Disk2d": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "const": "disk_2d"
+                },
+                "center_nm": {
+                    "$ref": "#/$defs/NmPoint"
+                },
+                "radius_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                }
+            },
+            "required": [
+                "kind",
+                "center_nm",
+                "radius_nm"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            }
+        },
+        "Rect2d": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "const": "rect_2d"
+                },
+                "center_nm": {
+                    "$ref": "#/$defs/NmPoint"
+                },
+                "width_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "height_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                }
+            },
+            "required": [
+                "kind",
+                "center_nm",
+                "width_nm",
+                "height_nm"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            }
+        },
+        "RoundedRect2d": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "const": "rounded_rect_2d"
+                },
+                "center_nm": {
+                    "$ref": "#/$defs/NmPoint"
+                },
+                "width_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "height_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "radius_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                }
+            },
+            "required": [
+                "kind",
+                "center_nm",
+                "width_nm",
+                "height_nm",
+                "radius_nm"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            }
+        },
+        "ChamferedRect2d": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "const": "chamfered_rect_2d"
+                },
+                "center_nm": {
+                    "$ref": "#/$defs/NmPoint"
+                },
+                "width_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "height_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "chamfer_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "chamfered_corners": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/RectCorner"
+                    }
+                },
+                "radius_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                }
+            },
+            "required": [
+                "kind",
+                "center_nm",
+                "width_nm",
+                "height_nm",
+                "chamfer_nm",
+                "chamfered_corners",
+                "radius_nm"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Rectangle with the listed corners chamfered; unlisted corners keep `radius_nm`."
+        },
+        "Trapezoid2d": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "const": "trapezoid_2d"
+                },
+                "center_nm": {
+                    "$ref": "#/$defs/NmPoint"
+                },
+                "width_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "height_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "delta_x_nm": {
+                    "$ref": "#/$defs/Nm"
+                },
+                "delta_y_nm": {
+                    "$ref": "#/$defs/Nm"
+                }
+            },
+            "required": [
+                "kind",
+                "center_nm",
+                "width_nm",
+                "height_nm",
+                "delta_x_nm",
+                "delta_y_nm"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "KiCad trapezoid: a rectangle whose opposite edges are widened or narrowed by the deltas."
+        },
+        "Capsule2d": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "const": "capsule_2d"
+                },
+                "start_nm": {
+                    "$ref": "#/$defs/NmPoint"
+                },
+                "end_nm": {
+                    "$ref": "#/$defs/NmPoint"
+                },
+                "radius_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                }
+            },
+            "required": [
+                "kind",
+                "start_nm",
+                "end_nm",
+                "radius_nm"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Stadium between two centres with a common radius."
+        },
+        "Annulus2d": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "const": "annulus_2d"
+                },
+                "center_nm": {
+                    "$ref": "#/$defs/NmPoint"
+                },
+                "outer_radius_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "inner_radius_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                }
+            },
+            "required": [
+                "kind",
+                "center_nm",
+                "outer_radius_nm",
+                "inner_radius_nm"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            }
+        },
+        "SweptPath2d": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "const": "swept_path_2d"
+                },
+                "start_nm": {
+                    "$ref": "#/$defs/NmPoint"
+                },
+                "segments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/PathSegment"
+                    },
+                    "minItems": 1
+                },
+                "width_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "cap": {
+                    "$ref": "#/$defs/PathCap"
+                },
+                "join": {
+                    "$ref": "#/$defs/PathJoin"
+                }
+            },
+            "required": [
+                "kind",
+                "start_nm",
+                "segments",
+                "width_nm",
+                "cap",
+                "join"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Open centreline of line, arc, and cubic segments swept by a constant width."
+        },
+        "SideProtection": {
+            "type": "object",
+            "properties": {
+                "tented": {
+                    "$ref": "#/$defs/ProtectionState"
+                },
+                "covered": {
+                    "$ref": "#/$defs/ProtectionState"
+                },
+                "plugged": {
+                    "$ref": "#/$defs/ProtectionState"
+                }
+            },
+            "required": [
+                "tented",
+                "covered",
+                "plugged"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            }
+        },
+        "ProtectionState": {
+            "type": "string",
+            "enum": [
+                "yes",
+                "no",
+                "unspecified"
+            ],
+            "description": "KiCad's tri-state for a protection option: set, cleared, or left to the board default."
+        },
+        "PostMachiningMode": {
+            "type": "string",
+            "enum": [
+                "counterbore",
+                "countersink"
+            ]
+        },
+        "IslandRemoval": {
+            "type": "string",
+            "enum": [
+                "always",
+                "never",
+                "below_area"
+            ],
+            "description": "KiCad's island removal (`island_removal_mode`): 0 `always`, 1 `never`,\n2 `below_area` (islands smaller than `island_min_area_mm2`). Without the\ntoken KiCad removes every island."
+        },
+        "CornerSmoothing": {
+            "type": "string",
+            "enum": [
+                "chamfer",
+                "fillet"
+            ],
+            "description": "Corner smoothing KiCad applies to a zone's fill (`smoothing`)."
+        },
+        "ZoneHatchFill": {
+            "type": "object",
+            "properties": {
+                "thickness_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "gap_nm": {
+                    "$ref": "#/$defs/NonNegativeNm"
+                },
+                "orientation_deg": {
+                    "type": "number"
+                }
+            },
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Hatched fill (`(mode hatch)`). Absent values are not in the file; KiCad's\ndefaults then apply."
+        },
+        "PathSegment": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/LineSegment"
+                },
+                {
+                    "$ref": "#/$defs/ArcSegment"
+                },
+                {
+                    "$ref": "#/$defs/CubicSegment"
+                }
+            ]
+        },
+        "RectCorner": {
+            "type": "string",
+            "enum": [
+                "top_left",
+                "top_right",
+                "bottom_left",
+                "bottom_right"
+            ]
+        },
+        "PathCap": {
+            "type": "string",
+            "enum": [
+                "round",
+                "flat"
+            ]
+        },
+        "PathJoin": {
+            "type": "string",
+            "enum": [
+                "round",
+                "miter"
+            ]
+        },
+        "LineSegment": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "const": "line"
+                },
+                "end_nm": {
+                    "$ref": "#/$defs/NmPoint"
+                }
+            },
+            "required": [
+                "kind",
+                "end_nm"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Straight path segment to `end_nm`."
+        },
+        "ArcSegment": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "const": "arc"
+                },
+                "mid_nm": {
+                    "$ref": "#/$defs/NmPoint"
+                },
+                "end_nm": {
+                    "$ref": "#/$defs/NmPoint"
+                }
+            },
+            "required": [
+                "kind",
+                "mid_nm",
+                "end_nm"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Circular arc segment through `mid_nm` to `end_nm`, the form KiCad stores."
+        },
+        "CubicSegment": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "const": "cubic"
+                },
+                "control1_nm": {
+                    "$ref": "#/$defs/NmPoint"
+                },
+                "control2_nm": {
+                    "$ref": "#/$defs/NmPoint"
+                },
+                "end_nm": {
+                    "$ref": "#/$defs/NmPoint"
+                }
+            },
+            "required": [
+                "kind",
+                "control1_nm",
+                "control2_nm",
+                "end_nm"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "Cubic Bézier segment from the previous point through two control points\nto `end_nm`, the form KiCad stores for curves."
+        }
+    }
+}

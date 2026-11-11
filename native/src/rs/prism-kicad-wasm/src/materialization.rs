@@ -8,7 +8,7 @@ pub mod outlines;
 pub mod tiles;
 
 use prism_kicad_contracts::generated::materialization_document::{
-    BindingEntry, HoleOperation, MaterialOperation, MaterializationDocumentA0, SliceRole,
+    BindingEntry, HoleOperation, MaterialOperation, MaterializationDocumentA1, SliceRole,
 };
 #[cfg(feature = "materialize")]
 use prism_kicad_contracts::generated::materialization_request::MaterializationRequestA0;
@@ -43,7 +43,7 @@ pub fn materialize_board_pack(
 #[wasm_bindgen]
 pub struct AnalyticPack {
     reader: PackReader<'static>,
-    header: MaterializationDocumentA0,
+    header: MaterializationDocumentA1,
     holes: Vec<HoleOperation>,
     orders: BTreeMap<String, u32>,
 }
@@ -156,7 +156,7 @@ impl AnalyticPack {
 
     /// The header without binding: identity, scope, stack, nets, classes,
     /// pairs, components, chunk directory, and diagnostics.
-    pub fn header_without_binding(&self) -> MaterializationDocumentA0 {
+    pub fn header_without_binding(&self) -> MaterializationDocumentA1 {
         let mut header = self.header.clone();
         header.binding.clear();
         header

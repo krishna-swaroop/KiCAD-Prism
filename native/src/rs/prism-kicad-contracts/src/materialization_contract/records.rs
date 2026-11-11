@@ -3,7 +3,7 @@
 
 use super::{Keys, check_optional_length, strictly_ascending};
 use crate::generated::materialization_document::{
-    Component, HoleOperation, MaterializationDocumentA0, PostMachiningMode,
+    Component, HoleOperation, MaterializationDocumentA1, PostMachiningMode,
 };
 use crate::{ValidationError, validation_error};
 use std::collections::BTreeSet;
@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 /// Class names are unique; a class lists its constituents, and a composite
 /// is named by joining them with commas; every rule is a 32-bit length.
 pub(super) fn validate_net_classes(
-    document: &MaterializationDocumentA0,
+    document: &MaterializationDocumentA1,
 ) -> Result<(), ValidationError> {
     let mut names = BTreeSet::new();
     for (position, class) in document.net_classes.iter().enumerate() {
@@ -43,7 +43,7 @@ pub(super) fn validate_net_classes(
 
 /// Tied nets are known, sorted, and distinct; pin facts are in range.
 pub(super) fn validate_binding_records(
-    document: &MaterializationDocumentA0,
+    document: &MaterializationDocumentA1,
     keys: &Keys<'_>,
 ) -> Result<(), ValidationError> {
     for (position, entry) in document.binding.iter().enumerate() {

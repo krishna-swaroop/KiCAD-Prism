@@ -17,12 +17,13 @@
 //! for readers (such as the pack header) that see the chunk directory before
 //! any operation.
 //!
-//! Decode documents through [`decode_materialization_document_a0`]. The
+//! Decode documents through [`decode_materialization_document`]. The
 //! workspace enables serde_json's `arbitrary_precision`, under which numbers
 //! buffered inside untagged unions do not decode straight from text; the
 //! decoder parses to a `Value` first, which does.
 
 mod chunking;
+mod design_facts;
 mod records;
 mod scope;
 mod shapes;
@@ -30,7 +31,7 @@ mod stack;
 
 use crate::generated::materialization_document::{
     Affine2D, ChunkEntry, HoleOperation, HolePlating, MaterialOperation, MaterialProduct,
-    MaterializationDocumentA0, MaterializationScope, NmBounds, NonNegativeNm, Shape2d, SliceRole,
+    MaterializationDocumentA1, MaterializationScope, NmBounds, NonNegativeNm, Shape2d, SliceRole,
     SurfaceMaterial, SurfaceOperation,
 };
 use crate::{ValidationError, validation_error};
@@ -91,7 +92,13 @@ kind_deserializers! {
     deserialize_hole_operation_kind => "hole",
 }
 
-const SCHEMA: &str = "kicad_monkey.materialization.a0";
+/// Schema id of the documents this crate's producer writes.
+pub const MATERIALIZATION_SCHEMA_A1: &str = "kicad_monkey.materialization.a1";
+/// Schema id of a0 documents, which a1 readers still read.
+pub const MATERIALIZATION_SCHEMA_A0: &str = "kicad_monkey.materialization.a0";
+/// Every schema id a reader of this crate accepts, newest first.
+pub const MATERIALIZATION_SCHEMAS: [&str; 2] =
+    [MATERIALIZATION_SCHEMA_A1, MATERIALIZATION_SCHEMA_A0];
 const TYPE: &str = "kicad_monkey.materialization.document";
 const NM_MAX: i64 = i32::MAX as i64;
 
@@ -107,13 +114,14 @@ impl Keys<'_> {
     }
 }
 
-/// Decode JSON bytes and enforce the a0 semantic rules.
-pub fn decode_materialization_document_a0(
+/// Decode JSON bytes, a1 or a0, and enforce the semantic rules of their
+/// version.
+pub fn decode_materialization_document(
     source: &[u8],
-) -> Result<MaterializationDocumentA0, MaterializationDecodeError> {
+) -> Result<MaterializationDocumentA1, MaterializationDecodeError> {
     let value: serde_json::Value =
         serde_json::from_slice(source).map_err(MaterializationDecodeError::Transport)?;
-    let document: MaterializationDocumentA0 =
+    let document: MaterializationDocumentA1 =
         serde_json::from_value(value).map_err(MaterializationDecodeError::Transport)?;
     validate_materialization_document(&document).map_err(MaterializationDecodeError::Validation)?;
     Ok(document)
@@ -144,9 +152,10 @@ impl std::error::Error for MaterializationDecodeError {
     }
 }
 
-/// Enforce every rule of `kicad_monkey.materialization.a0`.
+/// Enforce every rule of `kicad_monkey.materialization.a1`, or of a0 for an
+/// a0 document.
 pub fn validate_materialization_document(
-    document: &MaterializationDocumentA0,
+    document: &MaterializationDocumentA1,
 ) -> Result<(), ValidationError> {
     let keys = validate_header(document)?;
     let total: u64 = document
@@ -176,15 +185,16 @@ pub fn validate_materialization_document(
 /// The operation count is taken from the chunk directory, and
 /// `operations` itself is ignored.
 pub fn validate_materialization_header(
-    document: &MaterializationDocumentA0,
+    document: &MaterializationDocumentA1,
 ) -> Result<(), ValidationError> {
     validate_header(document).map(|_| ())
 }
 
-fn validate_header(document: &MaterializationDocumentA0) -> Result<Keys<'_>, ValidationError> {
-    validate_identity(document)?;
+fn validate_header(document: &MaterializationDocumentA1) -> Result<Keys<'_>, ValidationError> {
+    let a1 = validate_identity(document)?;
     validate_scope(&document.scope)?;
     let keys = collect_keys(document)?;
+    design_facts::validate_design_facts(document, &keys, a1)?;
     stack::validate_regions(&document.stack, &keys)?;
     validate_nets(document, &keys)?;
     records::validate_net_classes(document)?;
@@ -196,11 +206,18 @@ fn validate_header(document: &MaterializationDocumentA0) -> Result<Keys<'_>, Val
     Ok(keys)
 }
 
-fn validate_identity(document: &MaterializationDocumentA0) -> Result<(), ValidationError> {
+/// The identity is a1's or a0's, with the fixed coordinate system. Returns
+/// whether the document is a1.
+fn validate_identity(document: &MaterializationDocumentA1) -> Result<bool, ValidationError> {
     let system = &document.coordinate_system;
-    if document.schema != SCHEMA
+    let version = match document.schema.as_str() {
+        MATERIALIZATION_SCHEMA_A1 => "a1",
+        MATERIALIZATION_SCHEMA_A0 => "a0",
+        _ => "",
+    };
+    if version.is_empty()
         || document.type_ != TYPE
-        || document.version != "a0"
+        || document.version != version
         || system.unit != "nm"
         || system.x_axis != "board_right"
         || system.y_axis != "board_down"
@@ -208,10 +225,10 @@ fn validate_identity(document: &MaterializationDocumentA0) -> Result<(), Validat
         return Err(validation_error(
             "unsupported_contract",
             "$",
-            "materialization identity and coordinate system must match a0",
+            "materialization identity and coordinate system must match a1 or a0",
         ));
     }
-    Ok(())
+    Ok(version == "a1")
 }
 
 fn strictly_ascending<T: Ord>(values: &[T]) -> bool {
@@ -283,7 +300,7 @@ fn check_optional_length(value: Option<&NonNegativeNm>, path: &str) -> Result<()
     value.map_or(Ok(()), |value| check_length(**value, path))
 }
 
-fn collect_keys(document: &MaterializationDocumentA0) -> Result<Keys<'_>, ValidationError> {
+fn collect_keys(document: &MaterializationDocumentA1) -> Result<Keys<'_>, ValidationError> {
     check_optional_length(
         document.stack.board_thickness_nm.as_ref(),
         "$.stack.board_thickness_nm",
@@ -324,7 +341,7 @@ fn collect_keys(document: &MaterializationDocumentA0) -> Result<Keys<'_>, Valida
 }
 
 fn validate_nets(
-    document: &MaterializationDocumentA0,
+    document: &MaterializationDocumentA1,
     keys: &Keys<'_>,
 ) -> Result<(), ValidationError> {
     for (position, class) in document.net_classes.iter().enumerate() {
@@ -381,7 +398,7 @@ fn out_of_scope(path: String) -> ValidationError {
     )
 }
 
-fn validate_components(document: &MaterializationDocumentA0) -> Result<(), ValidationError> {
+fn validate_components(document: &MaterializationDocumentA1) -> Result<(), ValidationError> {
     let named = document
         .scope
         .products
@@ -404,7 +421,7 @@ fn validate_components(document: &MaterializationDocumentA0) -> Result<(), Valid
     Ok(())
 }
 
-fn validate_diagnostics(document: &MaterializationDocumentA0) -> Result<(), ValidationError> {
+fn validate_diagnostics(document: &MaterializationDocumentA1) -> Result<(), ValidationError> {
     for (position, diagnostic) in document.diagnostics.iter().enumerate() {
         if diagnostic
             .product
@@ -682,7 +699,7 @@ fn validate_bounds(bounds: &NmBounds, path: &str) -> Result<(), ValidationError>
 /// operation count. Coverage is not required: geometry-only documents may
 /// bind a subset (the producer binds every operation).
 fn validate_binding_order(
-    document: &MaterializationDocumentA0,
+    document: &MaterializationDocumentA1,
     total: u64,
 ) -> Result<(), ValidationError> {
     let mut previous: Option<u32> = None;
@@ -701,7 +718,7 @@ fn validate_binding_order(
 }
 
 /// Each binding entry carries its operation's net key.
-fn validate_binding_nets(document: &MaterializationDocumentA0) -> Result<(), ValidationError> {
+fn validate_binding_nets(document: &MaterializationDocumentA1) -> Result<(), ValidationError> {
     for (position, entry) in document.binding.iter().enumerate() {
         let operation = usize::try_from(entry.operation_index)
             .ok()
@@ -722,7 +739,7 @@ fn validate_binding_nets(document: &MaterializationDocumentA0) -> Result<(), Val
 /// once. Their slices and nets are known, and their net lists are sorted
 /// and distinct. Returns the operation count the directory covers.
 fn validate_chunk_directory(
-    document: &MaterializationDocumentA0,
+    document: &MaterializationDocumentA1,
     keys: &Keys<'_>,
 ) -> Result<u64, ValidationError> {
     let mut next = 0u64;
@@ -769,7 +786,7 @@ fn validate_chunk_directory(
 /// Members of a chunk lie on its slice, inside its bounds, in its tile, and
 /// its net list is exactly their distinct nets.
 fn check_chunk_members(
-    document: &MaterializationDocumentA0,
+    document: &MaterializationDocumentA1,
     chunk: &ChunkEntry,
     position: usize,
 ) -> Result<(), ValidationError> {

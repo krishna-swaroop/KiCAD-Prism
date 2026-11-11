@@ -1,6 +1,8 @@
 //! Board materialization driver: parse, emit requested products, chunk.
 
 use super::apertures::BoardMargins;
+use super::design_facts::{FactInputs, ProjectRules, design_facts};
+use super::design_zones::ZoneInputs;
 use super::dielectric::dielectric_regions;
 use super::emit::{Emitter, Origin, source_uid};
 use super::flash::{FlashLayers, flash_layers, presentation_plot};
@@ -21,17 +23,19 @@ use super::technical::{
     FootprintTextFacts, SourceGraphics, TECHNICAL_LAYERS, TechnicalBoard, TextContext,
     document_graphics, emit_copper_text, technical_graphics,
 };
+use super::zone_ids::ZoneIds;
 use super::{MaterializationError, error};
 use crate::board_plotter_ir::BoardPlotDocument;
 use crate::board_plotter_ir::FlashInputs;
 use crate::pcb::{
-    PcbFamily, PcbFootprint, PcbFootprintGraphic, PcbGraphic, PcbGraphicKind, PcbPad,
-    PcbRoutingArc, PcbSegment, PcbSelection, PcbSetup, PcbVia, PcbView, PcbZone,
+    PcbFamily, PcbFootprint, PcbFootprintGraphic, PcbFootprintZone, PcbGraphic, PcbGraphicKind,
+    PcbPad, PcbRoutingArc, PcbSegment, PcbSelection, PcbSetup, PcbVia, PcbView, PcbZone,
     resolve_pad_copper_layer,
 };
 use crate::sexpr::Sexp;
 use prism_kicad_contracts::generated::materialization_document::{
-    BoardSide, Component, DiffPair, MaterialProduct, Net, NetClass, NmBounds, PlanarRegion2d, Stack,
+    BoardSide, Component, DesignFacts, DiffPair, MaterialProduct, Net, NetClass, NmBounds,
+    PlanarRegion2d, Stack,
 };
 
 /// Everything emitted from one board before chunking.
@@ -41,6 +45,8 @@ pub(crate) struct Emitted {
     pub net_classes: Vec<NetClass>,
     pub diff_pairs: Vec<DiffPair>,
     pub components: Vec<Component>,
+    /// Board facts that are not material (a1), whatever the products.
+    pub design_facts: DesignFacts,
     pub emitter: Emitter,
 }
 
@@ -86,37 +92,55 @@ struct Sources<'v> {
     /// larger than the rest of a record, so keeping it once matters.
     zones: Vec<&'v PcbZone>,
     technical_zones: Vec<&'v PcbZone>,
+    /// Rule areas owned by footprints.
+    footprint_zones: Vec<PcbFootprintZone>,
+    zone_ids: ZoneIds,
 }
 
-/// Copper zones, and zones on technical layers. Other zones never
-/// contribute material. KiCad neither fills nor plots zones owned by a
-/// footprint (they act only as rule areas), so a stored fill on one is
-/// reported and left out. A zone that fails to decode is reported, never
-/// silently dropped.
-fn split_zones<'v>(
-    view: &'v PcbView<'_>,
-    emitter: &mut Emitter,
-) -> (Vec<&'v PcbZone>, Vec<&'v PcbZone>) {
+/// Zones split by what they contribute.
+struct Zones<'v> {
+    copper: Vec<&'v PcbZone>,
+    technical: Vec<&'v PcbZone>,
+    footprint_rule_areas: Vec<PcbFootprintZone>,
+    ids: ZoneIds,
+}
+
+/// Copper zones, zones on technical layers, and footprint rule areas, with
+/// board-wide zone UIDs. Other zones never contribute material. KiCad
+/// neither fills nor plots zones owned by a footprint (they act only as
+/// rule areas), so a stored fill on one is reported and left out. A zone
+/// that fails to decode is reported, never silently dropped.
+fn split_zones<'v>(view: &'v PcbView<'_>, emitter: &mut Emitter) -> Zones<'v> {
     let (mut copper, mut technical) = (Vec::new(), Vec::new());
     // Zones may be on any layer, so their warnings belong to no product.
     let product = emitter.product.take();
-    for owned in view.footprint_zones() {
-        match owned {
-            Ok(owned) if !owned.zone.filled_polygons.is_empty() => {
-                let zone = &owned.zone;
-                emitter.warn(
-                    "footprint_zone_fill_ignored",
-                    "KiCad does not plot fills of zones inside footprints".to_owned(),
-                    Some(source_uid(
-                        "zone",
-                        zone.uuid.as_deref(),
-                        zone.source_range.start,
-                    )),
-                );
-            }
-            Ok(_) => {}
+    let mut owned = Vec::new();
+    for zone in view.footprint_zones() {
+        match zone {
+            Ok(zone) => owned.push(zone),
             Err(cause) => emitter.warn("zone_not_decoded", cause.to_string(), None),
         }
+    }
+    let decoded: Vec<&PcbZone> = view
+        .decoded_zones()
+        .iter()
+        .filter_map(|zone| zone.as_ref().ok())
+        .collect();
+    let ids = ZoneIds::new(
+        decoded
+            .iter()
+            .copied()
+            .chain(owned.iter().map(|owned| &owned.zone)),
+    );
+    for owned in owned
+        .iter()
+        .filter(|owned| !owned.zone.filled_polygons.is_empty())
+    {
+        emitter.warn(
+            "footprint_zone_fill_ignored",
+            "KiCad does not plot fills of zones inside footprints".to_owned(),
+            Some(ids.uid(&owned.zone)),
+        );
     }
     for zone in view.decoded_zones() {
         match zone {
@@ -134,7 +158,13 @@ fn split_zones<'v>(
         }
     }
     emitter.product = product;
-    (copper, technical)
+    owned.retain(|owned| owned.zone.keepout.is_some());
+    Zones {
+        copper,
+        technical,
+        footprint_rule_areas: owned,
+        ids,
+    }
 }
 
 fn load<'v>(
@@ -144,11 +174,11 @@ fn load<'v>(
     emitter.product = Some(MaterialProduct::Copper);
     // Zones decode alongside the other families. Their warnings belong to
     // no product and keep their place ahead of everything load reports.
-    let ((zones, technical_zones, zone_warnings), families) = parallel::join(
+    let ((zones, zone_warnings), families) = parallel::join(
         || {
             let mut local = Emitter::default();
-            let (copper, technical) = split_zones(view, &mut local);
-            (copper, technical, local.diagnostics)
+            let zones = split_zones(view, &mut local);
+            (zones, local.diagnostics)
         },
         || -> Result<_, MaterializationError> {
             Ok((
@@ -168,8 +198,10 @@ fn load<'v>(
         segments,
         arcs,
         vias,
-        zones,
-        technical_zones,
+        zones: zones.copper,
+        technical_zones: zones.technical,
+        footprint_zones: zones.footprint_rule_areas,
+        zone_ids: zones.ids,
     })
 }
 
@@ -235,9 +267,21 @@ pub(crate) fn emit_board(
     operation_cap: Option<usize>,
 ) -> Result<Emitted, MaterializationError> {
     let settings = project.map(NetClassSettings::from_project).transpose()?;
+    let rules = project.map(ProjectRules::from_project).transpose()?;
     let view =
         PcbView::parse_selected(source, Default::default(), selection()).map_err(parse_error)?;
-    emit_view(source, settings, &view, products, operation_cap)
+    let project = ProjectFacts {
+        settings,
+        rules: rules.unwrap_or_default(),
+    };
+    emit_view(source, project, &view, products, operation_cap)
+}
+
+/// What the project file contributes.
+#[derive(Default)]
+struct ProjectFacts {
+    settings: Option<NetClassSettings>,
+    rules: ProjectRules,
 }
 
 /// Give nets their classes and pair them. Classes come from the project
@@ -264,7 +308,7 @@ fn classify(
 /// rule 1: a projected view and a full-model view give the same result.
 fn emit_view(
     source: &str,
-    settings: Option<NetClassSettings>,
+    project: ProjectFacts,
     view: &PcbView<'_>,
     products: &[MaterialProduct],
     operation_cap: Option<usize>,
@@ -294,7 +338,7 @@ fn emit_view(
         stack,
         graphics,
     } = decoded?;
-    let (net_classes, diff_pairs) = classify(settings, view, &mut nets, &mut emitter);
+    let (net_classes, diff_pairs) = classify(project.settings, view, &mut nets, &mut emitter);
     // Text of every drawn product comes from one plot document.
     let text = drawn.then(|| Text {
         context: text_context(source, view, &graphics.0),
@@ -326,18 +370,27 @@ fn emit_view(
         text: text.as_ref(),
     };
     emit_technical(&board, products, &mut emitter);
+    let version = view.metadata().map_or(0, |metadata| metadata.version);
     let components = if wants(MaterialProduct::Components) {
-        let version = view.metadata().map_or(0, |metadata| metadata.version);
         components(&sources, &graphics.1, version)
     } else {
         Vec::new()
     };
+    let design_facts = board_facts(
+        &sources,
+        &project.rules,
+        &copper,
+        &graphics.1,
+        version,
+        &mut emitter,
+    );
     Ok(Emitted {
         stack,
         nets,
         net_classes,
         diff_pairs,
         components,
+        design_facts,
         emitter,
     })
 }
@@ -364,11 +417,12 @@ fn decode_and_emit_copper<'v>(
     let nets = nets(view, &sources)?;
     let setup = view.setup().map_err(parse_error)?;
     let stack = stack_of(view, setup.as_ref(), copper, emitter)?;
-    // Components read footprint courtyards and fabrication outlines.
+    // Components and the design facts read footprint courtyards and
+    // fabrication outlines; drawn products also read board graphics.
     let graphics = if drawn || products.contains(&MaterialProduct::Components) {
         source_graphics(view)?
     } else {
-        (Vec::new(), Vec::new())
+        (Vec::new(), collect(view.footprint_graphics())?)
     };
     if products.contains(&MaterialProduct::Copper) {
         emit_copper(view, &sources, copper, emitter)?;
@@ -459,7 +513,7 @@ fn emit_copper(
     let version = view.metadata().map_or(0, |metadata| metadata.version);
     route_copper(&routes(&sources.segments, &sources.arcs), copper, emitter);
     via_lands(&sources.vias, copper, &flash, emitter);
-    zone_fills(&sources.zones, copper, version, emitter);
+    zone_fills(&sources.zones, &sources.zone_ids, copper, version, emitter);
     let pads = Pads {
         copper,
         flash: &flash,
@@ -653,6 +707,7 @@ fn emit_technical(board: &Board<'_, '_>, products: &[MaterialProduct], emitter: 
         footprint: &board.graphics.1,
         footprints: &board.sources.footprints,
         zones: &board.sources.technical_zones,
+        zone_ids: &board.sources.zone_ids,
         mask_margin_nm: margins.mask_nm,
     };
     let placed = technical_graphics(&graphics, document.as_ref(), context);
@@ -711,6 +766,31 @@ impl Pads<'_> {
             }
         }
     }
+}
+
+/// The design facts (a1) of the decoded board.
+fn board_facts(
+    sources: &Sources<'_>,
+    rules: &ProjectRules,
+    copper: &CopperStack,
+    graphics: &[PcbFootprintGraphic],
+    version: i64,
+    emitter: &mut Emitter,
+) -> DesignFacts {
+    let inputs = FactInputs {
+        rules,
+        zones: ZoneInputs {
+            zones: &sources.zones,
+            footprint_zones: &sources.footprint_zones,
+            footprints: &sources.footprints,
+            copper,
+            ids: &sources.zone_ids,
+            version,
+        },
+        pads: &sources.pads,
+        graphics,
+    };
+    design_facts(&inputs, emitter)
 }
 
 /// Component records, with each footprint's net-tie and jumper groups.

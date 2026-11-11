@@ -11,7 +11,7 @@ use super::{
     validate_request,
 };
 use prism_kicad_contracts::generated::materialization_document::{
-    MaterialProduct, MaterializationDocumentA0, MaterializationScope,
+    MaterialProduct, MaterializationDocumentA1, MaterializationScope,
 };
 use prism_kicad_contracts::generated::materialization_request::MaterializationRequestA0;
 use prism_kicad_contracts::materialization_contract::{ScopeFilter, scope_from_request};
@@ -74,7 +74,7 @@ impl PreparedBoard {
     pub fn materialize(
         &self,
         request: &MaterializationRequestA0,
-    ) -> Result<MaterializationDocumentA0, MaterializationError> {
+    ) -> Result<MaterializationDocumentA1, MaterializationError> {
         validate_request(self.identity.total_bytes(), request)?;
         let scope = scope_from_request(request);
         assemble(
@@ -114,6 +114,7 @@ pub(super) fn selected(emitted: &Emitted, scope: &MaterializationScope) -> Emitt
         net_classes: emitted.net_classes.clone(),
         diff_pairs: emitted.diff_pairs.clone(),
         components: Vec::new(),
+        design_facts: emitted.design_facts.clone(),
         emitter: Default::default(),
     };
     narrowed.emitter.operations = emitted

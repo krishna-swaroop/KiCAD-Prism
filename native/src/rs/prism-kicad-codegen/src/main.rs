@@ -17,7 +17,7 @@ mod prism_presence;
 mod schemas;
 
 use prism_presence::{is_nested_option_type, is_option_type};
-use schemas::SCHEMAS;
+use schemas::{SCHEMAS, root_struct_name};
 
 const PLOTTER_OPERATION_KINDS: [(&str, &str, &str); 14] = [
     (
@@ -973,10 +973,7 @@ fn schema_presence_rules(
     schema: &Value,
 ) -> Result<BTreeMap<(String, String), FieldPresence>> {
     let mut objects = BTreeMap::new();
-    objects.insert(
-        schema_name.trim_end_matches(".json").to_owned() + "A0",
-        schema,
-    );
+    objects.insert(root_struct_name(schema_name), schema);
     if let Some(definitions) = schema.get("$defs").and_then(Value::as_object) {
         objects.extend(
             definitions

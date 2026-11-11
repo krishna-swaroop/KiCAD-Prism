@@ -85,7 +85,7 @@ const ALL: [MaterialProduct; 7] = [
     MaterialProduct::Components,
 ];
 
-fn serialized(emitted: &Emitted) -> [String; 6] {
+fn serialized(emitted: &Emitted) -> [String; 7] {
     let json = |value: serde_json::Result<String>| value.expect("serialize");
     [
         json(serde_json::to_string(&emitted.stack)),
@@ -94,6 +94,7 @@ fn serialized(emitted: &Emitted) -> [String; 6] {
         json(serde_json::to_string(&emitted.emitter.operations)),
         json(serde_json::to_string(&emitted.emitter.binding)),
         json(serde_json::to_string(&emitted.emitter.diagnostics)),
+        json(serde_json::to_string(&emitted.design_facts)),
     ]
 }
 
@@ -108,8 +109,8 @@ fn a_projected_view_and_a_full_model_view_give_the_same_result() {
         &[MaterialProduct::Silkscreen][..],
     ] {
         let from_projection =
-            emit_view(BOARD, None, &projected, products, None).expect("projected");
-        let from_full = emit_view(BOARD, None, &full, products, None).expect("full");
+            emit_view(BOARD, Default::default(), &projected, products, None).expect("projected");
+        let from_full = emit_view(BOARD, Default::default(), &full, products, None).expect("full");
         assert!(
             !from_full.emitter.operations.is_empty(),
             "the board materializes something for {products:?}"

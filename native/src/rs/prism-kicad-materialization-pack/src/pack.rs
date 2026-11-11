@@ -9,7 +9,7 @@ use crate::wire::{
 };
 use crate::{PACK_FORMAT_VERSION, PACK_MAGIC, PREAMBLE_BYTES, PackError, PackLimits, aligned};
 use prism_kicad_contracts::generated::materialization_document::{
-    MaterialOperation, MaterializationDocumentA0,
+    MaterialOperation, MaterializationDocumentA1,
 };
 use prism_kicad_contracts::materialization_contract::{
     validate_materialization_document, validate_materialization_header,
@@ -25,7 +25,7 @@ fn put_u64(out: &mut Vec<u8>, value: usize) {
     out.extend(u64::try_from(value).unwrap_or(u64::MAX).to_le_bytes());
 }
 
-fn keys(document: &MaterializationDocumentA0) -> Result<Keys<'_>, PackError> {
+fn keys(document: &MaterializationDocumentA1) -> Result<Keys<'_>, PackError> {
     Ok(Keys {
         slices: document
             .stack
@@ -45,7 +45,7 @@ fn keys(document: &MaterializationDocumentA0) -> Result<Keys<'_>, PackError> {
 
 /// Preamble and JSON header (without operations, binding, or chunks),
 /// padded to 8.
-fn encode_preamble_and_header(document: &MaterializationDocumentA0) -> Result<Vec<u8>, PackError> {
+fn encode_preamble_and_header(document: &MaterializationDocumentA1) -> Result<Vec<u8>, PackError> {
     let mut header = document.clone();
     header.operations.clear();
     header.binding.clear();
@@ -63,7 +63,7 @@ fn encode_preamble_and_header(document: &MaterializationDocumentA0) -> Result<Ve
 }
 
 /// Encode a valid document as a complete pack.
-pub fn encode_pack(document: &MaterializationDocumentA0) -> Result<Vec<u8>, PackError> {
+pub fn encode_pack(document: &MaterializationDocumentA1) -> Result<Vec<u8>, PackError> {
     validate_materialization_document(document).map_err(PackError::Invalid)?;
     let keys = keys(document)?;
     let mut strings = StringTable::default();
@@ -135,7 +135,7 @@ fn read_u16(bytes: &[u8], offset: usize) -> Result<u16, PackError> {
 fn decode_preamble_and_header(
     bytes: &[u8],
     limits: PackLimits,
-) -> Result<(MaterializationDocumentA0, usize), PackError> {
+) -> Result<(MaterializationDocumentA1, usize), PackError> {
     let magic = bytes.get(..8).ok_or(PackError::Truncated)?;
     if magic != PACK_MAGIC {
         return Err(PackError::BadMagic);
@@ -166,7 +166,7 @@ fn decode_preamble_and_header(
     // Value first: the workspace's arbitrary-precision numbers do not decode
     // straight from text into the contract's untagged unions.
     let value: serde_json::Value = serde_json::from_slice(json).map_err(PackError::Header)?;
-    let document: MaterializationDocumentA0 =
+    let document: MaterializationDocumentA1 =
         serde_json::from_value(value).map_err(PackError::Header)?;
     if !(document.operations.is_empty()
         && document.binding.is_empty()
@@ -183,7 +183,7 @@ fn decode_preamble_and_header(
 /// ([`PackReader::open_owned`]), so a long-lived reader parses the header once.
 pub struct PackReader<'a> {
     bytes: Cow<'a, [u8]>,
-    header: MaterializationDocumentA0,
+    header: MaterializationDocumentA1,
     strings: Vec<String>,
     blocks: Vec<(usize, usize)>,
     slices: Vec<String>,
@@ -271,7 +271,7 @@ impl<'a> PackReader<'a> {
 
     /// The header document, with binding and chunk directory; its
     /// `operations` are empty.
-    pub fn header(&self) -> &MaterializationDocumentA0 {
+    pub fn header(&self) -> &MaterializationDocumentA1 {
         &self.header
     }
 
@@ -300,7 +300,7 @@ impl<'a> PackReader<'a> {
     }
 
     /// Decode every chunk and validate the whole document.
-    pub fn document(&self) -> Result<MaterializationDocumentA0, PackError> {
+    pub fn document(&self) -> Result<MaterializationDocumentA1, PackError> {
         let mut document = self.header.clone();
         for position in 0..self.blocks.len() {
             document.operations.extend(self.chunk(position)?);

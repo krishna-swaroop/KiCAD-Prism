@@ -1,7 +1,7 @@
 //! A prepared board answers every request exactly as a direct
 //! materialization does, results and errors alike.
 
-use prism_kicad_contracts::generated::materialization_document::MaterializationDocumentA0;
+use prism_kicad_contracts::generated::materialization_document::MaterializationDocumentA1;
 use prism_kicad_contracts::generated::materialization_request::MaterializationRequestA0;
 use prism_kicad_core::board_materialization::{
     MaterializationError, PrepareLimits, PreparedBoard, materialize_board,
@@ -81,7 +81,7 @@ fn request(products: &[&str], extra: Value) -> MaterializationRequestA0 {
     serde_json::from_value(value).expect("request decodes")
 }
 
-fn text(result: &Result<MaterializationDocumentA0, MaterializationError>) -> String {
+fn text(result: &Result<MaterializationDocumentA1, MaterializationError>) -> String {
     match result {
         Ok(document) => serde_json::to_string(document).expect("serialize"),
         Err(error) => format!("error {error}"),

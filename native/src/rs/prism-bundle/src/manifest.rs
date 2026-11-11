@@ -27,8 +27,13 @@ pub const DESIGN_PATH: &str = "design.json";
 pub const DESIGN_SCHEMA: &str = "kicad_monkey.design.a0";
 /// Archive path of the packed materialization.
 pub const MATERIALIZATION_PATH: &str = "materialization/board.kmpack";
-/// Schema id of the materialization.
-pub const MATERIALIZATION_SCHEMA: &str = "kicad_monkey.materialization.a0";
+/// Schema id of the materialization this generator writes.
+pub const MATERIALIZATION_SCHEMA: &str =
+    prism_kicad_contracts::materialization_contract::MATERIALIZATION_SCHEMA_A1;
+/// Every materialization schema id a reader accepts: the current one and
+/// a0, whose packs the a1 reader still opens (ADR amendment PI).
+pub const MATERIALIZATION_SCHEMAS: [&str; 2] =
+    prism_kicad_contracts::materialization_contract::MATERIALIZATION_SCHEMAS;
 /// Archive path of the component GLB.
 pub const MODELS_PATH: &str = "viewer/models/components.glb";
 /// Archive path of the assembly HLR member (cli-spec.md §5.2.4).

@@ -54,6 +54,7 @@ const roots = [
   ["NativeError.json", "NativeErrorA0", "native-error.ts"],
   ["MaterializationRequest.json", "MaterializationRequestA0", "materialization-request.ts"],
   ["MaterializationDocument.json", "MaterializationDocumentA0", "materialization-document.ts"],
+  ["MaterializationDocumentA1.json", "MaterializationDocumentA1", "materialization-document-a1.ts"],
 ];
 const schemas = new Map();
 for (const [file] of roots) {

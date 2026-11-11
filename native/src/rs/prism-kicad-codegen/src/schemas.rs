@@ -135,3 +135,18 @@ pub const SCHEMAS: [(&str, &str); 73] = [
         "prism_vendor_jlcpcb_config_a0.rs",
     ),
 ];
+
+/// The generated root struct of a fork schema: its title's name, which is
+/// the file stem plus the version, `A0` unless the stem already ends in one
+/// (`MaterializationDocumentA1.json`).
+pub(crate) fn root_struct_name(schema_name: &str) -> String {
+    let stem = schema_name.trim_end_matches(".json");
+    let versioned = stem.rsplit_once('A').is_some_and(|(head, digits)| {
+        !head.is_empty() && !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
+    });
+    if versioned {
+        stem.to_owned()
+    } else {
+        stem.to_owned() + "A0"
+    }
+}

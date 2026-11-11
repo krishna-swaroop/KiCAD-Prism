@@ -10,7 +10,7 @@
 //! checks that a prepared board answers each scope exactly as a direct
 //! materialization does, and prints a JSON summary. With `OUT.json`, writes the complete document.
 
-use prism_kicad_contracts::generated::materialization_document::MaterializationDocumentA0;
+use prism_kicad_contracts::generated::materialization_document::MaterializationDocumentA1;
 use prism_kicad_contracts::generated::materialization_request::MaterializationRequestA0;
 use prism_kicad_contracts::materialization_contract::validate_materialization_document;
 use prism_kicad_core::board_materialization::{
@@ -28,7 +28,7 @@ impl Input {
         self.board.len() + self.project.as_ref().map_or(0, String::len)
     }
 
-    fn materialize(&self, request: &MaterializationRequestA0) -> MaterializationDocumentA0 {
+    fn materialize(&self, request: &MaterializationRequestA0) -> MaterializationDocumentA1 {
         materialize_project(&self.board, self.project.as_deref(), request)
             .unwrap_or_else(|error| fail(&error.to_string()))
     }
@@ -222,7 +222,7 @@ struct Prepared {
 }
 
 /// Prepare the board once and check its complete answer.
-fn check_prepared(source: &Input, complete: &MaterializationDocumentA0, text: &str) -> Prepared {
+fn check_prepared(source: &Input, complete: &MaterializationDocumentA1, text: &str) -> Prepared {
     let started = Instant::now();
     let limits = PrepareLimits {
         max_source_bytes: u64::MAX,
@@ -253,7 +253,7 @@ fn check_prepared(source: &Input, complete: &MaterializationDocumentA0, text: &s
 /// machine offers.
 fn check_scopes(
     source: &Input,
-    complete: &MaterializationDocumentA0,
+    complete: &MaterializationDocumentA1,
     prepared: &PreparedBoard,
     scopes: &[(&'static [&'static str], Vec<String>)],
 ) {
@@ -287,7 +287,7 @@ fn check_scopes(
 }
 
 /// The complete document packs deterministically and reads back exactly.
-fn check_pack(complete: &MaterializationDocumentA0, text: &str) -> usize {
+fn check_pack(complete: &MaterializationDocumentA1, text: &str) -> usize {
     use prism_kicad_materialization_pack::{PackLimits, PackReader, encode_pack};
     let bytes = encode_pack(complete).unwrap_or_else(|error| fail(&error.to_string()));
     if encode_pack(complete).ok().as_deref() != Some(bytes.as_slice()) {
@@ -307,8 +307,8 @@ fn check_pack(complete: &MaterializationDocumentA0, text: &str) -> usize {
 }
 
 fn check_rule_two(
-    complete: &MaterializationDocumentA0,
-    selective: &MaterializationDocumentA0,
+    complete: &MaterializationDocumentA1,
+    selective: &MaterializationDocumentA1,
     products: &[&str],
     key: &str,
 ) {

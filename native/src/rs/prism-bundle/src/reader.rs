@@ -12,7 +12,7 @@ use crate::generator::sha256_hex;
 use crate::json_scan::{JsonBound, scan};
 use crate::limits::{LimitName, Limits};
 use crate::manifest::{
-    DESIGN_SCHEMA, MANIFEST_PATH, MANIFEST_SCHEMA, MATERIALIZATION_SCHEMA, Manifest, a3,
+    DESIGN_SCHEMA, MANIFEST_PATH, MANIFEST_SCHEMA, MATERIALIZATION_SCHEMAS, Manifest, a3,
 };
 use crate::zip::{Entry, ReadAt, ZipError, ZipIndex};
 use serde_json::Value;
@@ -379,8 +379,8 @@ pub fn check_structured(
             None => finding.at_path(path),
         }
     };
-    if schema == MATERIALIZATION_SCHEMA {
-        return check_pack(path, bytes, pack_format_version);
+    if MATERIALIZATION_SCHEMAS.contains(&schema) {
+        return check_pack(path, schema, bytes, pack_format_version);
     }
     let prism = crate::schema::registry().knows(schema);
     if !prism && schema != DESIGN_SCHEMA {
@@ -402,7 +402,14 @@ pub fn check_structured(
     Ok(())
 }
 
-fn check_pack(path: &str, bytes: &[u8], pack_format_version: u16) -> Result<(), Finding> {
+/// The pack opens, has the generator's format, and its header declares the
+/// member's schema id.
+fn check_pack(
+    path: &str,
+    schema: &str,
+    bytes: &[u8],
+    pack_format_version: u16,
+) -> Result<(), Finding> {
     use prism_kicad_materialization_pack::{PACK_MAGIC, PackLimits, PackReader};
     let unreadable = |message: String| Finding::new("member-unreadable", message).at_path(path);
     if bytes.len() < 10 || bytes[..8] != PACK_MAGIC {
@@ -416,7 +423,14 @@ fn check_pack(path: &str, bytes: &[u8], pack_format_version: u16) -> Result<(), 
             "{path} has pack format {version}, not the generator's {pack_format_version}"
         )));
     }
-    PackReader::open(bytes, PackLimits::default())
-        .map(|_| ())
-        .map_err(|error| unreadable(format!("{path} does not open: {error}")))
+    let reader = PackReader::open(bytes, PackLimits::default())
+        .map_err(|error| unreadable(format!("{path} does not open: {error}")))?;
+    if reader.header().schema != schema {
+        return Err(Finding::new(
+            "member-schema-invalid",
+            format!("{path} does not declare schema {schema}"),
+        )
+        .at_path(path));
+    }
+    Ok(())
 }

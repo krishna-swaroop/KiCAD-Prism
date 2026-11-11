@@ -3,11 +3,11 @@
 //! selective-equals-filtered oracle, and the request boundary.
 
 use prism_kicad_contracts::generated::materialization_document::{
-    DielectricKind, MaterialProduct, MaterializationDocumentA0, MaterializationScope, NonNegativeNm,
+    DielectricKind, MaterialProduct, MaterializationDocumentA1, MaterializationScope, NonNegativeNm,
 };
 use prism_kicad_contracts::generated::materialization_request::MaterializationRequestA0;
 use prism_kicad_contracts::materialization_contract::{
-    decode_materialization_document_a0, validate_materialization_document,
+    decode_materialization_document, validate_materialization_document,
 };
 use prism_kicad_core::board_materialization::{
     chunk_operations, filter_document, materialization_sexpr, materialize_board,
@@ -72,7 +72,7 @@ fn example_operations() -> Value {
     ])
 }
 
-fn example_document() -> MaterializationDocumentA0 {
+fn example_document() -> MaterializationDocumentA1 {
     let value = json!({
         "schema": "kicad_monkey.materialization.a0",
         "type": "kicad_monkey.materialization.document",
@@ -105,14 +105,14 @@ fn example_document() -> MaterializationDocumentA0 {
         ],
         "chunks": [], "diagnostics": []
     });
-    let mut document: MaterializationDocumentA0 =
+    let mut document: MaterializationDocumentA1 =
         serde_json::from_value(value).expect("example decodes against the a0 contract");
     rechunk(&mut document);
     document
 }
 
 /// Apply the shared chunking rule and remap the binding table.
-fn rechunk(document: &mut MaterializationDocumentA0) {
+fn rechunk(document: &mut MaterializationDocumentA1) {
     let order: BTreeMap<String, u32> = document
         .stack
         .slices
@@ -145,7 +145,7 @@ fn example_decodes_validates_and_round_trips_json() {
     let document = example_document();
     validate_materialization_document(&document).expect("example is a valid a0 document");
     let first = serde_json::to_string(&document).expect("serialize");
-    let decoded = decode_materialization_document_a0(first.as_bytes()).expect("decode");
+    let decoded = decode_materialization_document(first.as_bytes()).expect("decode");
     let second = serde_json::to_string(&decoded).expect("serialize again");
     assert_eq!(
         first, second,
@@ -253,7 +253,7 @@ fn validator_rejects_copper_without_a_net() {
         .as_object_mut()
         .expect("operation object")
         .remove("net_key");
-    let document: MaterializationDocumentA0 = serde_json::from_value(value).expect("decode");
+    let document: MaterializationDocumentA1 = serde_json::from_value(value).expect("decode");
     let error = validate_materialization_document(&document).expect_err("copper needs a net");
     assert_eq!(error.code, "missing_net");
 }
@@ -270,7 +270,7 @@ fn decoding_rejects_a_mislabelled_shape_kind() {
         })
         .expect("a disk");
     shape["shape"]["kind"] = json!("annulus_2d");
-    assert!(serde_json::from_value::<MaterializationDocumentA0>(value).is_err());
+    assert!(serde_json::from_value::<MaterializationDocumentA1>(value).is_err());
 }
 
 fn request(products: &[&str], max_source_bytes: &str) -> MaterializationRequestA0 {
@@ -559,8 +559,8 @@ fn decoding_rejects_a_mislabelled_cubic_segment() {
         }]);
         value.to_string()
     };
-    assert!(decode_materialization_document_a0(with_segment("arc").as_bytes()).is_err());
-    assert!(decode_materialization_document_a0(with_segment("cubic").as_bytes()).is_ok());
+    assert!(decode_materialization_document(with_segment("arc").as_bytes()).is_err());
+    assert!(decode_materialization_document(with_segment("cubic").as_bytes()).is_ok());
 }
 
 /// Two-layer board with a full stackup, an outline drawn as two board lines,

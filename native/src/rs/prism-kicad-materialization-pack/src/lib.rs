@@ -1,4 +1,5 @@
-//! Packed encoding for `kicad_monkey.materialization.a0`.
+//! Packed encoding for `kicad_monkey.materialization.a1` (and a0, which has
+//! the same binary layout and no `design_facts` in its header).
 //!
 //! The pack is the canonical serialized materialization. It depends only on
 //! the generated contracts, so viewers (through WASM) and simulation engines
@@ -9,7 +10,7 @@
 //! | Offset | Size | Field |
 //! |---|---|---|
 //! | 0 | 8 | magic `KMMATPK\0` |
-//! | 8 | 2 | format version, `0` for a0 |
+//! | 8 | 2 | format version, `0` for a0 and a1 |
 //! | 10 | 2 | flags, `0` |
 //! | 12 | 4 | header length in bytes |
 //! | 16 | header length | header: the document as JSON without operations, binding, or chunks |
@@ -50,7 +51,7 @@ use std::fmt;
 
 /// File magic.
 pub const PACK_MAGIC: [u8; 8] = *b"KMMATPK\0";
-/// Format version of the a0 pack.
+/// Format version of the a0 and a1 packs: a1 grew only the JSON header.
 pub const PACK_FORMAT_VERSION: u16 = 0;
 /// Size of the fixed preamble before the header.
 pub const PREAMBLE_BYTES: usize = 16;

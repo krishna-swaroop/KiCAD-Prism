@@ -13,7 +13,7 @@ use prism_bundle::stages::crosscheck::{
 use prism_bundle::stages::materialize::materialize_complete;
 use prism_bundle::stages::parse::{ParseOutcome, ParseRequest};
 use prism_bundle::stages::{Built, Generator, Silent};
-use prism_kicad_contracts::generated::materialization_document::MaterializationDocumentA0;
+use prism_kicad_contracts::generated::materialization_document::MaterializationDocumentA1;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -83,7 +83,7 @@ impl Demo {
         std::fs::write(self.dir.join("demo.kicad_pcb"), text).unwrap();
     }
 
-    fn header(&self) -> MaterializationDocumentA0 {
+    fn header(&self) -> MaterializationDocumentA1 {
         let project = std::fs::read_to_string(self.dir.join("demo.kicad_pro")).unwrap();
         materialize_complete(&self.board(), &project, 10_000_000, u32::MAX)
             .unwrap()
@@ -101,7 +101,7 @@ impl Demo {
     }
 }
 
-fn check(header: &MaterializationDocumentA0, design: &Value) -> CrossCheckOutcome {
+fn check(header: &MaterializationDocumentA1, design: &Value) -> CrossCheckOutcome {
     cross_check(header, &DesignView::deserialize(design).unwrap())
 }
 

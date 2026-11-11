@@ -40,3 +40,4 @@ export type { NativeSVGRenderResultA0 } from "./native-svg-render-result.js";
 export type { NativeErrorA0 } from "./native-error.js";
 export type { MaterializationRequestA0 } from "./materialization-request.js";
 export type { MaterializationDocumentA0 } from "./materialization-document.js";
+export type { MaterializationDocumentA1 } from "./materialization-document-a1.js";

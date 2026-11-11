@@ -24,7 +24,7 @@
       },
       {
         "path": "materialization/board.kmpack",
-        "schema": "kicad_monkey.materialization.a0"
+        "schema": "kicad_monkey.materialization.a1"
       },
       {
         "path": "models/assembly-hlr.json",
@@ -69,7 +69,7 @@
     "upgrade_procedure": "kicad-seeded-upgrade-a0"
   },
   "revision_key": "faea5ace66f591553c21fdcb2555e5a67e6e2fe73b7d17663375ac6f809206f5",
-  "bundle_key": "f21ae403857908e6b3058eef04b526d4c84068414b2dfaf3b972ebb8e524ca06",
+  "bundle_key": "325304ed2c5785d742a6cb2399fc97a9e684b09d2ddfe95e9a081a6dd168b5c6",
   "config": {
     "schema": "prism.revision_key.effective_config.a1",
     "project_file": "USB-PD-Trigger-Board.kicad_pro",
@@ -164,7 +164,7 @@
       "stage": "board",
       "sha256": "699f4ec40dc0efd7d7e91bb55523ffa2726c21dba8530e092ef983e0c9ee13a5",
       "bytes": 175592,
-      "member_schema": "kicad_monkey.materialization.a0"
+      "member_schema": "kicad_monkey.materialization.a1"
     },
     {
       "path": "projections/board-objects.json",

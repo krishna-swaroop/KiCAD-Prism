@@ -820,6 +820,122 @@ pub struct Contour {
     pub segments: ::std::vec::Vec<PathSegment>,
     pub start_nm: NmPoint,
 }
+///Corner smoothing KiCad applies to a zone's fill (`smoothing`).
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Corner smoothing KiCad applies to a zone's fill (`smoothing`).",
+///  "type": "string",
+///  "enum": [
+///    "chamfer",
+///    "fillet"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum CornerSmoothing {
+    #[serde(rename = "chamfer")]
+    Chamfer,
+    #[serde(rename = "fillet")]
+    Fillet,
+}
+impl ::std::fmt::Display for CornerSmoothing {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Chamfer => f.write_str("chamfer"),
+            Self::Fillet => f.write_str("fillet"),
+        }
+    }
+}
+impl ::std::str::FromStr for CornerSmoothing {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "chamfer" => Ok(Self::Chamfer),
+            "fillet" => Ok(Self::Fillet),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for CornerSmoothing {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for CornerSmoothing {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for CornerSmoothing {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+/**A component's courtyard on one side, closed as KiCad closes it, in the
+board frame: the graphics on `F.CrtYd` (front) or `B.CrtYd` (back),
+chained end to end within 0.01 mm.*/
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "A component's courtyard on one side, closed as KiCad closes it, in the\nboard frame: the graphics on `F.CrtYd` (front) or `B.CrtYd` (back),\nchained end to end within 0.01 mm.",
+///  "type": "object",
+///  "required": [
+///    "regions",
+///    "side",
+///    "source_uid"
+///  ],
+///  "properties": {
+///    "regions": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/PlanarRegion2d"
+///      },
+///      "minItems": 1
+///    },
+///    "side": {
+///      "$ref": "#/$defs/BoardSide"
+///    },
+///    "source_uid": {
+///      "description": "The component's `source_uid`.",
+///      "type": "string"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Courtyard {
+    pub regions: ::std::vec::Vec<PlanarRegion2d>,
+    pub side: BoardSide,
+    ///The component's `source_uid`.
+    pub source_uid: ::std::string::String,
+}
 /**Cubic Bézier segment from the previous point through two control points
 to `end_nm`, the form KiCad stores for curves.*/
 ///
@@ -862,6 +978,84 @@ pub struct CubicSegment {
     pub end_nm: NmPoint,
     #[serde(deserialize_with = "crate::materialization_contract::deserialize_cubic_segment_kind")]
     pub kind: ::std::string::String,
+}
+/**Design rules and regions that are not material: they draw nothing and
+are not operations. Board facts like `nets`: every document of a board
+holds all of them whatever its scope. Arrays are in file order.*/
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Design rules and regions that are not material: they draw nothing and\nare not operations. Board facts like `nets`: every document of a board\nholds all of them whatever its scope. Arrays are in file order.",
+///  "type": "object",
+///  "required": [
+///    "courtyards",
+///    "footprint_rules",
+///    "pad_rules",
+///    "zones"
+///  ],
+///  "properties": {
+///    "copper_edge_clearance_nm": {
+///      "description": "Minimum copper-to-board-edge clearance (`min_copper_edge_clearance`) from the project file.",
+///      "$ref": "#/$defs/NonNegativeNm"
+///    },
+///    "courtyards": {
+///      "description": "By component in file order, front before back.",
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/Courtyard"
+///      }
+///    },
+///    "footprint_rules": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/FootprintRules"
+///      }
+///    },
+///    "max_error_nm": {
+///      "description": "KiCad's arc-approximation error (`max_error`) from the project file.",
+///      "$ref": "#/$defs/NonNegativeNm"
+///    },
+///    "pad_rules": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/PadRules"
+///      }
+///    },
+///    "zones": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/ZoneFacts"
+///      }
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct DesignFacts {
+    ///Minimum copper-to-board-edge clearance (`min_copper_edge_clearance`) from the project file.
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub copper_edge_clearance_nm: ::std::option::Option<NonNegativeNm>,
+    ///By component in file order, front before back.
+    pub courtyards: ::std::vec::Vec<Courtyard>,
+    pub footprint_rules: ::std::vec::Vec<FootprintRules>,
+    ///KiCad's arc-approximation error (`max_error`) from the project file.
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub max_error_nm: ::std::option::Option<NonNegativeNm>,
+    pub pad_rules: ::std::vec::Vec<PadRules>,
+    pub zones: ::std::vec::Vec<ZoneFacts>,
 }
 ///`DiagnosticSeverity`
 ///
@@ -1086,6 +1280,69 @@ pub struct Disk2d {
     #[serde(deserialize_with = "crate::materialization_contract::deserialize_disk_2d_kind")]
     pub kind: ::std::string::String,
     pub radius_nm: NonNegativeNm,
+}
+/**A footprint's zone rules for its pads, keyed by the component's
+`source_uid`. Present only for values it sets; a footprint that sets
+nothing has no record.*/
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "A footprint's zone rules for its pads, keyed by the component's\n`source_uid`. Present only for values it sets; a footprint that sets\nnothing has no record.",
+///  "type": "object",
+///  "required": [
+///    "source_uid"
+///  ],
+///  "properties": {
+///    "clearance_nm": {
+///      "$ref": "#/$defs/NonNegativeNm"
+///    },
+///    "pad_connection": {
+///      "$ref": "#/$defs/PadConnection"
+///    },
+///    "source_uid": {
+///      "type": "string"
+///    },
+///    "thermal_gap_nm": {
+///      "$ref": "#/$defs/NonNegativeNm"
+///    },
+///    "thermal_spoke_width_nm": {
+///      "$ref": "#/$defs/NonNegativeNm"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct FootprintRules {
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub clearance_nm: ::std::option::Option<NonNegativeNm>,
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub pad_connection: ::std::option::Option<PadConnection>,
+    pub source_uid: ::std::string::String,
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub thermal_gap_nm: ::std::option::Option<NonNegativeNm>,
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub thermal_spoke_width_nm: ::std::option::Option<NonNegativeNm>,
 }
 /**Drilled or milled hole spanning the conductor slices `start_slice_key` to
 `end_slice_key` inclusive, in either order.*/
@@ -1316,6 +1573,86 @@ pub struct HoleProtection {
     pub capped: ProtectionState,
     pub filled: ProtectionState,
     pub front: SideProtection,
+}
+/**KiCad's island removal (`island_removal_mode`): 0 `always`, 1 `never`,
+2 `below_area` (islands smaller than `island_min_area_mm2`). Without the
+token KiCad removes every island.*/
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "KiCad's island removal (`island_removal_mode`): 0 `always`, 1 `never`,\n2 `below_area` (islands smaller than `island_min_area_mm2`). Without the\ntoken KiCad removes every island.",
+///  "type": "string",
+///  "enum": [
+///    "always",
+///    "never",
+///    "below_area"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum IslandRemoval {
+    #[serde(rename = "always")]
+    Always,
+    #[serde(rename = "never")]
+    Never,
+    #[serde(rename = "below_area")]
+    BelowArea,
+}
+impl ::std::fmt::Display for IslandRemoval {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::Always => f.write_str("always"),
+            Self::Never => f.write_str("never"),
+            Self::BelowArea => f.write_str("below_area"),
+        }
+    }
+}
+impl ::std::str::FromStr for IslandRemoval {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "always" => Ok(Self::Always),
+            "never" => Ok(Self::Never),
+            "below_area" => Ok(Self::BelowArea),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for IslandRemoval {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for IslandRemoval {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for IslandRemoval {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
 }
 ///Straight path segment to `end_nm`.
 ///
@@ -1644,16 +1981,17 @@ pub struct MaterializationDiagnostic {
     )]
     pub source_uid: ::std::option::Option<::std::string::String>,
 }
-/**Analytic materialization of one KiCad board. This JSON form is the
-deterministic debug view; the packed columnar encoding is canonical.*/
+/**Analytic materialization a1: a0 plus `design_facts`. The material is
+unchanged; a1 adds facts in the header only. An a1 reader also reads a0
+documents, which have no `design_facts`.*/
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "$id": "urn:wavenumber:schema:kicad_monkey.materialization.document:a0",
-///  "title": "Materialization document a0",
-///  "description": "Analytic materialization of one KiCad board. This JSON form is the\ndeterministic debug view; the packed columnar encoding is canonical.",
+///  "$id": "urn:wavenumber:schema:kicad_monkey.materialization.document:a1",
+///  "title": "Materialization document a1",
+///  "description": "Analytic materialization a1: a0 plus `design_facts`. The material is\nunchanged; a1 adds facts in the header only. An a1 reader also reads a0\ndocuments, which have no `design_facts`.",
 ///  "type": "object",
 ///  "required": [
 ///    "binding",
@@ -1695,6 +2033,10 @@ deterministic debug view; the packed columnar encoding is canonical.*/
 ///    "coordinate_system": {
 ///      "$ref": "#/$defs/MaterializationCoordinateSystem"
 ///    },
+///    "design_facts": {
+///      "description": "Present in every a1 document. Optional only so that an a1 reader can\nhold an a0 document in this model: absent means a0, whose producer did\nnot report these facts.",
+///      "$ref": "#/$defs/DesignFacts"
+///    },
 ///    "diagnostics": {
 ///      "type": "array",
 ///      "items": {
@@ -1730,7 +2072,7 @@ deterministic debug view; the packed columnar encoding is canonical.*/
 ///    },
 ///    "schema": {
 ///      "type": "string",
-///      "const": "kicad_monkey.materialization.a0"
+///      "const": "kicad_monkey.materialization.a1"
 ///    },
 ///    "scope": {
 ///      "$ref": "#/$defs/MaterializationScope"
@@ -1747,7 +2089,7 @@ deterministic debug view; the packed columnar encoding is canonical.*/
 ///    },
 ///    "version": {
 ///      "type": "string",
-///      "const": "a0"
+///      "const": "a1"
 ///    }
 ///  },
 ///  "additionalProperties": false
@@ -1756,11 +2098,20 @@ deterministic debug view; the packed columnar encoding is canonical.*/
 /// </details>
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct MaterializationDocumentA0 {
+pub struct MaterializationDocumentA1 {
     pub binding: ::std::vec::Vec<BindingEntry>,
     pub chunks: ::std::vec::Vec<ChunkEntry>,
     pub components: ::std::vec::Vec<Component>,
     pub coordinate_system: MaterializationCoordinateSystem,
+    /**Present in every a1 document. Optional only so that an a1 reader can
+    hold an a0 document in this model: absent means a0, whose producer did
+    not report these facts.*/
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub design_facts: ::std::option::Option<DesignFacts>,
     pub diagnostics: ::std::vec::Vec<MaterializationDiagnostic>,
     pub diff_pairs: ::std::vec::Vec<DiffPair>,
     pub net_classes: ::std::vec::Vec<NetClass>,
@@ -2270,6 +2621,92 @@ impl ::std::fmt::Display for NonNegativeNm {
         self.0.fmt(f)
     }
 }
+/**How copper joins the zone fills of its net: KiCad's `ZONE_CONNECTION`.
+A zone's `(connect_pads)` without a mode is `thermal_reliefs`; `yes` and
+`full` are `solid`, `no` is `none`. A pad's `(zone_connect N)` is 0
+`none`, 1 `thermal_reliefs`, 2 `solid`, 3 `thru_hole_only`.*/
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "How copper joins the zone fills of its net: KiCad's `ZONE_CONNECTION`.\nA zone's `(connect_pads)` without a mode is `thermal_reliefs`; `yes` and\n`full` are `solid`, `no` is `none`. A pad's `(zone_connect N)` is 0\n`none`, 1 `thermal_reliefs`, 2 `solid`, 3 `thru_hole_only`.",
+///  "type": "string",
+///  "enum": [
+///    "none",
+///    "thermal_reliefs",
+///    "solid",
+///    "thru_hole_only"
+///  ]
+///}
+/// ```
+/// </details>
+#[derive(
+    ::serde::Deserialize,
+    ::serde::Serialize,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    Hash,
+    Ord,
+    PartialEq,
+    PartialOrd,
+)]
+pub enum PadConnection {
+    #[serde(rename = "none")]
+    None,
+    #[serde(rename = "thermal_reliefs")]
+    ThermalReliefs,
+    #[serde(rename = "solid")]
+    Solid,
+    #[serde(rename = "thru_hole_only")]
+    ThruHoleOnly,
+}
+impl ::std::fmt::Display for PadConnection {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        match *self {
+            Self::None => f.write_str("none"),
+            Self::ThermalReliefs => f.write_str("thermal_reliefs"),
+            Self::Solid => f.write_str("solid"),
+            Self::ThruHoleOnly => f.write_str("thru_hole_only"),
+        }
+    }
+}
+impl ::std::str::FromStr for PadConnection {
+    type Err = self::error::ConversionError;
+    fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        match value {
+            "none" => Ok(Self::None),
+            "thermal_reliefs" => Ok(Self::ThermalReliefs),
+            "solid" => Ok(Self::Solid),
+            "thru_hole_only" => Ok(Self::ThruHoleOnly),
+            _ => Err("invalid value".into()),
+        }
+    }
+}
+impl ::std::convert::TryFrom<&str> for PadConnection {
+    type Error = self::error::ConversionError;
+    fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<&::std::string::String> for PadConnection {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: &::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
+impl ::std::convert::TryFrom<::std::string::String> for PadConnection {
+    type Error = self::error::ConversionError;
+    fn try_from(
+        value: ::std::string::String,
+    ) -> ::std::result::Result<Self, self::error::ConversionError> {
+        value.parse()
+    }
+}
 ///Pad numbers of one footprint that KiCad connects as a group.
 ///
 /// <details><summary>JSON schema</summary>
@@ -2298,6 +2735,160 @@ impl ::std::fmt::Display for NonNegativeNm {
 #[serde(deny_unknown_fields)]
 pub struct PadGroup {
     pub pad_numbers: ::std::vec::Vec<::std::string::String>,
+}
+/**A pad's own zone rules, keyed by the pad's binding `source_uid`. A value
+is present only when the pad sets it instead of inheriting it; a pad that
+sets nothing has no record.*/
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "A pad's own zone rules, keyed by the pad's binding `source_uid`. A value\nis present only when the pad sets it instead of inheriting it; a pad that\nsets nothing has no record.",
+///  "type": "object",
+///  "required": [
+///    "layers",
+///    "source_uid"
+///  ],
+///  "properties": {
+///    "clearance_nm": {
+///      "$ref": "#/$defs/NonNegativeNm"
+///    },
+///    "layers": {
+///      "description": "Padstack layers that set a rule, in file order.",
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/PadstackLayerRules"
+///      }
+///    },
+///    "pad_connection": {
+///      "$ref": "#/$defs/PadConnection"
+///    },
+///    "source_uid": {
+///      "type": "string"
+///    },
+///    "thermal_gap_nm": {
+///      "$ref": "#/$defs/NonNegativeNm"
+///    },
+///    "thermal_spoke_angle_deg": {
+///      "type": "number"
+///    },
+///    "thermal_spoke_width_nm": {
+///      "$ref": "#/$defs/NonNegativeNm"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct PadRules {
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub clearance_nm: ::std::option::Option<NonNegativeNm>,
+    ///Padstack layers that set a rule, in file order.
+    pub layers: ::std::vec::Vec<PadstackLayerRules>,
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub pad_connection: ::std::option::Option<PadConnection>,
+    pub source_uid: ::std::string::String,
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub thermal_gap_nm: ::std::option::Option<NonNegativeNm>,
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub thermal_spoke_angle_deg: ::std::option::Option<f64>,
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub thermal_spoke_width_nm: ::std::option::Option<NonNegativeNm>,
+}
+/**Zone rules a padstack layer sets for itself (`(padstack (layer ...))`).
+`kicad_layer` is the selector as written: a copper layer name, or `Inner`
+for every inner layer in KiCad's front/inner/back mode.*/
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Zone rules a padstack layer sets for itself (`(padstack (layer ...))`).\n`kicad_layer` is the selector as written: a copper layer name, or `Inner`\nfor every inner layer in KiCad's front/inner/back mode.",
+///  "type": "object",
+///  "required": [
+///    "kicad_layer"
+///  ],
+///  "properties": {
+///    "clearance_nm": {
+///      "$ref": "#/$defs/NonNegativeNm"
+///    },
+///    "kicad_layer": {
+///      "type": "string"
+///    },
+///    "pad_connection": {
+///      "$ref": "#/$defs/PadConnection"
+///    },
+///    "thermal_gap_nm": {
+///      "$ref": "#/$defs/NonNegativeNm"
+///    },
+///    "thermal_spoke_angle_deg": {
+///      "type": "number"
+///    },
+///    "thermal_spoke_width_nm": {
+///      "$ref": "#/$defs/NonNegativeNm"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct PadstackLayerRules {
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub clearance_nm: ::std::option::Option<NonNegativeNm>,
+    pub kicad_layer: ::std::string::String,
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub pad_connection: ::std::option::Option<PadConnection>,
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub thermal_gap_nm: ::std::option::Option<NonNegativeNm>,
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub thermal_spoke_angle_deg: ::std::option::Option<f64>,
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub thermal_spoke_width_nm: ::std::option::Option<NonNegativeNm>,
 }
 ///`PathCap`
 ///
@@ -2906,6 +3497,51 @@ pub struct RoundedRect2d {
     pub kind: ::std::string::String,
     pub radius_nm: NonNegativeNm,
     pub width_nm: NonNegativeNm,
+}
+///What a rule area forbids: each flag is true where KiCad's keep-out says `not_allowed`.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "What a rule area forbids: each flag is true where KiCad's keep-out says `not_allowed`.",
+///  "type": "object",
+///  "required": [
+///    "copper_pour",
+///    "footprints",
+///    "pads",
+///    "tracks",
+///    "vias"
+///  ],
+///  "properties": {
+///    "copper_pour": {
+///      "type": "boolean"
+///    },
+///    "footprints": {
+///      "type": "boolean"
+///    },
+///    "pads": {
+///      "type": "boolean"
+///    },
+///    "tracks": {
+///      "type": "boolean"
+///    },
+///    "vias": {
+///      "type": "boolean"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct RuleAreaKeepouts {
+    pub copper_pour: bool,
+    pub footprints: bool,
+    pub pads: bool,
+    pub tracks: bool,
+    pub vias: bool,
 }
 ///Closed analytic shape vocabulary. Lowering is a consumer operation.
 ///
@@ -3762,4 +4398,258 @@ pub struct Trapezoid2d {
     #[serde(deserialize_with = "crate::materialization_contract::deserialize_trapezoid_2d_kind")]
     pub kind: ::std::string::String,
     pub width_nm: NonNegativeNm,
+}
+/**One zone or rule area on copper, as drawn. `outline` is the authored
+outline in the board frame with its arcs: KiCad reads the first
+`(polygon)` as the outline and later ones as holes in it. Exactly one of
+`fill` (a copper zone) and `keepout` (a rule area) is present.*/
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "One zone or rule area on copper, as drawn. `outline` is the authored\noutline in the board frame with its arcs: KiCad reads the first\n`(polygon)` as the outline and later ones as holes in it. Exactly one of\n`fill` (a copper zone) and `keepout` (a rule area) is present.",
+///  "type": "object",
+///  "required": [
+///    "outline",
+///    "priority",
+///    "slice_keys",
+///    "source_uid"
+///  ],
+///  "properties": {
+///    "fill": {
+///      "$ref": "#/$defs/ZoneFillRules"
+///    },
+///    "footprint_source_uid": {
+///      "description": "The owning footprint's component `source_uid`, for a footprint's rule area.",
+///      "type": "string"
+///    },
+///    "keepout": {
+///      "$ref": "#/$defs/RuleAreaKeepouts"
+///    },
+///    "name": {
+///      "type": "string"
+///    },
+///    "net_key": {
+///      "description": "Absent for no net.",
+///      "type": "string"
+///    },
+///    "outline": {
+///      "$ref": "#/$defs/PlanarRegion2d"
+///    },
+///    "priority": {
+///      "type": "integer",
+///      "maximum": 4294967295.0,
+///      "minimum": 0.0
+///    },
+///    "slice_keys": {
+///      "description": "Conductor slices of the zone's copper layers, in stack order.",
+///      "type": "array",
+///      "items": {
+///        "type": "string"
+///      },
+///      "minItems": 1
+///    },
+///    "source_uid": {
+///      "description": "The zone's binding `source_uid`: its UUID, or `zone@<offset>` when the UUID is nil or repeats an earlier zone's.",
+///      "type": "string"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ZoneFacts {
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub fill: ::std::option::Option<ZoneFillRules>,
+    ///The owning footprint's component `source_uid`, for a footprint's rule area.
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub footprint_source_uid: ::std::option::Option<::std::string::String>,
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub keepout: ::std::option::Option<RuleAreaKeepouts>,
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub name: ::std::option::Option<::std::string::String>,
+    ///Absent for no net.
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub net_key: ::std::option::Option<::std::string::String>,
+    pub outline: PlanarRegion2d,
+    pub priority: u32,
+    ///Conductor slices of the zone's copper layers, in stack order.
+    pub slice_keys: ::std::vec::Vec<::std::string::String>,
+    ///The zone's binding `source_uid`: its UUID, or `zone@<offset>` when the UUID is nil or repeats an earlier zone's.
+    pub source_uid: ::std::string::String,
+}
+/**Fill rules of a copper zone, as KiCad's zone filler reads them. Values
+KiCad's parser defaults when the file omits them carry that default.*/
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Fill rules of a copper zone, as KiCad's zone filler reads them. Values\nKiCad's parser defaults when the file omits them carry that default.",
+///  "type": "object",
+///  "required": [
+///    "clearance_nm",
+///    "island_removal",
+///    "min_width_nm",
+///    "pad_connection",
+///    "thermal_gap_nm",
+///    "thermal_spoke_width_nm"
+///  ],
+///  "properties": {
+///    "clearance_nm": {
+///      "description": "Zone-to-other-net clearance (`connect_pads (clearance)`).",
+///      "$ref": "#/$defs/NonNegativeNm"
+///    },
+///    "corner_radius_nm": {
+///      "$ref": "#/$defs/NonNegativeNm"
+///    },
+///    "corner_smoothing": {
+///      "$ref": "#/$defs/CornerSmoothing"
+///    },
+///    "hatch": {
+///      "description": "Present when the zone fills with a hatch instead of solid copper.",
+///      "$ref": "#/$defs/ZoneHatchFill"
+///    },
+///    "island_min_area_mm2": {
+///      "description": "Island area threshold as written, in mm².",
+///      "type": "number"
+///    },
+///    "island_removal": {
+///      "$ref": "#/$defs/IslandRemoval"
+///    },
+///    "min_width_nm": {
+///      "description": "Minimum fill width (`min_thickness`).",
+///      "$ref": "#/$defs/NonNegativeNm"
+///    },
+///    "pad_connection": {
+///      "$ref": "#/$defs/PadConnection"
+///    },
+///    "thermal_gap_nm": {
+///      "$ref": "#/$defs/NonNegativeNm"
+///    },
+///    "thermal_spoke_width_nm": {
+///      "description": "Thermal spoke width (`thermal_bridge_width`).",
+///      "$ref": "#/$defs/NonNegativeNm"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ZoneFillRules {
+    ///Zone-to-other-net clearance (`connect_pads (clearance)`).
+    pub clearance_nm: NonNegativeNm,
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub corner_radius_nm: ::std::option::Option<NonNegativeNm>,
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub corner_smoothing: ::std::option::Option<CornerSmoothing>,
+    ///Present when the zone fills with a hatch instead of solid copper.
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub hatch: ::std::option::Option<ZoneHatchFill>,
+    ///Island area threshold as written, in mm².
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub island_min_area_mm2: ::std::option::Option<f64>,
+    pub island_removal: IslandRemoval,
+    ///Minimum fill width (`min_thickness`).
+    pub min_width_nm: NonNegativeNm,
+    pub pad_connection: PadConnection,
+    pub thermal_gap_nm: NonNegativeNm,
+    ///Thermal spoke width (`thermal_bridge_width`).
+    pub thermal_spoke_width_nm: NonNegativeNm,
+}
+/**Hatched fill (`(mode hatch)`). Absent values are not in the file; KiCad's
+defaults then apply.*/
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "Hatched fill (`(mode hatch)`). Absent values are not in the file; KiCad's\ndefaults then apply.",
+///  "type": "object",
+///  "properties": {
+///    "gap_nm": {
+///      "$ref": "#/$defs/NonNegativeNm"
+///    },
+///    "orientation_deg": {
+///      "type": "number"
+///    },
+///    "thickness_nm": {
+///      "$ref": "#/$defs/NonNegativeNm"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct ZoneHatchFill {
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub gap_nm: ::std::option::Option<NonNegativeNm>,
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub orientation_deg: ::std::option::Option<f64>,
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub thickness_nm: ::std::option::Option<NonNegativeNm>,
+}
+impl ::std::default::Default for ZoneHatchFill {
+    fn default() -> Self {
+        Self {
+            gap_nm: Default::default(),
+            orientation_deg: Default::default(),
+            thickness_nm: Default::default(),
+        }
+    }
 }

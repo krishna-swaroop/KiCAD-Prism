@@ -605,6 +605,174 @@ model MaterializationCoordinateSystem {
   y_axis: "board_down";
 }
 
+// ---------------------------------------------------------------- design facts (a1)
+
+/**
+ * How copper joins the zone fills of its net: KiCad's `ZONE_CONNECTION`.
+ * A zone's `(connect_pads)` without a mode is `thermal_reliefs`; `yes` and
+ * `full` are `solid`, `no` is `none`. A pad's `(zone_connect N)` is 0
+ * `none`, 1 `thermal_reliefs`, 2 `solid`, 3 `thru_hole_only`.
+ */
+enum PadConnection {
+  none,
+  thermal_reliefs,
+  solid,
+  /** Thermal reliefs for plated through-hole pads, solid for the rest. */
+  thru_hole_only,
+}
+
+/**
+ * KiCad's island removal (`island_removal_mode`): 0 `always`, 1 `never`,
+ * 2 `below_area` (islands smaller than `island_min_area_mm2`). Without the
+ * token KiCad removes every island.
+ */
+enum IslandRemoval {
+  always,
+  `never`,
+  below_area,
+}
+
+/** Corner smoothing KiCad applies to a zone's fill (`smoothing`). */
+enum CornerSmoothing {
+  chamfer,
+  fillet,
+}
+
+/**
+ * Hatched fill (`(mode hatch)`). Absent values are not in the file; KiCad's
+ * defaults then apply.
+ */
+model ZoneHatchFill {
+  thickness_nm?: NonNegativeNm;
+  gap_nm?: NonNegativeNm;
+  orientation_deg?: float64;
+}
+
+/**
+ * Fill rules of a copper zone, as KiCad's zone filler reads them. Values
+ * KiCad's parser defaults when the file omits them carry that default.
+ */
+model ZoneFillRules {
+  /** Zone-to-other-net clearance (`connect_pads (clearance)`). */
+  clearance_nm: NonNegativeNm;
+  /** Minimum fill width (`min_thickness`). */
+  min_width_nm: NonNegativeNm;
+  pad_connection: PadConnection;
+  thermal_gap_nm: NonNegativeNm;
+  /** Thermal spoke width (`thermal_bridge_width`). */
+  thermal_spoke_width_nm: NonNegativeNm;
+  island_removal: IslandRemoval;
+  /** Island area threshold as written, in mm². */
+  island_min_area_mm2?: float64;
+  corner_smoothing?: CornerSmoothing;
+  corner_radius_nm?: NonNegativeNm;
+  /** Present when the zone fills with a hatch instead of solid copper. */
+  hatch?: ZoneHatchFill;
+}
+
+/** What a rule area forbids: each flag is true where KiCad's keep-out says `not_allowed`. */
+model RuleAreaKeepouts {
+  tracks: boolean;
+  vias: boolean;
+  pads: boolean;
+  copper_pour: boolean;
+  footprints: boolean;
+}
+
+/**
+ * One zone or rule area on copper, as drawn. `outline` is the authored
+ * outline in the board frame with its arcs: KiCad reads the first
+ * `(polygon)` as the outline and later ones as holes in it. Exactly one of
+ * `fill` (a copper zone) and `keepout` (a rule area) is present.
+ */
+model ZoneFacts {
+  /** The zone's binding `source_uid`: its UUID, or `zone@<offset>` when the UUID is nil or repeats an earlier zone's. */
+  source_uid: string;
+  name?: string;
+  /** Absent for no net. */
+  net_key?: string;
+  /** The owning footprint's component `source_uid`, for a footprint's rule area. */
+  footprint_source_uid?: string;
+  /** Conductor slices of the zone's copper layers, in stack order. */
+  @minItems(1) slice_keys: string[];
+  priority: uint32;
+  outline: PlanarRegion2d;
+  fill?: ZoneFillRules;
+  keepout?: RuleAreaKeepouts;
+}
+
+/**
+ * Zone rules a padstack layer sets for itself (`(padstack (layer ...))`).
+ * `kicad_layer` is the selector as written: a copper layer name, or `Inner`
+ * for every inner layer in KiCad's front/inner/back mode.
+ */
+model PadstackLayerRules {
+  kicad_layer: string;
+  clearance_nm?: NonNegativeNm;
+  pad_connection?: PadConnection;
+  thermal_gap_nm?: NonNegativeNm;
+  thermal_spoke_width_nm?: NonNegativeNm;
+  thermal_spoke_angle_deg?: float64;
+}
+
+/**
+ * A pad's own zone rules, keyed by the pad's binding `source_uid`. A value
+ * is present only when the pad sets it instead of inheriting it; a pad that
+ * sets nothing has no record.
+ */
+model PadRules {
+  source_uid: string;
+  clearance_nm?: NonNegativeNm;
+  pad_connection?: PadConnection;
+  thermal_gap_nm?: NonNegativeNm;
+  thermal_spoke_width_nm?: NonNegativeNm;
+  thermal_spoke_angle_deg?: float64;
+  /** Padstack layers that set a rule, in file order. */
+  layers: PadstackLayerRules[];
+}
+
+/**
+ * A footprint's zone rules for its pads, keyed by the component's
+ * `source_uid`. Present only for values it sets; a footprint that sets
+ * nothing has no record.
+ */
+model FootprintRules {
+  source_uid: string;
+  clearance_nm?: NonNegativeNm;
+  pad_connection?: PadConnection;
+  thermal_gap_nm?: NonNegativeNm;
+  thermal_spoke_width_nm?: NonNegativeNm;
+}
+
+/**
+ * A component's courtyard on one side, closed as KiCad closes it, in the
+ * board frame: the graphics on `F.CrtYd` (front) or `B.CrtYd` (back),
+ * chained end to end within 0.01 mm.
+ */
+model Courtyard {
+  /** The component's `source_uid`. */
+  source_uid: string;
+  side: BoardSide;
+  @minItems(1) regions: PlanarRegion2d[];
+}
+
+/**
+ * Design rules and regions that are not material: they draw nothing and
+ * are not operations. Board facts like `nets`: every document of a board
+ * holds all of them whatever its scope. Arrays are in file order.
+ */
+model DesignFacts {
+  /** KiCad's arc-approximation error (`max_error`) from the project file. */
+  max_error_nm?: NonNegativeNm;
+  /** Minimum copper-to-board-edge clearance (`min_copper_edge_clearance`) from the project file. */
+  copper_edge_clearance_nm?: NonNegativeNm;
+  zones: ZoneFacts[];
+  pad_rules: PadRules[];
+  footprint_rules: FootprintRules[];
+  /** By component in file order, front before back. */
+  courtyards: Courtyard[];
+}
+
 /** Resource-bounded materialization request. Source bytes are out of band. */
 @jsonSchema
 @id("urn:wavenumber:schema:kicad_monkey.materialization.request:a0")
@@ -647,4 +815,37 @@ model MaterializationDocument {
   binding: BindingEntry[];
   chunks: ChunkEntry[];
   diagnostics: MaterializationDiagnostic[];
+}
+
+/**
+ * Analytic materialization a1: a0 plus `design_facts`. The material is
+ * unchanged; a1 adds facts in the header only. An a1 reader also reads a0
+ * documents, which have no `design_facts`.
+ */
+@jsonSchema
+@id("urn:wavenumber:schema:kicad_monkey.materialization.document:a1")
+@extension("title", "Materialization document a1")
+model MaterializationDocumentA1 {
+  schema: "kicad_monkey.materialization.a1";
+  type: "kicad_monkey.materialization.document";
+  version: "a1";
+  producer: MaterializationProducer;
+  source: MaterializationSource;
+  coordinate_system: MaterializationCoordinateSystem;
+  scope: MaterializationScope;
+  stack: Stack;
+  nets: Net[];
+  net_classes: NetClass[];
+  diff_pairs: DiffPair[];
+  components: Component[];
+  operations: MaterialOperation[];
+  binding: BindingEntry[];
+  chunks: ChunkEntry[];
+  diagnostics: MaterializationDiagnostic[];
+  /**
+   * Present in every a1 document. Optional only so that an a1 reader can
+   * hold an a0 document in this model: absent means a0, whose producer did
+   * not report these facts.
+   */
+  design_facts?: DesignFacts;
 }

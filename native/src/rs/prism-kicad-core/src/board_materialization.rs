@@ -1,4 +1,4 @@
-//! Analytic board materialization (`kicad_monkey.materialization.a0`).
+//! Analytic board materialization (`kicad_monkey.materialization.a1`).
 //!
 //! Resolves the physical intent of a KiCad board into analytic material
 //! operations: closed 2D shapes with one composed affine, a material role, a
@@ -13,9 +13,13 @@
 //! minus crossing holes and back-drill bores), solder mask (the profile
 //! minus pad, via, and mask-layer openings), paste (pad apertures and
 //! paste-layer graphics), and silkscreen (graphics and text), with the full
-//! stack, nets, binding, and component records.
+//! stack, nets, binding, and component records. Design facts that are not
+//! material (zone and pad rules, rule areas, courtyards, board rules) go in
+//! the header's `design_facts` (a1).
 
 mod apertures;
+mod design_facts;
+mod design_zones;
 mod dielectric;
 mod emit;
 mod flash;
@@ -38,6 +42,7 @@ mod sexpr_view;
 mod source_graphics;
 mod stack;
 mod technical;
+mod zone_ids;
 
 pub use prepared::{PrepareLimits, PreparedBoard};
 pub use prism_kicad_contracts::materialization_contract::{
@@ -49,7 +54,7 @@ pub use sexpr_view::materialization_sexpr;
 
 use prism_kicad_contracts::generated::materialization_document::{
     DiagnosticSeverity, MaterialOperation, MaterialProduct, MaterializationCoordinateSystem,
-    MaterializationDiagnostic, MaterializationDocumentA0, MaterializationProducer,
+    MaterializationDiagnostic, MaterializationDocumentA1, MaterializationProducer,
     MaterializationScope, MaterializationSource, PathSegment, Shape2d, Stack,
 };
 use prism_kicad_contracts::generated::materialization_request::MaterializationRequestA0;
@@ -58,7 +63,9 @@ use std::fmt;
 use std::fmt::Write as _;
 
 /// Schema identifier written into every materialization document.
-pub const MATERIALIZATION_SCHEMA: &str = "kicad_monkey.materialization.a0";
+pub const MATERIALIZATION_SCHEMA: &str = "kicad_monkey.materialization.a1";
+/// Version written into every materialization document.
+pub const MATERIALIZATION_VERSION: &str = "a1";
 /// Document type identifier.
 pub const MATERIALIZATION_DOCUMENT_TYPE: &str = "kicad_monkey.materialization.document";
 /// Request type identifier.
@@ -124,13 +131,13 @@ impl SourceIdentity {
 }
 
 /// Materialize one board source for `request`. The result is valid against
-/// the a0 contract and equals the complete materialization filtered by the
+/// the a1 contract and equals the complete materialization filtered by the
 /// request's scope. Callers with several requests for one board use
 /// [`PreparedBoard`], which decodes and emits it once.
 pub fn materialize_board(
     source: &str,
     request: &MaterializationRequestA0,
-) -> Result<MaterializationDocumentA0, MaterializationError> {
+) -> Result<MaterializationDocumentA1, MaterializationError> {
     materialize_project(source, None, request)
 }
 
@@ -140,7 +147,7 @@ pub fn materialize_project(
     source: &str,
     project: Option<&str>,
     request: &MaterializationRequestA0,
-) -> Result<MaterializationDocumentA0, MaterializationError> {
+) -> Result<MaterializationDocumentA1, MaterializationError> {
     let identity = SourceIdentity::of(source, project);
     validate_request(identity.total_bytes(), request)?;
     let scope = scope_from_request(request);
@@ -180,7 +187,7 @@ fn assemble(
     identity: &SourceIdentity,
     scope: &MaterializationScope,
     request: &MaterializationRequestA0,
-) -> Result<MaterializationDocumentA0, MaterializationError> {
+) -> Result<MaterializationDocumentA1, MaterializationError> {
     let limit = operation_limit(request);
     if emitted.emitter.operations.len() > limit {
         return Err(too_many_operations(limit));
@@ -212,6 +219,7 @@ fn assemble(
     document.net_classes = emitted.net_classes;
     document.diff_pairs = emitted.diff_pairs;
     document.components = emitted.components;
+    document.design_facts = Some(emitted.design_facts);
     document.binding = remap_binding(emitted.emitter.binding, &chunked.new_index_of_input);
     document.operations = chunked.operations;
     document.chunks = chunked.chunks;
@@ -323,11 +331,11 @@ fn empty_document(
     identity: &SourceIdentity,
     scope: MaterializationScope,
     diagnostics: Vec<MaterializationDiagnostic>,
-) -> MaterializationDocumentA0 {
-    MaterializationDocumentA0 {
+) -> MaterializationDocumentA1 {
+    MaterializationDocumentA1 {
         schema: MATERIALIZATION_SCHEMA.to_owned(),
         type_: MATERIALIZATION_DOCUMENT_TYPE.to_owned(),
-        version: "a0".to_owned(),
+        version: MATERIALIZATION_VERSION.to_owned(),
         producer: MaterializationProducer {
             name: MATERIALIZATION_PRODUCER.to_owned(),
             version: crate::ENGINE_VERSION.to_owned(),
@@ -363,6 +371,7 @@ fn empty_document(
         binding: Vec::new(),
         chunks: Vec::new(),
         diagnostics,
+        design_facts: None,
     }
 }
 

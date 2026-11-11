@@ -1,12 +1,12 @@
 //! Pack round trip and rejection paths.
 
-use prism_kicad_contracts::generated::materialization_document::MaterializationDocumentA0;
+use prism_kicad_contracts::generated::materialization_document::MaterializationDocumentA1;
 use prism_kicad_materialization_pack::{
     COLUMN_ALIGNMENT, PACK_MAGIC, PackError, PackLimits, PackReader, encode_pack,
 };
 use serde_json::json;
 
-fn document() -> MaterializationDocumentA0 {
+fn document() -> MaterializationDocumentA1 {
     serde_json::from_value(json!({
         "schema": "kicad_monkey.materialization.a0",
         "type": "kicad_monkey.materialization.document",
@@ -36,7 +36,7 @@ fn document() -> MaterializationDocumentA0 {
     .expect("document decodes")
 }
 
-fn open(bytes: &[u8]) -> Result<MaterializationDocumentA0, PackError> {
+fn open(bytes: &[u8]) -> Result<MaterializationDocumentA1, PackError> {
     PackReader::open(bytes, PackLimits::default())?.document()
 }
 
@@ -119,4 +119,40 @@ fn corrupt_or_truncated_packs_fail_closed() {
             }
         }
     }
+}
+
+/// a1 adds `design_facts` to the JSON header only: the pack format stays 0,
+/// the facts round-trip, and the columns are those of the a0 document.
+#[test]
+fn a1_design_facts_ride_in_the_header_of_format_zero() {
+    let a0 = document();
+    let mut a1 = a0.clone();
+    a1.schema = "kicad_monkey.materialization.a1".to_owned();
+    a1.version = "a1".to_owned();
+    a1.design_facts = Some(
+        serde_json::from_value(json!({
+            "max_error_nm": 5_000, "copper_edge_clearance_nm": 500_000,
+            "zones": [], "pad_rules": [], "footprint_rules": [], "courtyards": []
+        }))
+        .expect("facts"),
+    );
+    let (old, new) = (encode_pack(&a0).expect("a0"), encode_pack(&a1).expect("a1"));
+    assert_eq!(u16::from_le_bytes([new[8], new[9]]), 0, "pack format 0");
+    let header_end = |bytes: &[u8]| {
+        16 + u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]) as usize
+    };
+    // Everything after the (aligned) header is the same bytes.
+    let tail = |bytes: &[u8]| {
+        bytes[header_end(bytes).div_ceil(COLUMN_ALIGNMENT) * COLUMN_ALIGNMENT..].to_vec()
+    };
+    assert_eq!(tail(&old).len(), tail(&new).len());
+    let reopened = open(&new).expect("a1 opens");
+    assert_eq!(
+        serde_json::to_value(&reopened.design_facts).expect("json"),
+        json!({ "copper_edge_clearance_nm": 500_000, "courtyards": [], "footprint_rules": [],
+                "max_error_nm": 5_000, "pad_rules": [], "zones": [] })
+    );
+    let old = open(&old).expect("an a0 pack still opens");
+    assert_eq!(old.schema, "kicad_monkey.materialization.a0");
+    assert!(old.design_facts.is_none());
 }

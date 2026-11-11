@@ -49,7 +49,7 @@
 
 use crate::manifest::a3;
 use prism_kicad_contracts::generated::materialization_document::{
-    BindingSourceKind, MaterializationDocumentA0,
+    BindingSourceKind, MaterializationDocumentA1,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -265,7 +265,7 @@ struct BoardSide {
 }
 
 impl BoardSide {
-    fn of(header: &MaterializationDocumentA0) -> Self {
+    fn of(header: &MaterializationDocumentA1) -> Self {
         let names: BTreeMap<&str, &str> = header
             .nets
             .iter()
@@ -545,7 +545,7 @@ impl<'a> Checker<'a> {
 
 /// Cross-check the binding table in `header` against `design`.
 #[must_use]
-pub fn cross_check(header: &MaterializationDocumentA0, design: &DesignView) -> CrossCheckOutcome {
+pub fn cross_check(header: &MaterializationDocumentA1, design: &DesignView) -> CrossCheckOutcome {
     let board = BoardSide::of(header);
     let design = DesignSide::of(design);
     let mut checker = Checker::new(&board, &design);

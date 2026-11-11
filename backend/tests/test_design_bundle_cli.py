@@ -71,7 +71,7 @@ class StubCliTests(unittest.TestCase):
 
     def test_version_is_the_generator_in_canonical_bytes(self) -> None:
         generator = cli.generator()
-        self.assertEqual(generator.digest, "5fcf5d171e0b2963255943243debc170cd9f7f003b4df74236b8f8537d8d1e6d")
+        self.assertEqual(generator.digest, "ed72101b8bfbfaa8a89c98fc9c116efe90e486268b8b2b162b033fbb3b27f01e")
 
     def test_parse_board_models_chain_through_one_archive(self) -> None:
         parsed = self._parse()

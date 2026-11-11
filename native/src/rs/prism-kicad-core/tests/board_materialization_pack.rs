@@ -1,7 +1,7 @@
 //! Producer output through the packed encoding: exact round trips, chunk
 //! seeking, determinism, and fail-closed decoding of damaged packs.
 
-use prism_kicad_contracts::generated::materialization_document::MaterializationDocumentA0;
+use prism_kicad_contracts::generated::materialization_document::MaterializationDocumentA1;
 use prism_kicad_contracts::generated::materialization_request::MaterializationRequestA0;
 use prism_kicad_core::board_materialization::materialize_board;
 use prism_kicad_materialization_pack::{PackLimits, PackReader, encode_pack};
@@ -83,7 +83,7 @@ const ALL: [&str; 7] = [
     "solder_mask",
 ];
 
-fn json(document: &MaterializationDocumentA0) -> String {
+fn json(document: &MaterializationDocumentA1) -> String {
     serde_json::to_string(document).expect("serialize")
 }
 

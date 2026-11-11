@@ -3,7 +3,7 @@
 //
 //   node scripts/build-analytic-wasm.mjs
 //
-// It reads materialization packs (`kicad_monkey.materialization.a0`, the
+// It reads materialization packs (`kicad_monkey.materialization.a1` and a0, the
 // bundle's `materialization/board.kmpack`) and lowers their slices for the
 // analytic renderer. The native workspace must have no local changes; the
 // provenance records its tree. Needs the toolchain `native/rust-toolchain.toml`
@@ -61,7 +61,7 @@ try {
 const sha = (file) => createHash("sha256").update(readFileSync(join(vendor, file))).digest("hex");
 const provenance = {
   schema: "prism.vendored_wasm.a0",
-  purpose: "Reads materialization packs (kicad_monkey.materialization.a0) in the browser and lowers their slices for the analytic renderer.",
+  purpose: "Reads materialization packs (kicad_monkey.materialization.a1 and a0) in the browser and lowers their slices for the analytic renderer.",
   source: { repository: "this repository", crate: "prism-kicad-wasm", native_src_rs_tree: tree, license: "MIT" },
   build: {
     target: "wasm32-unknown-unknown",

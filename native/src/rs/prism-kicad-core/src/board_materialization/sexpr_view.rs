@@ -6,14 +6,14 @@
 //! affine renders as `(affine m11 m12 m21 m22 tx_nm ty_nm)` to match the
 //! issue #20 sketch. It is a debug view, not a parse target.
 
-use prism_kicad_contracts::generated::materialization_document::MaterializationDocumentA0;
+use prism_kicad_contracts::generated::materialization_document::MaterializationDocumentA1;
 use serde_json::{Map, Value};
 use std::fmt::Write as _;
 
 const AFFINE_TERMS: [&str; 6] = ["m11", "m12", "m21", "m22", "tx_nm", "ty_nm"];
 
 /// Render `document` as an indented S-expression.
-pub fn materialization_sexpr(document: &MaterializationDocumentA0) -> String {
+pub fn materialization_sexpr(document: &MaterializationDocumentA1) -> String {
     let value = serde_json::to_value(document).unwrap_or(Value::Null);
     let mut output = String::new();
     match value.as_object() {

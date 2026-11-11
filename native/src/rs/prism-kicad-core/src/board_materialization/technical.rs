@@ -28,6 +28,7 @@ use super::routing::Route;
 use super::routing::{fill_offset_nm, polyline_contour};
 use super::source_graphics::{graphic_layers, graphic_shapes};
 use super::stack::CopperStack;
+use super::zone_ids::ZoneIds;
 use crate::board_plotter_ir::{
     BoardDimensionOperation, BoardFootprintOperation, BoardFootprintRecord, BoardPlotDocument,
     BoardPlotRecord, BoardTableOperation, BoardTextBoxOperation, BoardTextOperation,
@@ -409,9 +410,9 @@ fn board_graphics(
 }
 
 /// Stored fills of zones on technical layers, grown as legacy fills are.
-fn zone_graphics(zones: &[&PcbZone], version: i64, out: &mut Vec<PlacedGraphic>) {
+fn zone_graphics(zones: &[&PcbZone], ids: &ZoneIds, version: i64, out: &mut Vec<PlacedGraphic>) {
     for &zone in zones {
-        let uid = source_uid("zone", zone.uuid.as_deref(), zone.source_range.start);
+        let uid = ids.uid(zone);
         let offset_nm = fill_offset_nm(zone, version);
         for polygon in &zone.filled_polygons {
             let layer = match (polygon.layer.is_empty(), zone.layers.as_slice()) {
@@ -450,6 +451,7 @@ pub(crate) struct SourceGraphics<'a> {
     pub footprint: &'a [PcbFootprintGraphic],
     pub footprints: &'a [PcbFootprint],
     pub zones: &'a [&'a PcbZone],
+    pub zone_ids: &'a ZoneIds,
     /// Board solder-mask expansion for copper shapes without their own.
     pub mask_margin_nm: i64,
 }
@@ -542,7 +544,7 @@ pub(crate) fn technical_graphics(
     let mut out = Vec::new();
     source_graphics(graphics, &mut out);
     out.extend(document_graphics(document, context, &technical));
-    zone_graphics(graphics.zones, context.version, &mut out);
+    zone_graphics(graphics.zones, graphics.zone_ids, context.version, &mut out);
     out
 }
 

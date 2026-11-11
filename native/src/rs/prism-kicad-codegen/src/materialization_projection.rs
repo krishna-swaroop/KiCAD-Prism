@@ -83,13 +83,16 @@ const MATERIALIZATION_OPERATION_KINDS: [(&str, &str, &str); 2] = [
     ),
 ];
 
+/// The document schema Rust is generated from: the newest version, a1. An
+/// a1 reader holds a0 documents in the same types (a0 lacks only
+/// `design_facts`), so `MaterializationDocument.json` (a0) stays a
+/// published schema without Rust types of its own.
+const DOCUMENT_SCHEMA: &str = "MaterializationDocumentA1.json";
+
 /// Materialization schemas and their generated modules.
 pub(crate) const SCHEMAS: [(&str, &str); 2] = [
     ("MaterializationRequest.json", "materialization_request.rs"),
-    (
-        "MaterializationDocument.json",
-        "materialization_document.rs",
-    ),
+    (DOCUMENT_SCHEMA, "materialization_document.rs"),
 ];
 
 /// `others` followed by the materialization schemas.
@@ -106,7 +109,7 @@ pub(crate) fn is_schema(schema_name: &str) -> bool {
 /// Check the document's exact-kind unions and promote them from `anyOf` to
 /// `oneOf`, as the plot record unions are, so typify emits proper enums.
 pub(crate) fn project_schema(schema_name: &str, schema: &mut Value) -> Result<()> {
-    if schema_name != "MaterializationDocument.json" {
+    if schema_name != DOCUMENT_SCHEMA {
         return Ok(());
     }
     validate_kinds(schema_name, schema)?;
@@ -141,7 +144,7 @@ fn validate_kinds(schema_name: &str, schema: &Value) -> Result<()> {
 }
 
 pub(crate) fn project_kinds(schema_name: &str, mut source: String) -> Result<String> {
-    if schema_name != "MaterializationDocument.json" {
+    if schema_name != DOCUMENT_SCHEMA {
         return Ok(source);
     }
     for table in [

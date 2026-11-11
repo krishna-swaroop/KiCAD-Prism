@@ -3,7 +3,8 @@ import provenance from "../vendor/prism-kicad-wasm/provenance.json" with { type:
 
 /** File name the served WASM has next to the element bundle. */
 export const ANALYTIC_WASM_NAME = "prism-kicad-analytic.wasm";
-export const ANALYTIC_SCHEMA = "kicad_monkey.materialization.a0";
+/** Materialization schemas the viewer reads: a1 adds header facts it ignores, so a0 packs still open. */
+export const ANALYTIC_SCHEMAS = Object.freeze(["kicad_monkey.materialization.a1", "kicad_monkey.materialization.a0"]);
 /** Flattening tolerance for regions and cubic segments, in nanometres. */
 export const DEFAULT_TOLERANCE_NM = 1000;
 
@@ -75,7 +76,7 @@ export async function openAnalyticPack(bytes, { wasm } = {}) {
   await loadAnalyticWasm(wasm);
   const pack = new AnalyticPack(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
   const header = JSON.parse(pack.headerJson());
-  if (header.schema !== ANALYTIC_SCHEMA) throw new Error(`unsupported materialization schema ${header.schema}`);
+  if (!ANALYTIC_SCHEMAS.includes(header.schema)) throw new Error(`unsupported materialization schema ${header.schema}`);
   return {
     header,
     lowerSlice(key, toleranceNm = DEFAULT_TOLERANCE_NM) {

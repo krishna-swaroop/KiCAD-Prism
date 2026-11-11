@@ -324,17 +324,17 @@ The vectors use the generator id in `examples/CliVersionA0.example.json`:
 - all four procedures at a0 (`hlr_procedure` names Geometer 2026.9.19);
 - the eleven member schemas of ADR §6 and `models/assembly-hlr.json`.
 
-Its generator bytes are 1268 bytes long. Its `generator_digest` is `5fcf5d171e0b2963255943243debc170cd9f7f003b4df74236b8f8537d8d1e6d`.
+Its generator bytes are 1268 bytes long. Its `generator_digest` is `ed72101b8bfbfaa8a89c98fc9c116efe90e486268b8b2b162b033fbb3b27f01e`.
 
 | revision_key | bundle_key |
 |---|---|
-| `0000000000000000000000000000000000000000000000000000000000000000` | `d9d2ae76b28e528cfd62df09b90e8112fca45ad1746e13b0730ad720a45bf197` |
-| `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | `23b688087d6efb63414cd9d2f0ef53251c3d34bb00387bc79e48583fbe54cf3f` |
-| `42e41c598a193d09f6917ee92b7c71e52e9e15a251a63b7a955ef41beb841f34` | `64c0f2b230556b97022d9dea90021f7262d8f6f5e7ff61fe665c8afa63f7d58c` |
+| `0000000000000000000000000000000000000000000000000000000000000000` | `a9a09149d354a2a8edea1900c28657cc2bb0b727864054a92fcc5357ca861599` |
+| `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | `39c14ba5740ae2e516b00e853804c510e91ba5a99e6a427d3dec1c13bfce4c40` |
+| `42e41c598a193d09f6917ee92b7c71e52e9e15a251a63b7a955ef41beb841f34` | `32ca1bc05dfc4a840dfa797fa618012332df58f743632f5aa4c3924b3f27591d` |
 
 Changing only `kicad_version`, to `10.0.7`:
-- `generator_digest` becomes `485f89f2a4cebeebcdbe85c36da68d9f209f61baf2e6912928563e2fd9b8582d`;
-- the all-zero revision key gives `11e12e1714acba8f8e8f410e349a738affcca789c1f520c07f4cd28929c7e1c7`.
+- `generator_digest` becomes `adeb8290a058e3b94a02bf0e063ab2d9e9be8858d177c6aa17d6d2eee3a29103`;
+- the all-zero revision key gives `1526370711b561e52c2a0b4b5b01fbcc9f06790e347272a236819231889670b3`.
 
 These values were computed by the Python above and checked with the shell recipe. WP-B (Rust) and WP-K (Python) both reproduce them, the same acceptance as the revision-key vectors (ADR §9.3).
 

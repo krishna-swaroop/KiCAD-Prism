@@ -40,6 +40,9 @@ from app.services.design_bundle.revision_key import is_repo_path
 MANIFEST = "bundle.json"
 MANIFEST_SCHEMA = "prism.bundle.manifest.a3"
 PACK_MAGIC = b"KMMATPK\0"
+#: Materialization schema ids whose packs this reader checks: a1, and a0 from
+#: bundles built before it (ADR amendment PI). Both use pack format 0.
+MATERIALIZATION_SCHEMAS = frozenset({"kicad_monkey.materialization.a1", "kicad_monkey.materialization.a0"})
 _EOCD = struct.Struct("<IHHHHIIH")
 _CENTRAL = struct.Struct("<IHHHHHHIIIHHHHHII")
 _LOCAL = struct.Struct("<IHHHHHIIIHH")
@@ -281,7 +284,7 @@ def check_structured(member: Mapping[str, Any], data: bytes, manifest: Mapping[s
     path = member["path"]
     if not schema_id:
         return
-    if schema_id == "kicad_monkey.materialization.a0":
+    if schema_id in MATERIALIZATION_SCHEMAS:
         version = manifest["generator"]["pack_format_version"]
         if data[:8] != PACK_MAGIC or len(data) < 10 or struct.unpack_from("<H", data, 8)[0] != version:
             raise BundleInvalid("member-unreadable", f"{path} is not a pack of format {version}", path)

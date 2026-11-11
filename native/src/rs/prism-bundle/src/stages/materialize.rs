@@ -5,7 +5,7 @@
 //! content outcome `materialization-failed` (bundle-format.md §3.2).
 
 use prism_kicad_contracts::generated::materialization_document::{
-    BindingSourceKind, MaterialOperation, MaterializationDocumentA0,
+    BindingSourceKind, MaterialOperation, MaterializationDocumentA1,
 };
 use prism_kicad_contracts::generated::materialization_request::MaterializationRequestA0;
 use prism_kicad_contracts::materialization_contract::validate_materialization_document;
@@ -55,7 +55,7 @@ fn materialize(
     products: &[&str],
     tile_size_nm: i64,
     max_operations: u32,
-) -> Result<MaterializationDocumentA0, String> {
+) -> Result<MaterializationDocumentA1, String> {
     let request = request(products, tile_size_nm, max_operations)?;
     let document =
         materialize_project(board, Some(project), &request).map_err(|error| error.to_string())?;
@@ -68,7 +68,7 @@ fn materialize(
 pub struct Materialized {
     /// Header document as re-read from the pack: stack, nets, net classes,
     /// diff pairs, components, binding, and chunk directory; no operations.
-    pub header: MaterializationDocumentA0,
+    pub header: MaterializationDocumentA1,
     /// Canonical packed encoding (`materialization/board.kmpack`).
     pub pack: Vec<u8>,
     /// Number of operations.
@@ -126,7 +126,7 @@ impl FillComparison {
 
 /// Canonical text of each copper zone-fill operation, counted.
 fn fill_signatures(
-    document: &MaterializationDocumentA0,
+    document: &MaterializationDocumentA1,
 ) -> Result<BTreeMap<String, usize>, String> {
     let fills: HashSet<u32> = document
         .binding

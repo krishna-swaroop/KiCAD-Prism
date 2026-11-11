@@ -4,7 +4,7 @@
 //! counterbores and countersinks, castellated pads, component bodies, and
 //! the single rigid stack region. Expected values follow KiCad 10.0.6.
 
-use prism_kicad_contracts::generated::materialization_document::MaterializationDocumentA0;
+use prism_kicad_contracts::generated::materialization_document::MaterializationDocumentA1;
 use prism_kicad_contracts::generated::materialization_request::MaterializationRequestA0;
 use prism_kicad_contracts::materialization_contract::validate_materialization_document;
 use prism_kicad_core::board_materialization::{
@@ -140,7 +140,7 @@ const ALL: [&str; 7] = [
     "solder_mask",
 ];
 
-fn complete() -> (MaterializationDocumentA0, Value) {
+fn complete() -> (MaterializationDocumentA1, Value) {
     let document = materialize_project(BOARD, Some(PROJECT), &request(&ALL)).expect("materializes");
     validate_materialization_document(&document).expect("valid");
     let value = serde_json::to_value(&document).expect("json");
@@ -400,7 +400,7 @@ fn project_results_obey_rule_two_and_prepared_boards() {
         let selective = materialize_project(BOARD, Some(PROJECT), &request).expect("selective");
         let filtered = filter_document(&complete, &selective.scope);
         let text =
-            |document: &MaterializationDocumentA0| serde_json::to_string(document).expect("json");
+            |document: &MaterializationDocumentA1| serde_json::to_string(document).expect("json");
         assert_eq!(text(&selective), text(&filtered), "{products:?}");
         assert_eq!(
             text(&prepared.materialize(&request).expect("prepared")),

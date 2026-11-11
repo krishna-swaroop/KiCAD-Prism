@@ -1,9 +1,9 @@
-//! Review batch 4 evidence: the a0 validator enforces schema ranges and
+//! Review batch 4 evidence (on an a0 document, which the a1 validator reads): the validator enforces schema ranges and
 //! lengths, slice roles, the canonical scope, scope membership, chunk order,
 //! tiles, and nets, and bounds that hold their shape; the header check holds
 //! without operations. Slice 4 adds stack regions.
 
-use prism_kicad_contracts::generated::materialization_document::MaterializationDocumentA0;
+use prism_kicad_contracts::generated::materialization_document::MaterializationDocumentA1;
 use prism_kicad_contracts::materialization_contract::{
     validate_materialization_document, validate_materialization_header,
 };
@@ -101,8 +101,8 @@ fn base() -> Value {
     })
 }
 
-fn decode(value: Value) -> MaterializationDocumentA0 {
-    serde_json::from_value(value).expect("decodes against the a0 types")
+fn decode(value: Value) -> MaterializationDocumentA1 {
+    serde_json::from_value(value).expect("decodes against the a1 types")
 }
 
 /// Code of the first rule `edit` breaks, or `None` when it stays valid.
@@ -444,5 +444,120 @@ fn slice_four_records_are_checked() {
             v["operations"][2]["castellated"] = json!(true);
         }),
         None
+    );
+}
+
+/// The a1 facts: one copper zone, one rule area, a pad rule, a courtyard.
+fn design_facts() -> Value {
+    let square = json!({ "kind": "planar_region_2d",
+        "outer": { "start_nm": [0, 0], "segments": [
+            { "kind": "line", "end_nm": [1_000_000, 0] },
+            { "kind": "arc", "mid_nm": [1_500_000, 500_000], "end_nm": [1_000_000, 1_000_000] },
+            { "kind": "line", "end_nm": [0, 1_000_000] } ] },
+        "holes": [] });
+    json!({
+        "max_error_nm": 5_000,
+        "zones": [
+            { "source_uid": "zone-gnd", "net_key": "GND", "slice_keys": ["copper.front", "copper.back"],
+              "priority": 0, "outline": square.clone(),
+              "fill": { "clearance_nm": 200_000, "min_width_nm": 250_000,
+                        "pad_connection": "thermal_reliefs", "thermal_gap_nm": 500_000,
+                        "thermal_spoke_width_nm": 500_000, "island_removal": "always" } },
+            { "source_uid": "zone@120", "slice_keys": ["copper.front"], "priority": 0,
+              "outline": square.clone(),
+              "keepout": { "tracks": true, "vias": true, "pads": false, "copper_pour": true,
+                           "footprints": false } }
+        ],
+        "pad_rules": [ { "source_uid": "pad-1", "clearance_nm": 100_000, "layers": [] } ],
+        "footprint_rules": [],
+        "courtyards": [ { "source_uid": "fp-u1", "side": "front", "regions": [square] } ]
+    })
+}
+
+fn a1() -> Value {
+    let mut value = base();
+    value["schema"] = json!("kicad_monkey.materialization.a1");
+    value["version"] = json!("a1");
+    value["design_facts"] = design_facts();
+    value
+}
+
+fn a1_code_after(edit: impl FnOnce(&mut Value)) -> Option<&'static str> {
+    let mut value = a1();
+    edit(&mut value);
+    validate_materialization_document(&decode(value))
+        .err()
+        .map(|error| error.code)
+}
+
+#[test]
+fn a0_documents_are_read_without_design_facts_and_a1_documents_need_them() {
+    assert_eq!(code_after(|_| {}), None, "an a0 document stays valid");
+    assert_eq!(
+        code_after(|value| value["design_facts"] = design_facts()),
+        Some("unexpected_design_facts")
+    );
+    assert_eq!(a1_code_after(|_| {}), None);
+    assert_eq!(
+        a1_code_after(|value| {
+            value.as_object_mut().unwrap().remove("design_facts");
+        }),
+        Some("missing_design_facts")
+    );
+    assert_eq!(
+        a1_code_after(|value| value["version"] = json!("a0")),
+        Some("unsupported_contract")
+    );
+    assert_eq!(
+        a1_code_after(|value| value["schema"] = json!("kicad_monkey.materialization.a2")),
+        Some("unsupported_contract")
+    );
+}
+
+#[test]
+fn design_facts_are_checked() {
+    let zone =
+        |edit: fn(&mut Value)| a1_code_after(|value| edit(&mut value["design_facts"]["zones"][0]));
+    assert_eq!(
+        zone(|zone| zone["slice_keys"] = json!(["copper.back", "copper.front"])),
+        Some("invalid_zone_slices")
+    );
+    assert_eq!(
+        zone(|zone| zone["slice_keys"] = json!(["dielectric.1"])),
+        Some("invalid_zone_slices")
+    );
+    assert_eq!(
+        zone(|zone| zone["net_key"] = json!("NOPE")),
+        Some("unknown_net")
+    );
+    assert_eq!(
+        zone(|zone| zone["source_uid"] = json!("zone@120")),
+        Some("duplicate_zone")
+    );
+    assert_eq!(
+        zone(|zone| {
+            zone.as_object_mut().unwrap().remove("fill");
+        }),
+        Some("invalid_zone_kind")
+    );
+    assert_eq!(
+        zone(|zone| zone["fill"]["clearance_nm"] = json!(i64::from(i32::MAX) + 1)),
+        Some("invalid_length")
+    );
+    assert_eq!(
+        a1_code_after(|value| {
+            let rules = value["design_facts"]["pad_rules"][0].clone();
+            value["design_facts"]["pad_rules"]
+                .as_array_mut()
+                .unwrap()
+                .push(rules);
+        }),
+        Some("duplicate_rule_record")
+    );
+    assert_eq!(
+        a1_code_after(|value| {
+            value["design_facts"]["courtyards"][0]["regions"][0]["outer"]["segments"] = json!([]);
+        }),
+        Some("empty_path")
     );
 }

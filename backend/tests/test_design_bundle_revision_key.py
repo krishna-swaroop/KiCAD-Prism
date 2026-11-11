@@ -120,16 +120,16 @@ class BundleKeyVectorTests(unittest.TestCase):
     def test_generator_bytes_and_digest(self) -> None:
         data = gen.generator_bytes(self.version)
         self.assertEqual(len(data), 1268)
-        self.assertEqual(gen.generator_digest(self.version), "5fcf5d171e0b2963255943243debc170cd9f7f003b4df74236b8f8537d8d1e6d")
+        self.assertEqual(gen.generator_digest(self.version), "ed72101b8bfbfaa8a89c98fc9c116efe90e486268b8b2b162b033fbb3b27f01e")
         # Key order of the parsed document does not matter (§5.1.3).
         shuffled = dict(reversed(list(self.version.items())))
         self.assertEqual(gen.generator_bytes(shuffled), data)
 
     def test_bundle_keys(self) -> None:
         cases = {
-            "0" * 64: "d9d2ae76b28e528cfd62df09b90e8112fca45ad1746e13b0730ad720a45bf197",
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": "23b688087d6efb63414cd9d2f0ef53251c3d34bb00387bc79e48583fbe54cf3f",
-            "42e41c598a193d09f6917ee92b7c71e52e9e15a251a63b7a955ef41beb841f34": "64c0f2b230556b97022d9dea90021f7262d8f6f5e7ff61fe665c8afa63f7d58c",
+            "0" * 64: "a9a09149d354a2a8edea1900c28657cc2bb0b727864054a92fcc5357ca861599",
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": "39c14ba5740ae2e516b00e853804c510e91ba5a99e6a427d3dec1c13bfce4c40",
+            "42e41c598a193d09f6917ee92b7c71e52e9e15a251a63b7a955ef41beb841f34": "32ca1bc05dfc4a840dfa797fa618012332df58f743632f5aa4c3924b3f27591d",
         }
         for revision_key, bundle_key in cases.items():
             with self.subTest(revision_key=revision_key[:8]):
@@ -137,8 +137,8 @@ class BundleKeyVectorTests(unittest.TestCase):
 
     def test_a_kicad_bump_is_a_new_generator(self) -> None:
         bumped = {**self.version, "kicad_version": "10.0.7"}
-        self.assertEqual(gen.generator_digest(bumped), "485f89f2a4cebeebcdbe85c36da68d9f209f61baf2e6912928563e2fd9b8582d")
-        self.assertEqual(gen.bundle_key("0" * 64, bumped), "11e12e1714acba8f8e8f410e349a738affcca789c1f520c07f4cd28929c7e1c7")
+        self.assertEqual(gen.generator_digest(bumped), "adeb8290a058e3b94a02bf0e063ab2d9e9be8858d177c6aa17d6d2eee3a29103")
+        self.assertEqual(gen.bundle_key("0" * 64, bumped), "1526370711b561e52c2a0b4b5b01fbcc9f06790e347272a236819231889670b3")
 
     def test_the_manifest_example_bundle_key(self) -> None:
         manifest = json.loads((EXAMPLES / "BundleManifestA3.example.json").read_text(encoding="utf-8"))
