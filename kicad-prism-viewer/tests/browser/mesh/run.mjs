@@ -131,19 +131,21 @@ async function check(chrome, server, outDir, summary) {
     await evaluate("element.setMeshStyle({ edges: false }); return true;");
     await capture("pieces-only");
     ok("pieces draw", differs("board", "pieces-only") > 1000, `${differs("board", "pieces-only")} px`);
-    ok("edges draw over the pieces", differs("pieces-only", "mesh") > 1000, `${differs("pieces-only", "mesh")} px`);
     await evaluate("element.setMeshStyle({ edges: true, pieces: 'none' }); return true;");
     await capture("edges-only");
     ok("edges draw alone", differs("board", "edges-only") > 1000, `${differs("board", "edges-only")} px`);
     await evaluate("element.setMeshStyle({ pieces: 'layers' }); return true;");
-    const field = pack.fields.find((item) => item.name === "min_angle")?.name || pack.fields[0]?.name;
+    // A field whose values differ, so colouring and a threshold show.
+    const varied = pack.fields.filter((item) => item.scope === "element" && item.range && item.range[1] > item.range[0]);
+    const field = varied.find((item) => item.name === "min_angle")?.name || varied[0]?.name;
     if (field) {
       await evaluate(`element.setMeshStyle({ colorBy: ${JSON.stringify(field)} }); return true;`);
       await capture("color-by", { shot: "color-by" });
       ok(`colouring by ${field} changes the picture`, differs("mesh", "color-by") > 1000, `${differs("mesh", "color-by")} px`);
-      await evaluate(`element.setMeshStyle({ threshold: { value: ${JSON.stringify(pack.fields.find((item) => item.name === field).range?.[1] ?? 0)}, hide: "below" } }); return true;`);
+      const [low, high] = pack.fields.find((item) => item.name === field).range || [0, 0];
+      await evaluate(`element.setMeshStyle({ threshold: { value: ${(low + high) / 2}, hide: "below" } }); return true;`);
       await capture("threshold");
-      ok("a threshold at the top of the range hides most elements", differs("color-by", "threshold") > 1000, `${differs("color-by", "threshold")} px`);
+      ok("a threshold at the middle of the range hides elements", differs("color-by", "threshold") > 1000, `${differs("color-by", "threshold")} px`);
       await evaluate("element.setMeshStyle({ colorBy: null, threshold: null }); return true;");
     }
     // Pick: frame an element, then pick the canvas centre; it must be that element.
@@ -153,19 +155,24 @@ async function check(chrome, server, outDir, summary) {
     // Close up, the outer copper would hide an inner layer's antipad: show the pack's layers alone.
     summary.hiddenLayers = await evaluate(`
       const layers = element.getViewState()?.layers || [];
-      const outer = layers.length > 2 ? [layers[0], layers[layers.length - 1]] : [];
+      const slices = ${JSON.stringify(pack.layers.map((layer) => layer.sliceKey))};
+      // Outer layers the pack does not draw on (by stackup order: the first and last copper slices).
+      const outer = layers.length > 2 ? [layers[0], layers[layers.length - 1]].filter((layer, k) => !slices.includes(k ? "copper.back" : "copper.front")) : [];
       for (const layer of outer) element.setLayerVisible(layer.id, false);
       return outer.map((layer) => layer.name);`);
-    await evaluate(`return element.frameMeshElement(${target.index}, { spanMm: 2 });`);
+    await evaluate(`element.setMeshStyle({ edges: false }); return element.frameMeshElement(${target.index}, { spanMm: 2 });`);
     await settleCamera(page);
+    await capture("close-pieces");
+    await evaluate("element.setMeshStyle({ edges: true }); return true;");
     await capture("close-up", { shot: "antipad-close-up" });
+    ok("close up, edges draw over the pieces", differs("close-pieces", "close-up") > 1000, `${differs("close-pieces", "close-up")} px`);
     const picked = await evaluate(`
       const canvas = element.shadowRoot.getElementById("viewport");
       const rect = canvas.getBoundingClientRect();
       return element.meshElementAt(rect.left + rect.width / 2, rect.top + rect.height / 2);`);
     summary.picked = picked;
     ok("the element picked at the centre is the one framed", picked?.index === target.index, `framed ${target.index}, picked ${picked?.index} on ${picked?.sliceKey}`);
-    ok("a pick returns the element's fields", picked && Object.keys(picked.fields).length === pack.fields.length, JSON.stringify(picked?.fields));
+    ok("a pick returns the element's fields", picked && Object.keys(picked.fields).length === pack.fields.filter((item) => item.scope === "element").length, JSON.stringify(picked?.fields));
     await evaluate(`element.frameMeshElement(${target.index}, { context: 6 }); return true;`);
     await settleCamera(page);
     await capture("picked", { shot: "picked-element" });
@@ -192,8 +199,8 @@ async function check(chrome, server, outDir, summary) {
         const rect = canvas.getBoundingClientRect();
         return element.meshElementAt(rect.left + rect.width / 2, rect.top + rect.height / 2);`);
       summary.groupPick = at;
-      ok("a group's pick reads the layer's own value", at?.copper?.some((item) => item.fields && Object.values(item.fields).some((value) => value != null)), JSON.stringify(at?.copper));
-      ok("a group's pick names its source pack", Boolean(at?.source), at?.source);
+      if (layerField) ok("a group's pick reads the layer's own value", at?.copper?.some((item) => item.fields && Object.values(item.fields).some((value) => value != null)), JSON.stringify(at?.copper));
+      if (grouped.groupMembers?.length > 1) ok("a group's pick names its source pack", Boolean(at?.source), at?.source);
     }
     await evaluate("element.setMeshPack(null); return true;");
     await capture("mesh-off");
