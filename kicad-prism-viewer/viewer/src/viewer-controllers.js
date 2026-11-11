@@ -310,6 +310,7 @@ export const BOARD_MEMBERS = Object.freeze([
   "loadAnalyticPack", "setAnalyticOverlay", "setAnalyticVectors", "setAnalyticStyle", "analyticColormaps", "setAnalyticRelief", "setClickSelect", "analyticProbe", "analyticAt", "analyticStats", "unloadAnalyticPack",
   "loadMeshPack", "meshPacks", "setMeshPack", "setMeshStyle", "setMeshSelection", "meshElement", "meshElementAt",
   "meshWorst", "frameMeshElement", "meshMarkers", "meshStats", "unloadMeshPack",
+  "cameraState", "setCameraState",
 ]);
 
 /**
@@ -520,6 +521,15 @@ export class BoardModeController extends ModeController {
   unloadAnalyticPack() {
     this.#analytic = null;
     this.port?.unloadAnalyticPack();
+  }
+
+  /** Where the camera rests, or null before mount; `setCameraState` puts it back. */
+  cameraState() {
+    return this.port?.cameraState() ?? null;
+  }
+
+  setCameraState(view) {
+    return Boolean(this.port?.setCameraState(view));
   }
 
   // --- Simulation meshes (mesh-view.js; spec 11) ---

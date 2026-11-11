@@ -32,6 +32,14 @@ The page builds the element from this worktree and loads every pack into it. Its
 
 Click an element to read its fields. A drag orbits the view as usual.
 
+The server follows the files. A change to the viewer's sources rebuilds the element; a build
+that fails keeps the last good one, and the panel shows its error. A change to `host.html` or
+to the sources reloads the page. Packs and the board are read from disk when asked for, so a
+pack written again in place is loaded again where it is shown, and a pack still being written
+is read again until it holds still. Across reloads the page keeps the pack, the view controls,
+the visible layers and the camera (`sessionStorage`). The panel's first line is the build: the
+commit, `+` when the worktree has changes, and the build time (UTC).
+
 The page warns when a pack's `bundle_sha256` is not the board's, and when a pack names slices
 the board does not have.
 

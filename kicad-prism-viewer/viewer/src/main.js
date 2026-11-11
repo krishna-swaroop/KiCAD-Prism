@@ -485,6 +485,20 @@ export async function mountStandaloneViewer(options = {}) {
   return {
     performance: performanceTimings,
     ...sharedPortMembers(token),
+    // The camera's resting place, to restore a view later: { focus, azimuth, polar, distance, orthoScale }.
+    cameraState() {
+      if (!camera) return null;
+      return { focus: [...camera.targetFocus], azimuth: camera.targetAzimuth, polar: camera.targetPolar, distance: camera.targetDistance, orthoScale: camera.targetOrthoScale };
+    },
+    setCameraState(view) {
+      if (!camera || !view || !Array.isArray(view.focus) || view.focus.length !== 3) return false;
+      const values = [...view.focus, view.azimuth, view.polar, view.distance, view.orthoScale].map(Number);
+      if (!values.every(Number.isFinite)) return false;
+      [camera.targetFocus, camera.targetAzimuth, camera.targetPolar, camera.targetDistance, camera.targetOrthoScale] = [values.slice(0, 3), ...values.slice(3)];
+      camera.snap();
+      board.renderer?.invalidate?.();
+      return true;
+    },
     // Simulation meshes over the board (mesh-view.js).
     ...meshPortMembers({
       renderer: () => (viewerSessionActive(token) ? board.renderer : null),

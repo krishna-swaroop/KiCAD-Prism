@@ -19,12 +19,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 const options = parseArgs(process.argv.slice(2));
 const buildDir = mkdtempSync(join(tmpdir(), "mesh-builds-"));
 const log = (...parts) => console.log(`[${new Date().toISOString().slice(11, 19)}]`, ...parts);
-const board = openBoard(options.board);
+const board = await openBoard(options.board);
 const packs = openPacks(options.packs);
 
 if (options.live) {
-  const server = await serveMesh({ board, packs, buildDir, port: options.live });
-  log(`board ${board.name}, ${packs.length} pack(s)`);
+  const server = await serveMesh({ board, packs, buildDir, port: options.live, live: true });
+  log(`board ${board.name}, ${packs.list().length} pack(s); rebuilding on source changes`);
   log(`mesh host: ${server.origin}/mesh/host.html`);
   const stop = () => {
     rmSync(buildDir, { recursive: true, force: true });
@@ -35,7 +35,7 @@ if (options.live) {
 } else {
   const outDir = resolve(options.out || join(here, "out", new Date().toISOString().replace(/[:.]/g, "-")));
   mkdirSync(outDir, { recursive: true });
-  const summary = { startedAt: new Date().toISOString(), board: board.name, boardSha256: board.sha256, packs: packs.map((pack) => pack.name), checks: [], captures: [], perf: [], failures: [] };
+  const summary = { startedAt: new Date().toISOString(), board: board.name, boardSha256: board.sha256, packs: packs.list().map((pack) => pack.name), checks: [], captures: [], perf: [], failures: [] };
   try {
     const server = await serveMesh({ board, packs, buildDir });
     summary.build = server.build;
@@ -217,7 +217,7 @@ async function check(chrome, server, outDir, summary) {
  * shown, plain, with its edges on copper (the default), the whole mesh and none.
  */
 async function perf(chrome, server, summary) {
-  const cases = [{ key: null, edges: null }, ...packs.flatMap((pack) => ["copper", "all", "off"].map((edges) => ({ key: pack.name, edges })))];
+  const cases = [{ key: null, edges: null }, ...packs.list().flatMap((pack) => ["copper", "all", "off"].map((edges) => ({ key: pack.name, edges })))];
   for (const { key, edges } of cases) {
     const page = await mount(chrome, server);
     try {
