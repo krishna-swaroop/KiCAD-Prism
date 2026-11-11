@@ -151,8 +151,8 @@ export function meshPortMembers(scene) {
       const pack = current();
       return pack ? worstElements(pack, field, { count, order }) : [];
     },
-    /** Select an element and ease the camera onto it, with room around; false when it is not there. */
-    frameMeshElement(index, { context = 8 } = {}) {
+    /** Select an element and ease the camera onto it, `spanMm` (or `context` element sizes) across; false when it is not there. */
+    frameMeshElement(index, { context = 8, spanMm = null } = {}) {
       const pack = current();
       const drawn = overlay();
       const element = pack ? elementInfo(pack, Number(index)) : null;
@@ -160,7 +160,8 @@ export function meshPortMembers(scene) {
       const z = key ? drawn.sliceZ(key, scene.layerOffsets()) : null;
       if (!element || z == null) return false;
       const [x0, y0, x1, y1] = element.boundsMm;
-      const reach = Math.max(x1 - x0, y1 - y0) * context / 2;
+      // `spanMm` across the view, else `context` times the element's size.
+      const reach = (spanMm ?? Math.max(x1 - x0, y1 - y0) * context) / 2;
       const [cx, cy] = element.centroidMm;
       scene.frame([(cx - reach) / 1000, -(cy + reach) / 1000, z, (cx + reach) / 1000, -(cy - reach) / 1000, z]);
       select(element.index);

@@ -33,7 +33,9 @@ export const EDGE_LIFT_M = 3e-6;
 /** The value the shaders read as "no value" (NaN in the pack). */
 const ABSENT = 3e38;
 const NO_ELEMENT = 0xffffffff;
-const VIEW_BYTES = 144;
+const VIEW_BYTES = 160;
+/** The palette's entries, then the places, in one storage table (a stage may bind only 8 storage buffers). */
+const PALETTE_ENTRIES = RAMP_SIZE;
 const PLACE_BYTES = 32;
 
 /** How the overlay looks; every field may be overridden (`resolveMeshStyle`). */
@@ -96,7 +98,7 @@ export function resolveMeshStyle(style = {}, base = DEFAULT_MESH_STYLE, pack = n
 export function netTint(index) {
   const base = EMPHASIS_PALETTE[index % EMPHASIS_PALETTE.length];
   const grey = [0.86, 0.87, 0.88];
-  return base.map((value, k) => value * 0.38 + grey[k] * 0.62);
+  return base.map((value, k) => value * 0.3 + grey[k] * 0.7);
 }
 
 /**
@@ -141,25 +143,40 @@ struct View {
   selected: u32,
   colorMode: u32,
   thresholdMode: u32,
+  // Where each value list starts in \`values\`: the colour field, the threshold's, the piece vertices'.
+  colorBase: u32,
+  limitBase: u32,
+  vertexBase: u32,
   pad0: u32,
   pad1: u32,
+  pad2: u32,
 };
 // Per slice (edges, markers) and per layer (pieces): heights with the
 // stackup offset in, whether it is shown, and the pieces' tint.
 struct Place { zPiece: f32, zEdge: f32, shown: f32, pad: f32, tint: vec4f };
 
 @group(0) @binding(0) var<uniform> view: View;
-@group(0) @binding(1) var<storage, read> places: array<Place>;
-@group(0) @binding(2) var<storage, read> palette: array<vec4f>;
-@group(0) @binding(3) var<storage, read> colorValues: array<f32>;
-@group(0) @binding(4) var<storage, read> limitValues: array<f32>;
-@group(0) @binding(5) var<storage, read> points: array<vec2i>;
-@group(0) @binding(6) var<storage, read> corners: array<u32>;
-@group(0) @binding(7) var<storage, read> owners: array<u32>;
-@group(0) @binding(8) var<storage, read> markers: array<vec4f>;
-// A value per piece vertex (colorMode 2): the slot solved fields will fill
-// (spec 11 §4, \`layers[].piece_fields\`); colorMode 1 reads the owning element's.
-@group(0) @binding(9) var<storage, read> vertexValues: array<f32>;
+// The colour ramp (PALETTE entries), then two entries a place.
+@group(0) @binding(1) var<storage, read> table: array<vec4f>;
+// Value lists end to end (see the bases in View): one float an element for
+// colouring and for the threshold, and one a piece vertex (colorMode 2), the
+// slot solved fields will fill (spec 11 §4, \`layers[].piece_fields\`).
+@group(0) @binding(2) var<storage, read> values: array<f32>;
+@group(0) @binding(3) var<storage, read> points: array<vec2i>;
+@group(0) @binding(4) var<storage, read> corners: array<u32>;
+@group(0) @binding(5) var<storage, read> owners: array<u32>;
+@group(0) @binding(6) var<storage, read> markers: array<vec4f>;
+
+const PALETTE = ${PALETTE_ENTRIES}u;
+
+fn placeAt(index: u32) -> Place {
+  let low = table[PALETTE + index * 2u];
+  return Place(low.x, low.y, low.z, low.w, table[PALETTE + index * 2u + 1u]);
+}
+
+fn colorValue(element: u32) -> f32 { return values[view.colorBase + element]; }
+fn limitValue(element: u32) -> f32 { return values[view.limitBase + element]; }
+fn vertexValue(vertex: u32) -> f32 { return values[view.vertexBase + vertex]; }
 
 const ABSENT = 3e38;
 const OFF = vec4f(2.0, 2.0, 2.0, 1.0);
@@ -168,7 +185,7 @@ fn present(value: f32) -> bool { return value < 1e38; }
 
 fn kept(element: u32) -> bool {
   if (view.thresholdMode == 0u) { return true; }
-  let value = limitValues[element];
+  let value = limitValue(element);
   if (!present(value)) { return false; }
   if (view.thresholdMode == 1u) { return value >= view.threshold; }
   return value <= view.threshold;
@@ -178,7 +195,7 @@ fn ramp(value: f32) -> vec3f {
   let t = clamp((value - view.range.x) / max(view.range.y - view.range.x, 1e-30), 0.0, 1.0) * ${RAMP_SIZE - 1}.0;
   let i = u32(floor(t));
   let j = min(i + 1u, ${RAMP_SIZE - 1}u);
-  return mix(palette[i].rgb, palette[j].rgb, t - floor(t));
+  return mix(table[i].rgb, table[j].rgb, t - floor(t));
 }
 
 fn place(point: vec2i, z: f32) -> vec4f {
@@ -198,7 +215,7 @@ struct EdgeOut {
   var out: EdgeOut;
   out.element = element;
   out.bary = vec3f(f32(corner == 0u), f32(corner == 1u), f32(corner == 2u));
-  let at = places[slot];
+  let at = placeAt(slot);
   if (at.shown < 0.5 || !kept(element)) {
     out.position = OFF;
     return out;
@@ -221,7 +238,7 @@ struct EdgeOut {
   let edgeAlpha = line * fade * edge.a;
   var fill = vec4f(0.0);
   if (view.colorMode == 1u) {
-    let value = colorValues[input.element];
+    let value = colorValue(input.element);
     if (present(value)) { fill = vec4f(ramp(value), 0.35); }
   }
   if (selected) { fill = vec4f(view.highlight.rgb, max(fill.a, 0.3)); }
@@ -242,7 +259,7 @@ struct PieceOut {
   var out: PieceOut;
   out.element = element;
   out.layer = layer;
-  let at = places[layer];
+  let at = placeAt(layer);
   if (at.shown < 0.5 || !kept(element)) {
     out.position = OFF;
     return out;
@@ -250,12 +267,12 @@ struct PieceOut {
   let point = corners[vertex];
   out.position = place(points[point], at.zPiece);
   // Interpolated across the piece triangle: one value an element, or one a vertex.
-  out.value = select(colorValues[element], vertexValues[point], view.colorMode == 2u);
+  out.value = select(colorValue(element), vertexValue(point), view.colorMode == 2u);
   return out;
 }
 
 @fragment fn fs_piece(input: PieceOut) -> @location(0) vec4f {
-  var color = places[input.layer].tint.rgb;
+  var color = placeAt(input.layer).tint.rgb;
   if (view.colorMode != 0u && present(input.value)) { color = ramp(input.value); }
   if (input.element == view.selected) { color = mix(color, view.highlight.rgb, 0.45); }
   return vec4f(color, 1.0);
@@ -270,7 +287,7 @@ struct RingOut {
 // One ring a marker and slice: x, y (world metres), radius (metres), slot.
 @vertex fn vs_marker(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: u32) -> RingOut {
   let marker = markers[index];
-  let at = places[u32(marker.w)];
+  let at = placeAt(u32(marker.w));
   var out: RingOut;
   if (at.shown < 0.5) {
     out.position = OFF;
@@ -278,12 +295,14 @@ struct RingOut {
   }
   var quad = array<vec2f, 6>(vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0), vec2f(-1.0, -1.0), vec2f(1.0, 1.0), vec2f(-1.0, 1.0));
   let corner = quad[vertex];
+  // Pixels a metre on the board's plane here, so the ring is at least a few
+  // pixels across; drawn in the plane, so it meets the copper's depth as it does.
   let centre = view.matrix * vec4f(marker.x, marker.y, at.zEdge, 1.0);
-  let side = view.matrix * vec4f(marker.x + marker.z, marker.y, at.zEdge, 1.0);
-  let projected = length((side.xy / side.w - centre.xy / centre.w) * 0.5 * view.viewport);
-  let radius = max(projected, 6.0);
+  let side = view.matrix * vec4f(marker.x + 1e-4, marker.y, at.zEdge, 1.0);
+  let perMetre = max(length((side.xy / side.w - centre.xy / centre.w) * 0.5 * view.viewport) / 1e-4, 1e-3);
+  let radius = max(marker.z * perMetre, 6.0);
   let reach = radius + 2.0;
-  out.position = vec4f(centre.xy + corner * reach * 2.0 / view.viewport * centre.w, centre.z, centre.w);
+  out.position = view.matrix * vec4f(marker.x + corner.x * reach / perMetre, marker.y + corner.y * reach / perMetre, at.zEdge, 1.0);
   out.local = corner * reach;
   out.radius = radius;
   return out;
@@ -311,11 +330,10 @@ export class MeshOverlay {
     this.selected = -1;
     this.viewScratch = new ArrayBuffer(VIEW_BYTES);
     this.view = this.device.createBuffer({ label: "mesh-view", size: VIEW_BYTES, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    this.palette = this.device.createBuffer({ label: "mesh-palette", size: RAMP_SIZE * 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     this.empty = this.storage(new Float32Array([ABSENT, 0, 0, 0]), "mesh-empty");
     this.buffers = [];
-    this.fieldBuffers = new Map();
-    this.writePalette();
+    this.values = null;
+    this.paletteData = sampleColormap(this.style.colormap, RAMP_SIZE);
   }
 
   get shown() {
@@ -331,7 +349,7 @@ export class MeshOverlay {
   pipelines() {
     if (this.compiled) return this.compiled;
     const { device, renderer } = this;
-    const entries = Array.from({ length: 10 }, (_, binding) => ({
+    const entries = Array.from({ length: 7 }, (_, binding) => ({
       binding,
       visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
       buffer: { type: binding === 0 ? "uniform" : "read-only-storage" },
@@ -406,7 +424,8 @@ export class MeshOverlay {
     this.rings = keep(this.storage(Float32Array.from(rings), "mesh-markers"));
     this.placeCount = this.slices.length + this.layers.length;
     this.placeData = new Float32Array(this.placeCount * (PLACE_BYTES / 4));
-    this.places = keep(this.device.createBuffer({ label: "mesh-places", size: Math.max(32, this.placeData.byteLength), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST }));
+    this.table = keep(this.device.createBuffer({ label: "mesh-table", size: PALETTE_ENTRIES * 16 + Math.max(32, this.placeData.byteLength), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST }));
+    this.writePalette();
     this.placements = null;
     this.placementsFor = null;
     this.bindGroups = null;
@@ -430,22 +449,34 @@ export class MeshOverlay {
   }
 
   writePalette() {
-    this.device.queue.writeBuffer(this.palette, 0, sampleColormap(this.style.colormap, RAMP_SIZE));
+    this.paletteData = sampleColormap(this.style.colormap, RAMP_SIZE);
+    if (this.table) this.device.queue.writeBuffer(this.table, 0, this.paletteData);
     this.renderer.invalidate?.();
   }
 
-  /** A field's values on the GPU (NaN as absent), uploaded once per field. */
-  fieldBuffer(name) {
-    if (!name || !this.pack) return this.empty;
-    let buffer = this.fieldBuffers.get(name);
-    if (!buffer) {
-      const values = meshField(this.pack, name).values;
-      const upload = new Float32Array(values.length);
-      for (let k = 0; k < values.length; k += 1) upload[k] = Number.isFinite(values[k]) ? values[k] : ABSENT;
-      buffer = this.storage(upload, `mesh-field-${name}`);
-      this.fieldBuffers.set(name, buffer);
-    }
-    return buffer;
+  /**
+   * Every element field end to end (NaN as absent), then one absent value
+   * where the piece vertices' list will go: uploaded the first time the
+   * style colours or thresholds, then only the bases change.
+   */
+  valuesBuffer() {
+    const { pack } = this;
+    if (!this.style.colorBy && !this.style.threshold) return this.values?.buffer || this.empty;
+    if (this.values) return this.values.buffer;
+    const count = pack.elementCount;
+    const upload = new Float32Array(pack.fields.length * count + 4).fill(ABSENT);
+    pack.fields.forEach((field, index) => {
+      const at = index * count;
+      for (let k = 0; k < count; k += 1) if (Number.isFinite(field.values[k])) upload[at + k] = field.values[k];
+    });
+    this.values = { buffer: this.storage(upload, "mesh-values"), vertexBase: pack.fields.length * count };
+    return this.values.buffer;
+  }
+
+  /** Where a field's values start in the values buffer. */
+  fieldBase(name) {
+    const index = name && this.pack ? this.pack.fields.findIndex((field) => field.name === name) : -1;
+    return index >= 0 ? index * this.pack.elementCount : this.values?.vertexBase ?? 0;
   }
 
   /** The colour range in force: the style's, else the field's own. */
@@ -464,15 +495,19 @@ export class MeshOverlay {
   applyStyle() {
     if (!this.pack) return;
     this.pipelines();
-    const color = this.fieldBuffer(this.style.colorBy);
-    const limit = this.fieldBuffer(this.thresholdField());
+    const values = this.valuesBuffer();
+    if (this.bindGroups && this.bindGroups.values === values) {
+      this.renderer.invalidate?.();
+      return;
+    }
     const group = (points, corners, owners) => this.device.createBindGroup({
       layout: this.layout,
-      entries: [this.view, this.places, this.palette, color, limit, points, corners, owners, this.rings, this.empty].map((buffer, binding) => ({ binding, resource: { buffer } })),
+      entries: [this.view, this.table, values, points, corners, owners, this.rings].map((buffer, binding) => ({ binding, resource: { buffer } })),
     });
     this.bindGroups = {
       elements: group(this.nodes, this.triangles, this.empty),
       pieces: group(this.pieceVertices, this.pieceTriangles, this.pieceOwners),
+      values,
     };
     this.renderer.invalidate?.();
   }
@@ -531,7 +566,7 @@ export class MeshOverlay {
       data.set([this.sliceZ(layer.sliceKey, layerOffsets, false) ?? 0, 0, shown ? 1 : 0, 0, ...layer.tint, 1], slot * stride);
       if (shown && layer.count) shownLayers.push({ slot, layer });
     });
-    this.device.queue.writeBuffer(this.places, 0, data);
+    this.device.queue.writeBuffer(this.table, PALETTE_ENTRIES * 16, data);
     this.writeView(matrix);
     let draws = 0;
     let triangles = 0;
@@ -579,20 +614,25 @@ export class MeshOverlay {
     words[31] = this.selected >= 0 ? this.selected : NO_ELEMENT;
     words[32] = style.colorBy ? 1 : 0;
     words[33] = style.threshold ? (style.threshold.hide === "above" ? 2 : 1) : 0;
+    words[34] = this.fieldBase(style.colorBy);
+    words[35] = this.fieldBase(this.thresholdField());
+    words[36] = this.values?.vertexBase ?? 0;
     this.device.queue.writeBuffer(this.view, 0, this.viewScratch);
   }
 
   gpuMemoryBytes() {
     if (!this.pack) return 0;
-    let bytes = this.view.size + this.palette.size;
-    for (const buffer of [...this.buffers, ...this.fieldBuffers.values()]) bytes += buffer.size;
+    let bytes = this.view.size + (this.values?.buffer.size || 0);
+    for (const buffer of this.buffers) bytes += buffer.size;
     return bytes;
   }
 
   release() {
-    for (const buffer of [...this.buffers, ...this.fieldBuffers.values()]) buffer.destroy();
+    for (const buffer of this.buffers) buffer.destroy();
+    this.values?.buffer.destroy();
+    this.values = null;
     this.buffers = [];
-    this.fieldBuffers = new Map();
+    this.table = null;
     this.bindGroups = null;
     this.pack = null;
   }
@@ -600,7 +640,6 @@ export class MeshOverlay {
   destroy() {
     this.release();
     this.view.destroy();
-    this.palette.destroy();
     this.empty.destroy();
   }
 }
