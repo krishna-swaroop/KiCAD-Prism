@@ -25,6 +25,9 @@ import { BATCH_WORDS, COVER_WORDS, SHAPE_WORDS } from "./analytic-shaders.js";
 const vendor = new URL("../vendor/prism-kicad-wasm/", import.meta.url);
 const provenance = JSON.parse(readFileSync(new URL("provenance.json", vendor), "utf8"));
 const fixture = readFileSync(new URL("../../tests/fixtures/analytic/demo.kmpack", import.meta.url));
+// The same board materialized as a0, by the producer before a1 (c13a14c78,
+// `materialization_pack` example): a1 readers still open it.
+const fixtureA0 = readFileSync(new URL("../../tests/fixtures/analytic/demo-a0.kmpack", import.meta.url));
 
 test("the vendored WASM is the build its provenance records", () => {
   assert.equal(provenance.source.crate, "prism-kicad-wasm");
@@ -36,11 +39,32 @@ test("the vendored WASM is the build its provenance records", () => {
   }
 });
 
+test("an a0 pack still opens and lowers exactly as its a1 successor", async () => {
+  await loadAnalyticWasm(readFileSync(new URL("prism_kicad_analytic_bg.wasm", vendor)));
+  const [a0, a1] = [await openAnalyticPack(fixtureA0), await openAnalyticPack(fixture)];
+  try {
+    assert.equal(a0.header.schema, "kicad_monkey.materialization.a0");
+    assert.equal(a0.header.design_facts, undefined);
+    assert.ok(a1.header.design_facts, "a1 carries design facts in its header");
+    for (const slice of a1.header.stack.slices) {
+      const [old, now] = [a0.lowerSlice(slice.key), a1.lowerSlice(slice.key)];
+      for (const [name, value] of Object.entries(now)) {
+        if (ArrayBuffer.isView(value)) assert.deepEqual(Array.from(old[name]), Array.from(value), `${slice.key} ${name}`);
+      }
+    }
+    assert.deepEqual(Array.from(a0.netIndices()), Array.from(a1.netIndices()));
+  } finally {
+    a0.free();
+    a1.free();
+  }
+});
+
 test("a pack opens and its copper lowers to records in Node", async () => {
   await loadAnalyticWasm(readFileSync(new URL("prism_kicad_analytic_bg.wasm", vendor)));
   const pack = await openAnalyticPack(fixture);
   try {
-    assert.equal(pack.header.schema, "kicad_monkey.materialization.a0");
+    assert.equal(pack.header.schema, "kicad_monkey.materialization.a1");
+    assert.deepEqual(pack.header.design_facts.zones.map((zone) => zone.slice_keys), [["copper.front"]]);
     assert.equal(pack.header.binding.length, 0, "the header leaves the binding out");
     assert.equal(operationCount(pack.header), 20);
     const front = pack.lowerSlice("copper.front");
