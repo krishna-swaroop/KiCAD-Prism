@@ -39,7 +39,7 @@ if (options.live) {
   try {
     const server = await serveMesh({ board, packs, buildDir });
     summary.build = server.build;
-    const chrome = await launchChrome({ headless: !options.headed, unthrottled: options.perf });
+    const chrome = await launchChrome({ headless: !options.headed });
     try {
       await check(chrome, server, outDir, summary);
       if (options.perf) await perf(chrome, server, summary);
@@ -150,6 +150,12 @@ async function check(chrome, server, outDir, summary) {
     const worstField = pack.fields.find((item) => item.name === "cut_fraction" && item.range)?.name || field;
     const target = worstField ? (await evaluate(`return element.meshWorst({ field: ${JSON.stringify(worstField)}, count: 1 });`))[0] : { index: Math.floor(pack.elements / 2) };
     summary.target = { field: worstField, ...target };
+    // Close up, the outer copper would hide an inner layer's antipad: show the pack's layers alone.
+    summary.hiddenLayers = await evaluate(`
+      const layers = element.getViewState()?.layers || [];
+      const outer = layers.length > 2 ? [layers[0], layers[layers.length - 1]] : [];
+      for (const layer of outer) element.setLayerVisible(layer.id, false);
+      return outer.map((layer) => layer.name);`);
     await evaluate(`return element.frameMeshElement(${target.index}, { spanMm: 2 });`);
     await settleCamera(page);
     await capture("close-up", { shot: "antipad-close-up" });
