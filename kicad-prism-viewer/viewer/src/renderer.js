@@ -1418,6 +1418,7 @@ export class Renderer {
       this.barrelRecordBuffer, this.occurrenceBuffer, this.listBuffer, this.argsBuffer, this.classesBuffer,
       this.featureMaskBuffer, this.netMaskBuffer, this.cull?.lods]) bytes += buffer?.size || 0;
     bytes += this.analytic?.gpuMemoryBytes() || 0;
+    bytes += this.meshOverlay?.gpuMemoryBytes() || 0;
     // Depth (4 bytes) and pick (rg32uint, 8 bytes) targets.
     bytes += this.canvas.width * this.canvas.height * 12;
     return bytes;
@@ -1444,7 +1445,8 @@ export class Renderer {
     // SB2-90: the arena chunks that hold the geometry (shared in a scene; reported by their owner).
     const arena = this.shareFrom ? null : this.arenaStats();
     const analytic = this.analytic?.gpuMemoryBytes() || 0;
-    return { vertex, index, geometry, barrels, occurrences, analytic, targets: this.canvas.width * this.canvas.height * 12, entries: this.entries.length, arena };
+    const mesh = this.meshOverlay?.gpuMemoryBytes() || 0;
+    return { vertex, index, geometry, barrels, occurrences, analytic, mesh, targets: this.canvas.width * this.canvas.height * 12, entries: this.entries.length, arena };
   }
 
   ensureInstancedPipelines() {
@@ -2026,6 +2028,8 @@ export class Renderer {
   }
 
   dispose() {
+    this.meshOverlay?.destroy();
+    this.meshOverlay = null;
     this.removeEntries(this.entries);
     if (!this.shareFrom) {
       this.geometryArenas?.vertex.destroy();
@@ -2305,6 +2309,12 @@ export class Renderer {
       draws += this.analytic.encodeBlended(pass, layerOffsets, panel.layerId ? new Set([panel.layerId]) : visibleLayers, analyticContext);
     }
     this.drawBlended(pass, blendedEntries, pipelines, indirect);
+    // A simulation mesh (mesh-overlay.js) lies over everything, on its copper faces.
+    if (this.meshOverlay?.shown && !compareMode) {
+      const mesh = this.meshOverlay.encode(pass, this.analyticView(panel.matrix), layerOffsets, panel.layerId ? new Set([panel.layerId]) : visibleLayers);
+      triangles += mesh.triangles;
+      draws += mesh.draws;
+    }
     return { triangles, draws };
   }
 

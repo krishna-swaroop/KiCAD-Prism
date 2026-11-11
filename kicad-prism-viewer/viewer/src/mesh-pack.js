@@ -72,8 +72,7 @@ export function readMeshPack(buffer) {
   const nodes = view(Int32Array, header.nodes, nodeCount * 2, "nodes");
   const triangles = view(Uint32Array, header.triangles, elementCount * 3, "triangles");
   checkIndices(triangles, nodeCount, "triangles");
-  const layers = (header.layers || []).map((layer, index) => {
-    const what = `layers[${index}] (${layer.slice_key}, ${layer.net_key})`;
+  const pieces = (layer, what) => {
     const vertexCount = count(layer.piece_vertices, `${what} piece_vertices`);
     const pieceCount = count(layer.piece_triangles, `${what} piece_triangles`);
     const out = {
@@ -88,8 +87,12 @@ export function readMeshPack(buffer) {
     };
     checkIndices(out.triangles, vertexCount, `${what} piece_triangles`);
     checkIndices(out.element, elementCount, `${what} piece_element`);
+    if (Number.isFinite(Number(layer.exact_area_nm2))) out.exactAreaNm2 = Number(layer.exact_area_nm2);
     return out;
-  });
+  };
+  const layers = (header.layers || []).map((layer, index) => pieces(layer, `layers[${index}] (${layer.slice_key}, ${layer.net_key})`));
+  // Resolution 2: the solver's domain, optional, with the same piece arrays and no slice of its own.
+  const domain = header.domain ? pieces({ slice_key: "", net_key: "", ...header.domain }, "domain") : null;
   const fields = (header.element_fields || []).map((field) => {
     if ((field.dtype || "f32") !== "f32") throw new Error(`element field ${field.name}: dtype ${field.dtype} is not f32`);
     return { name: String(field.name), unit: field.unit ?? "", values: view(Float32Array, field, elementCount, `element field ${field.name}`) };
@@ -103,6 +106,7 @@ export function readMeshPack(buffer) {
     nodeCount,
     elementCount,
     layers,
+    domain,
     fields,
     markers: (header.markers || []).map((marker) => ({
       kind: String(marker.kind ?? "marker"),
