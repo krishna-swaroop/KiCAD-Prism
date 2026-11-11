@@ -518,7 +518,7 @@ def build_board(positionals: list[str], options: dict[str, Any]) -> NoReturn:
         members["materialization/board.kmpack"] = PACK_PLACEHOLDER
         manifest["members"].append({"path": "materialization/board.kmpack", "role": "materialization", "stage": "board",
                                     "sha256": digest(PACK_PLACEHOLDER), "bytes": len(PACK_PLACEHOLDER),
-                                    "member_schema": "kicad_monkey.materialization.a0"})
+                                    "member_schema": "kicad_monkey.materialization.a1"})
         added.append("materialization/board.kmpack")
         if not saved:
             record["fill_check"] = {"saved_operations": 0, "refilled_operations": 0, "differing_operations": 0, "stale": False}

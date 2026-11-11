@@ -34,7 +34,7 @@ VERSION = {
         {"path": "design.json", "schema": "kicad_monkey.design.a0"},
         {
             "path": "materialization/board.kmpack",
-            "schema": "kicad_monkey.materialization.a0",
+            "schema": "kicad_monkey.materialization.a1",
         },
         {
             "path": "models/assembly-hlr.json",
