@@ -22,3 +22,4 @@ samples/
 # Pixel-diff harness output.
 /tests/browser/pixel-diff/out/
 /tests/browser/perf/out/
+/tests/browser/mesh/out/

@@ -620,3 +620,26 @@ test("Prism's d.ts declares each member under the interface that has it", () => 
   }
   assert.match(dts, /interface PrismSemanticViewerElement\s+extends HTMLElement, PrismSemanticViewerCommon, PrismSemanticBoardMode, PrismSemanticSystemMode \{\}/);
 });
+
+test("mesh packs, the shown one, the style and the selection are replayed onto a new mount", async () => {
+  const controller = new BoardModeController();
+  const loads = [];
+  const first = fakeScene({ loadMeshPack: async (bytes, { key }) => (loads.push([key, bytes.length]), { key }) });
+  controller.attach(first.port);
+  assert.deepEqual(await controller.loadMeshPack(new Uint8Array([1, 2, 3]), { key: "pass 0" }), { key: "pass 0" });
+  controller.setMeshStyle({ colorBy: "size" });
+  controller.setMeshPack("pass 0");
+  controller.setMeshSelection(7);
+  const second = fakeScene({ loadMeshPack: async (bytes, { key }) => (loads.push([key, bytes.length]), { key }) });
+  controller.attach(second.port);
+  await new Promise((done) => setTimeout(done, 0));
+  assert.deepEqual(loads, [["pass 0", 3], ["pass 0", 3]]);
+  assert.deepEqual(second.calls.filter((call) => call[0].startsWith("setMesh")), [
+    ["setMeshStyle", { colorBy: "size" }],
+    ["setMeshPack", "pass 0"],
+    ["setMeshSelection", 7],
+  ]);
+  controller.unloadMeshPack("pass 0");
+  const third = fakeScene({ loadMeshPack: async () => assert.fail("an unloaded pack is not replayed") });
+  controller.attach(third.port);
+});

@@ -16,6 +16,18 @@ The mesh pipeline that came before it (the Python topology compiler, its
 semantic glTF tiles and the standalone viewer page) was removed at System
 Builder v2's stage 0 (`docs/architecture/adr-system-builder-v2.md`).
 
+A host can also lay a simulation mesh over the board: a `prism.sim.mesh-pack`
+(`viewer/src/mesh-pack.js`), drawn by `viewer/src/mesh-overlay.js` through
+the element's mesh members (`loadMeshPack`, `setMeshPack`, `setMeshStyle`,
+`meshElementAt`, `meshWorst`, `frameMeshElement`, …; `viewer/src/mesh-view.js`).
+To look at meshes over a board, start the engineering host page:
+
+```bash
+npm run mesh:live -- --board <design.prism> --pack <dir of *.meshpack>
+```
+
+See `tests/browser/mesh/README.md`.
+
 ## Layout
 
 - `viewer/src/`: the element (`prism-semantic-viewer-element.js`), the board
@@ -23,7 +35,8 @@ Builder v2's stage 0 (`docs/architecture/adr-system-builder-v2.md`).
   (`*.test.mjs`).
 - `viewer/vendor/prism-kicad-wasm/`: the analytic WASM build the element loads.
 - `tests/browser/`: browser checks: the pixel-diff and frame-time harness
-  (`pixel-diff/`), inset views, shader variants and analytic runs.
+  (`pixel-diff/`), inset views, shader variants, analytic runs, and the mesh
+  overlay's host page and check (`mesh/`).
 - `docs/`: implementation notes.
 
 ## Build and test

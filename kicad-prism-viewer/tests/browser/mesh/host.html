@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mesh overlay</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0d10; color: #e6e8eb; font: 12px/1.4 system-ui, sans-serif; overflow: hidden; }
+  prism-semantic-viewer { position: absolute; inset: 0 300px 0 0; display: block; }
+  aside { position: absolute; inset: 0 0 0 auto; width: 300px; box-sizing: border-box; padding: 10px 12px; overflow-y: auto; background: #15181d; border-left: 1px solid #2a2f37; }
+  h2 { margin: 12px 0 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: #8a97a8; }
+  label { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+  label > span { width: 82px; flex: none; color: #b6c0cc; }
+  select, input[type="number"] { flex: 1; min-width: 0; background: #232830; color: inherit; border: 1px solid #343a44; border-radius: 4px; padding: 3px 5px; font: inherit; }
+  input[type="range"] { flex: 1; }
+  button { background: #232830; color: inherit; border: 1px solid #343a44; border-radius: 4px; padding: 4px 10px; font: inherit; cursor: pointer; }
+  .row { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
+  #warn { color: #fbbf24; margin: 6px 0; }
+  #warn:empty { display: none; }
+  #build { color: #8a97a8; font: 11px ui-monospace, monospace; }
+  #build.failed { color: #f87171; white-space: pre-wrap; }
+  #legend { margin: 4px 0 6px 88px; }
+  #covers { margin: 4px 0; }
+  .tag { margin-left: auto; color: #8a97a8; font-size: 11px; }
+  .tag[hidden] { display: none; }
+  #legend[hidden] { display: none; }
+  #ramp { height: 10px; border-radius: 2px; }
+  .ends { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; color: #b6c0cc; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; font-variant-numeric: tabular-nums; }
+  dt { color: #8a97a8; }
+  dd { margin: 0; text-align: right; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  #labels { position: absolute; inset: 0 300px 0 0; pointer-events: none; overflow: hidden; }
+  #labels span { position: absolute; transform: translate(8px, -50%); font: 10px ui-monospace, monospace; color: #fff; background: rgb(15 20 28 / 0.75); padding: 0 3px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<prism-semantic-viewer id="viewer" active="true" hide-panel="true"></prism-semantic-viewer>
+<div id="labels"></div>
+<aside>
+  <div id="build"></div>
+  <div id="warn"></div>
+  <h2>Mesh</h2>
+  <label><input type="checkbox" id="mesh" checked> Mesh</label>
+  <label><span>Pack</span><select id="pack"></select></label>
+  <label><span>Edges</span><select id="edges"><option value="copper">On copper</option><option value="all">Whole mesh</option><option value="off">Off</option></select></label>
+  <label><span>Pieces</span><select id="pieces"><option value="layers">Conductors</option><option value="domain">Solved domain</option><option value="none">None</option></select></label>
+  <dl id="covers"></dl>
+  <label><input type="checkbox" id="markers" checked> Markers</label>
+  <label><input type="checkbox" id="marker-ids"> Marker ids</label>
+  <h2>Colour</h2>
+  <label><span>Colour by</span><select id="color-by"></select></label>
+  <label><span>Colormap</span><select id="colormap"></select></label>
+  <div id="legend"><div id="ramp"></div><div class="ends"><span id="low"></span><span id="high"></span></div></div>
+  <label><input type="checkbox" id="threshold-on"> Threshold</label>
+  <label><span>Hide</span><select id="threshold-hide"><option value="below">Below</option><option value="above">Above</option></select></label>
+  <label><span>Value</span><input type="number" id="threshold-value" step="any"></label>
+  <label><span></span><input type="range" id="threshold-slider" min="0" max="1000" value="500"></label>
+  <h2>Worst</h2>
+  <label><span>By</span><select id="worst-by"></select></label>
+  <div class="row"><button id="prev">Previous</button><button id="next">Next worst</button><span id="rank"></span></div>
+  <h2>Element</h2>
+  <dl id="picked"></dl>
+  <h2>Board</h2>
+  <label><input type="checkbox" id="board"> Board</label>
+  <label><input type="checkbox" id="components"> Components</label>
+  <label><span>Separation</span><input type="range" id="separation" min="0" max="1" step="0.01" value="0"></label>
+  <div id="layers"></div>
+  <h2>Stats</h2>
+  <dl id="stats"></dl>
+</aside>
+<script type="module">
+  await import("/builds/candidate.js");
+  const viewer = document.getElementById("viewer");
+  const $ = (id) => document.getElementById(id);
+  const ready = new Promise((done, fail) => {
+    viewer.addEventListener("prism-semantic-viewer:ready", done, { once: true });
+    viewer.addEventListener("prism-semantic-viewer:error", (event) => fail(event.detail?.error), { once: true });
+  });
+  viewer.setAttribute("bundle-url", new URL("/bundle/bundle.json", location.href).toString());
+  let index = await (await fetch("/packs/index.json")).json();
+  const served = await (await fetch("/state")).json();
+  await ready;
+  viewer.setClickSelect(false);
+  viewer.setShowBoard(false);
+  viewer.setShowComponents(false);
+
+  let summaries = [];
+  const unread = new Map();
+  // Each pack's file time as last loaded, so a rewritten pack is loaded again.
+  const loadedAt = new Map();
+  async function loadPack(pack) {
+    try {
+      const response = await fetch(`/packs/${encodeURIComponent(pack.name)}`);
+      if (!response.ok) throw new Error(await response.text());
+      const summary = await viewer.loadMeshPack(new Uint8Array(await response.arrayBuffer()), { key: pack.name });
+      summaries = [...summaries.filter((item) => item.key !== pack.name), summary];
+      loadedAt.set(pack.name, pack.mtimeMs);
+      unread.delete(pack.name);
+    } catch (error) {
+      unread.set(pack.name, error.message);
+    }
+  }
+  for (const pack of index.packs) await loadPack(pack);
+  const option = (value, text = value) => Object.assign(document.createElement("option"), { value, textContent: text });
+  function fillPacks() {
+    const keep = $("pack").value;
+    const order = index.packs.map((pack) => pack.name);
+    const listed = summaries.filter((summary) => order.includes(summary.key)).sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+    $("pack").replaceChildren(...listed.map((summary) => option(summary.key, `${summary.label || summary.key}${summary.group ? ` · group ${summary.group}` : ""}`)));
+    if (listed.some((summary) => summary.key === keep)) $("pack").value = keep;
+  }
+  fillPacks();
+  for (const name of Object.keys(viewer.analyticColormaps().colormaps)) $("colormap").append(option(name));
+  $("colormap").value = viewer.analyticColormaps().defaults.fieldColormap;
+
+  const worst = { list: [], at: -1 };
+  const current = () => summaries.find((summary) => summary.key === $("pack").value);
+  const fmt = (value) => (value == null ? "—" : Math.abs(value) >= 1e4 || (Math.abs(value) < 1e-3 && value !== 0) ? value.toExponential(4) : +value.toPrecision(6));
+
+  function fillFields() {
+    const fields = current()?.fields || [];
+    for (const id of ["color-by", "worst-by"]) {
+      const select = $(id);
+      const keep = select.value;
+      select.replaceChildren(...(id === "color-by" ? [option("", "None")] : []), ...fields.map((field) => option(field.name, field.unit && field.unit !== "1" ? `${field.name} (${field.unit})` : field.name)));
+      if ([...select.options].some((item) => item.value === keep)) select.value = keep;
+    }
+  }
+
+  function warnings() {
+    const summary = current();
+    const out = [];
+    if (summary?.bundleSha256 && index.board.sha256 && summary.bundleSha256 !== index.board.sha256) out.push(`Bundle mismatch: pack ${summary.bundleSha256.slice(0, 12)}, board ${index.board.sha256.slice(0, 12)}`);
+    if (summary && !summary.bundleSha256) out.push("No bundle");
+    const unmatched = viewer.meshStats()?.unmatchedSlices || [];
+    if (unmatched.length) out.push(`Slices not on board: ${unmatched.join(", ")}`);
+    if (unread.size) out.push(`Unread: ${[...unread].map(([name, error]) => `${name}: ${error}`).join("; ")}`);
+    $("warn").textContent = out.join(" · ");
+  }
+
+  function thresholdField() {
+    return $("color-by").value || $("worst-by").value || null;
+  }
+
+  function sliderRange() {
+    const field = current()?.fields.find((item) => item.name === thresholdField());
+    return field?.range || [0, 1];
+  }
+
+  function applyStyle() {
+    const field = thresholdField();
+    const threshold = $("threshold-on").checked && field && $("threshold-value").value !== ""
+      ? { field, value: Number($("threshold-value").value), hide: $("threshold-hide").value }
+      : null;
+    const colormaps = viewer.analyticColormaps().colormaps;
+    const coloured = current()?.fields.find((item) => item.name === $("color-by").value);
+    $("legend").hidden = !coloured;
+    if (coloured) {
+      $("ramp").style.background = `linear-gradient(to right, ${colormaps[$("colormap").value].join(", ")})`;
+      $("low").textContent = fmt(coloured.range?.[0] ?? null);
+      $("high").textContent = fmt(coloured.range?.[1] ?? null);
+    }
+    viewer.setMeshStyle({
+      edges: $("edges").value,
+      pieces: $("pieces").value,
+      markers: $("markers").checked,
+      colorBy: $("color-by").value || null,
+      colormap: $("colormap").value,
+      threshold,
+    });
+    stats();
+  }
+
+  function coverage() {
+    const summary = $("mesh").checked ? viewer.meshPacks().find((item) => item.key === $("pack").value) : null;
+    // Slices and nets the shown mesh covers (its whole group).
+    const members = summary?.groupMembers ? viewer.meshPacks().filter((item) => summary.groupMembers.includes(item.key)) : summary ? [summary] : [];
+    const covered = new Map();
+    for (const member of members) for (const layer of member.layers) covered.set(layer.sliceKey, [...(covered.get(layer.sliceKey) || []), layer.netKey]);
+    $("covers").replaceChildren(...[...covered].flatMap(([slice, nets]) => [Object.assign(document.createElement("dt"), { textContent: slice }), Object.assign(document.createElement("dd"), { textContent: nets.join(", ") })]));
+    const layerIds = new Set(Object.values(summary?.sliceLayers || {}).map(Number));
+    for (const tag of document.querySelectorAll("#layers .tag")) tag.hidden = !summary || layerIds.has(Number(tag.dataset.layer));
+    const domain = $("pieces").querySelector('option[value="domain"]');
+    domain.hidden = !members.some((member) => member.domain);
+    if (domain.hidden && $("pieces").value === "domain") $("pieces").value = "layers";
+  }
+
+  function showPack() {
+    viewer.setMeshPack($("mesh").checked ? $("pack").value : null);
+    coverage();
+    fillFields();
+    worst.list = [];
+    worst.at = -1;
+    $("rank").textContent = "";
+    $("picked").replaceChildren();
+    applyStyle();
+    warnings();
+  }
+
+  function readout(element) {
+    const rows = [];
+    if (element) {
+      rows.push(["Element", element.index]);
+      if (element.sliceKey) rows.push(["Slice", element.sliceKey]);
+      if (element.pointMm) rows.push(["At (mm)", element.pointMm.map((v) => v.toFixed(4)).join(", ")]);
+      if (element.source) rows.push(["Pack", `${element.source} #${element.sourceIndex}`]);
+      if (element.copper) rows.push(["Copper", element.copper.map((item) => `${item.netKey}#${item.piece}`).join(" ") || "—"]);
+      for (const item of element.copper || []) for (const [name, value] of Object.entries(item.fields || {})) rows.push([`${item.netKey} ${name}${element.units[name] && element.units[name] !== "1" ? ` (${element.units[name]})` : ""}`, fmt(value)]);
+      rows.push(["Centroid (mm)", element.centroidMm.map((v) => v.toFixed(4)).join(", ")]);
+      for (const [name, value] of Object.entries(element.fields)) rows.push([element.units[name] && element.units[name] !== "1" ? `${name} (${element.units[name]})` : name, fmt(value)]);
+    }
+    $("picked").replaceChildren(...rows.flatMap(([key, value]) => [Object.assign(document.createElement("dt"), { textContent: key }), Object.assign(document.createElement("dd"), { textContent: String(value) })]));
+  }
+
+  function step(delta) {
+    const field = $("worst-by").value;
+    if (!field) return;
+    if (!worst.list.length || worst.field !== field) {
+      worst.list = viewer.meshWorst({ field, count: 500 });
+      worst.field = field;
+      worst.at = -1;
+    }
+    if (!worst.list.length) return;
+    worst.at = Math.max(0, Math.min(worst.list.length - 1, worst.at + delta));
+    const item = worst.list[worst.at];
+    viewer.frameMeshElement(item.index);
+    readout(viewer.meshElement(item.index));
+    $("rank").textContent = `${worst.at + 1} / ${worst.list.length}`;
+  }
+
+  function stats() {
+    const s = viewer.meshStats();
+    const v = viewer.getStats();
+    const summary = current();
+    const rows = [
+      ["Elements", summary?.elements], ["Nodes", summary?.nodes], ["Piece triangles", summary?.pieceTriangles], ["Markers", summary?.markers],
+      ["Mesh GPU (MB)", s ? (s.gpuMemoryBytes / 1048576).toFixed(1) : null],
+      ["Frame p95 (ms)", v?.frameCpuP95Ms != null ? v.frameCpuP95Ms.toFixed(2) : null],
+      ["Kind", summary?.kind], ["Run", summary?.run], ["Pass", summary?.pass],
+    ];
+    $("stats").replaceChildren(...rows.flatMap(([key, value]) => [Object.assign(document.createElement("dt"), { textContent: key }), Object.assign(document.createElement("dd"), { textContent: value ?? "—" })]));
+  }
+
+  function labels() {
+    const box = $("labels");
+    if (!$("marker-ids").checked || !$("mesh").checked) {
+      box.replaceChildren();
+      return;
+    }
+    const rect = box.getBoundingClientRect();
+    box.replaceChildren(...viewer.meshMarkers().filter((marker) => marker.client).map((marker) => {
+      const span = document.createElement("span");
+      span.textContent = `${marker.kind} ${marker.id}`;
+      span.style.left = `${marker.client.x - rect.left}px`;
+      span.style.top = `${marker.client.y - rect.top}px`;
+      return span;
+    }));
+  }
+  viewer.onSceneChange(() => requestAnimationFrame(labels));
+
+  $("mesh").addEventListener("change", showPack);
+  $("pack").addEventListener("change", showPack);
+  for (const id of ["edges", "pieces", "markers", "colormap", "threshold-on", "threshold-hide", "threshold-value"]) $(id).addEventListener("input", applyStyle);
+  $("color-by").addEventListener("input", () => {
+    const [low, high] = sliderRange();
+    $("threshold-value").value = String(+((low + high) / 2).toPrecision(6));
+    $("threshold-slider").value = "500";
+    applyStyle();
+  });
+  $("worst-by").addEventListener("input", () => { worst.list = []; $("rank").textContent = ""; });
+  $("threshold-slider").addEventListener("input", () => {
+    const [low, high] = sliderRange();
+    $("threshold-value").value = String(+(low + (high - low) * Number($("threshold-slider").value) / 1000).toPrecision(6));
+    applyStyle();
+  });
+  $("marker-ids").addEventListener("input", labels);
+  $("next").addEventListener("click", () => step(1));
+  $("prev").addEventListener("click", () => step(-1));
+  $("board").addEventListener("input", (event) => viewer.setShowBoard(event.target.checked));
+  $("components").addEventListener("input", (event) => viewer.setShowComponents(event.target.checked));
+  $("separation").addEventListener("input", (event) => viewer.setSeparation(Number(event.target.value)));
+
+  // A click (not a drag) picks the element under it.
+  let down = null;
+  viewer.addEventListener("pointerdown", (event) => { down = [event.clientX, event.clientY]; });
+  viewer.addEventListener("pointerup", (event) => {
+    if (!down || Math.hypot(event.clientX - down[0], event.clientY - down[1]) > 4) return;
+    const element = viewer.meshElementAt(event.clientX, event.clientY);
+    viewer.setMeshSelection(element ? element.index : null);
+    readout(element);
+  });
+  for (const layer of viewer.getViewState()?.layers || []) {
+    const label = document.createElement("label");
+    const box = Object.assign(document.createElement("input"), { type: "checkbox", checked: layer.visible });
+    box.dataset.layer = String(layer.id);
+    box.addEventListener("input", () => viewer.setLayerVisible(layer.id, box.checked));
+    const tag = Object.assign(document.createElement("span"), { className: "tag", textContent: "not in this mesh", hidden: true });
+    tag.dataset.layer = String(layer.id);
+    label.append(box, layer.name, tag);
+    $("layers").append(label);
+  }
+  // --- Where he was looking, kept across reloads (sessionStorage) ---
+  const SAVED = "mesh-host-view";
+  const fields = ["mesh", "pack", "edges", "pieces", "markers", "marker-ids", "color-by", "colormap", "threshold-on", "threshold-hide", "threshold-value", "worst-by", "board", "components", "separation"];
+  function saveView() {
+    const controls = Object.fromEntries(fields.map((id) => [id, $(id).type === "checkbox" ? $(id).checked : $(id).value]));
+    const layers = Object.fromEntries((viewer.getViewState()?.layers || []).map((layer) => [layer.id, layer.visible]));
+    try {
+      sessionStorage.setItem(SAVED, JSON.stringify({ controls, layers, camera: viewer.cameraState() }));
+    } catch {
+      // No storage (a private window): the view is not kept.
+    }
+  }
+  function savedView() {
+    try {
+      return JSON.parse(sessionStorage.getItem(SAVED) || "null");
+    } catch {
+      return null;
+    }
+  }
+  const saved = savedView();
+  const set = (id, value) => {
+    if (value === undefined) return;
+    if ($(id).type === "checkbox") $(id).checked = Boolean(value);
+    else $(id).value = value;
+  };
+  if (saved) {
+    for (const id of ["mesh", "pack", "edges", "pieces", "markers", "marker-ids", "board", "components", "separation", "colormap", "threshold-on", "threshold-hide"]) set(id, saved.controls?.[id]);
+    viewer.setShowBoard($("board").checked);
+    viewer.setShowComponents($("components").checked);
+    viewer.setSeparation(Number($("separation").value));
+    for (const [id, visible] of Object.entries(saved.layers || {})) viewer.setLayerVisible(Number(id), visible);
+    const shownLayers = viewer.getViewState()?.layers || [];
+    for (const box of document.querySelectorAll("#layers input")) {
+      const layer = shownLayers.find((item) => String(item.id) === box.dataset.layer);
+      if (layer) box.checked = layer.visible;
+    }
+  }
+  coverage();
+  setInterval(stats, 1000);
+  showPack();
+  if (saved) {
+    // Fields exist once the pack is shown.
+    for (const id of ["color-by", "worst-by", "threshold-value"]) set(id, saved.controls?.[id]);
+    applyStyle();
+    if (saved.camera) requestAnimationFrame(() => viewer.setCameraState(saved.camera));
+  }
+  document.addEventListener("input", saveView);
+  document.addEventListener("change", saveView);
+  viewer.addEventListener("pointerup", () => setTimeout(saveView, 400));
+  viewer.addEventListener("wheel", () => setTimeout(saveView, 400), { passive: true });
+  addEventListener("pagehide", saveView);
+
+  // --- Following the server: a new build reloads the page; changed packs load again in place ---
+  let state = served;
+  const stamp = () => {
+    $("build").className = state.buildError ? "failed" : "";
+    $("build").textContent = state.buildError ? `Build ${state.stamp} · failed\n${state.buildError}` : `Build ${state.stamp}`;
+  };
+  stamp();
+  async function follow() {
+    let next;
+    try {
+      next = await (await fetch("/state", { cache: "no-store" })).json();
+    } catch {
+      return;
+    }
+    if (next.buildId !== served.buildId || next.board.sha256 !== served.board.sha256) {
+      saveView();
+      location.reload();
+      return;
+    }
+    const packsChanged = next.packs !== state.packs;
+    state = next;
+    stamp();
+    if (!packsChanged) return;
+    index = await (await fetch("/packs/index.json", { cache: "no-store" })).json();
+    const names = new Set(index.packs.map((pack) => pack.name));
+    for (const summary of summaries.filter((item) => !names.has(item.key))) {
+      viewer.unloadMeshPack(summary.key);
+      loadedAt.delete(summary.key);
+    }
+    summaries = summaries.filter((item) => names.has(item.key));
+    let shownChanged = false;
+    for (const pack of index.packs) {
+      if (loadedAt.get(pack.name) === pack.mtimeMs) continue;
+      await loadPack(pack);
+      if (pack.name === $("pack").value) shownChanged = true;
+    }
+    fillPacks();
+    if (shownChanged || !names.has($("pack").value)) {
+      const camera = viewer.cameraState();
+      showPack();
+      for (const id of ["color-by", "worst-by"]) set(id, savedView()?.controls?.[id]);
+      applyStyle();
+      if (camera) viewer.setCameraState(camera);
+    }
+    warnings();
+    coverage();
+  }
+  setInterval(follow, 2000);
+  window.meshHost = { viewer, get summaries() { return summaries; }, get index() { return index; } };
+</script>
+</body>
+</html>

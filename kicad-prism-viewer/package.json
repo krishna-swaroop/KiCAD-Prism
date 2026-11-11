@@ -13,6 +13,8 @@
     "build": "npm run build:element",
     "test:viewer": "node --test viewer/src/*.test.mjs",
     "test:harness": "node --test tests/browser/pixel-diff/*.test.mjs",
+    "mesh:live": "node tests/browser/mesh/run.mjs --live",
+    "mesh:check": "node tests/browser/mesh/run.mjs",
     "bench:schematic-dom": "node tools/schematic-dom-benchmark.mjs"
   },
   "dependencies": {
