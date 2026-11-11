@@ -55,6 +55,7 @@ import { AnalyticRenderer } from "./analytic-renderer.js";
 import { analyticBoardLooks, analyticSceneManifest } from "./analytic-scene.js";
 import { analyticFeatureId, analyticOperationFeature, applyAnalyticOverlay, applyAnalyticStyle, applyAnalyticVectors, attachAnalyticPack, describeAnalyticHit, fieldAlongRay, netIdByName, operationSliceKey, reliefSlices } from "./analytic-board.js";
 import { FieldRelief } from "./field-relief.js";
+import { meshPortMembers } from "./mesh-view.js";
 import { barrelsAtCopperFaces } from "./barrel-records.js";
 import {
   assetLoadable, assetOccurrenceMatrix, boardTransition, bundleToBoardFromBounds, childWorldMatrix, drawnOccurrences,
@@ -484,6 +485,15 @@ export async function mountStandaloneViewer(options = {}) {
   return {
     performance: performanceTimings,
     ...sharedPortMembers(token),
+    // Simulation meshes over the board (mesh-view.js).
+    ...meshPortMembers({
+      renderer: () => (viewerSessionActive(token) ? board.renderer : null),
+      visibleLayers: () => (state.mode === "3d" ? board.visible3dLayers : null),
+      layerOffsets: () => stackupOffsets(),
+      worldRay: worldRayAt,
+      frame: (bounds) => camera?.frame(bounds),
+      project: (world) => projectBoardPoint(world, IDENTITY),
+    }),
     selectOccurrence: selectOccurrenceByKey,
     setHighlightedNetIds(ids) {
       board.highlightedNetIds = ids;

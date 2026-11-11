@@ -308,6 +308,8 @@ export const BOARD_MEMBERS = Object.freeze([
   "renderInset", "insetReady", "insetSurfaceZ", "releaseInset", "insetTarget", "projectInset",
   "onSceneChange", "insetStats", "insetSettings", "gpuIdle",
   "loadAnalyticPack", "setAnalyticOverlay", "setAnalyticVectors", "setAnalyticStyle", "analyticColormaps", "setAnalyticRelief", "setClickSelect", "analyticProbe", "analyticAt", "analyticStats", "unloadAnalyticPack",
+  "loadMeshPack", "meshPacks", "setMeshPack", "setMeshStyle", "setMeshSelection", "meshElement", "meshElementAt",
+  "meshWorst", "frameMeshElement", "meshMarkers", "meshStats", "unloadMeshPack",
 ]);
 
 /**
@@ -325,6 +327,9 @@ export class BoardModeController extends ModeController {
   #analytic = null;
   #clickSelect = true;
   #relief = null;
+  // Mesh packs (spec 11) by key, the shown one, the style and the selected element: replayed like the analytic pack.
+  #meshPacks = new Map();
+  #mesh = { shown: null, style: null, selection: null };
 
   attach(port, { workspace = "pcb" } = {}) {
     this.#workspace = workspace;
@@ -342,6 +347,7 @@ export class BoardModeController extends ModeController {
     if (this.shared.selection) port.quietly(() => this.applySelection(port, this.shared.selection));
     if (this.#highlightedNets.length) this.#applyHighlightedNets(port, this.#highlightedNets);
     if (this.#analytic) void this.#replayAnalytic(port, this.#analytic);
+    if (this.#meshPacks.size) void this.#replayMesh(port);
     if (!this.#clickSelect) port.setClickSelect(false);
   }
 
@@ -351,6 +357,14 @@ export class BoardModeController extends ModeController {
     if (this.#relief) port.setAnalyticRelief(this.#relief);
     if (analytic.style) port.setAnalyticStyle(analytic.style);
     if (analytic.vectors) port.setAnalyticVectors(analytic.vectors);
+  }
+
+  async #replayMesh(port) {
+    for (const [key, bytes] of this.#meshPacks) await port.loadMeshPack(bytes, { key });
+    if (this.port !== port) return;
+    if (this.#mesh.style) port.setMeshStyle(this.#mesh.style);
+    if (this.#mesh.shown != null) port.setMeshPack(this.#mesh.shown);
+    if (this.#mesh.selection != null) port.setMeshSelection(this.#mesh.selection);
   }
 
   release() {
@@ -506,6 +520,75 @@ export class BoardModeController extends ModeController {
   unloadAnalyticPack() {
     this.#analytic = null;
     this.port?.unloadAnalyticPack();
+  }
+
+  // --- Simulation meshes (mesh-view.js; spec 11) ---
+
+  /** Read a mesh pack (bytes as written) under `options.key`; resolves to its summary, null before mount. */
+  async loadMeshPack(bytes, options = {}) {
+    const copy = bytes instanceof Uint8Array ? bytes.slice() : new Uint8Array(bytes);
+    const port = this.port;
+    if (!port) {
+      const key = String(options.key ?? `mesh ${this.#meshPacks.size + 1}`);
+      this.#meshPacks.set(key, copy);
+      return null;
+    }
+    const summary = await port.loadMeshPack(copy, options);
+    if (summary) this.#meshPacks.set(summary.key, copy);
+    return summary;
+  }
+
+  meshPacks() {
+    return this.port?.meshPacks() ?? [];
+  }
+
+  /** Show one loaded pack by key, or none (null). */
+  setMeshPack(key) {
+    this.#mesh.shown = key ?? null;
+    this.#mesh.selection = null;
+    return this.port?.setMeshPack(this.#mesh.shown) ?? null;
+  }
+
+  setMeshStyle(style) {
+    this.#mesh.style = { ...(this.#mesh.style || {}), ...(style || {}) };
+    return this.port?.setMeshStyle(style) ?? null;
+  }
+
+  setMeshSelection(index) {
+    this.#mesh.selection = Number.isInteger(index) ? index : null;
+    this.port?.setMeshSelection(this.#mesh.selection);
+  }
+
+  meshElement(index) {
+    return this.port?.meshElement(index) ?? null;
+  }
+
+  meshElementAt(clientX, clientY) {
+    return this.port?.meshElementAt(clientX, clientY) ?? null;
+  }
+
+  meshWorst(query) {
+    return this.port?.meshWorst(query) ?? [];
+  }
+
+  frameMeshElement(index, options) {
+    const framed = Boolean(this.port?.frameMeshElement(index, options));
+    if (framed) this.#mesh.selection = Number(index);
+    return framed;
+  }
+
+  meshMarkers() {
+    return this.port?.meshMarkers() ?? [];
+  }
+
+  meshStats() {
+    return this.port?.meshStats() ?? null;
+  }
+
+  unloadMeshPack(key) {
+    this.#meshPacks.delete(String(key));
+    if (this.#mesh.shown === String(key)) this.#mesh.shown = null;
+    this.port?.unloadMeshPack(key);
   }
 }
 
