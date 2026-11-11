@@ -14,7 +14,8 @@ npm run mesh:live -- --board <design.prism> --pack <file or directory of *.meshp
 This serves the page at `http://127.0.0.1:5281/mesh/host.html`. Pass `--live <port>` to the
 script to choose another port.
 
-With no `--board` and `--pack`, it serves the analytic fixture board and two synthetic packs.
+With no `--board` and `--pack`, it serves the analytic fixture board and synthetic packs: two
+background meshes and a quadtree group.
 
 The page builds the element from this worktree and loads every pack into it. Its controls:
 
