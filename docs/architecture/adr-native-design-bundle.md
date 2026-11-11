@@ -1,6 +1,6 @@
 # ADR: Prism-native KiCad parser and the design bundle
 
-- **Status:** Accepted (2026-10-16); amended 2026-10-17 (C2, [`adr-native-design-bundle-amendment-c2.md`](adr-native-design-bundle-amendment-c2.md); C2r, [`adr-native-design-bundle-amendment-c2r.md`](adr-native-design-bundle-amendment-c2r.md); C3, [`adr-native-design-bundle-amendment-c3.md`](adr-native-design-bundle-amendment-c3.md); U, [`adr-native-design-bundle-amendment-u.md`](adr-native-design-bundle-amendment-u.md); K2, [`adr-native-design-bundle-amendment-k2.md`](adr-native-design-bundle-amendment-k2.md))
+- **Status:** Accepted (2026-10-16); amended 2026-10-17 (C2, [`adr-native-design-bundle-amendment-c2.md`](adr-native-design-bundle-amendment-c2.md); C2r, [`adr-native-design-bundle-amendment-c2r.md`](adr-native-design-bundle-amendment-c2r.md); C3, [`adr-native-design-bundle-amendment-c3.md`](adr-native-design-bundle-amendment-c3.md); U, [`adr-native-design-bundle-amendment-u.md`](adr-native-design-bundle-amendment-u.md); K2, [`adr-native-design-bundle-amendment-k2.md`](adr-native-design-bundle-amendment-k2.md); PI (proposed 2026-11-11), [`adr-native-design-bundle-amendment-pi.md`](adr-native-design-bundle-amendment-pi.md))
 - **Deciders:** Prism maintainers
 - **Supersedes:** the per-feature KiCad loading described in `docs/plans/kicad-monkey-*.md`
 - **Reference branch:** `feature/analytic-pack-spike` (analytic 3D tab, Simulation Studio, `board.prism` a1). It is reference only: code may be copied from it, it is never merged.
@@ -213,7 +213,7 @@ Each member has a role, a schema id, sha256, size and the stage that wrote it in
 | `projections/project.json` | parse | `prism.project.a0` | title block, KiCad version, text variables, net classes, sheet hierarchy, model/worksheet/library-table path references | project metadata, Release Studio input closure, 3D board metadata |
 | `projections/system-interface.json` | parse | `prism.system_interface.v1` (existing) | connectors and modules with schematic-only pin nets, pin names/types, power nets, pcb nets, geometry | System Builder |
 | `refilled/<stem>.kicad_pcb` | board | — | board after the zone refill | materializer, KiCad-output jobs |
-| `materialization/board.kmpack` | board | `kicad_monkey.materialization.a0` | analytic board | 3D tab, System Builder 3D, Simulation Studio |
+| `materialization/board.kmpack` | board | `kicad_monkey.materialization.a1` (readers also accept a0; amendment PI) | analytic board, plus design facts that are not material in its header (zone, pad and board rules, rule areas, courtyards) | 3D tab, System Builder 3D, Simulation Studio |
 | `viewer/models/components.glb` | models | — | component bodies from `kicad-cli` | 3D tab, System Builder 3D and collision meshes |
 | `models/assembly-hlr.json` | models | `prism.assembly_hlr.a0` | per footprint, the hidden-line outline and detail edges of its first STEP model in board coordinates, or why there are none (amendment C3) | Release Studio assembly and testpoint artwork |
 

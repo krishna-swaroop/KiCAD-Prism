@@ -246,7 +246,10 @@
       </ul></li>
   </ul>
 
-  <h2>Contract: kicad_monkey.materialization.a0</h2>
+  <h2>Contract: kicad_monkey.materialization.a1</h2>
+  <p>a1 (Prism ADR amendment PI, 2026-11-11) is a0 plus the header field
+    <code>design_facts</code>; readers also accept a0. The pack format stays
+    0. The list below is a0's; the last item is a1's.</p>
   <ul>
     <li><strong>Scope:</strong> the requested products, slices, nets, and
       region, the tile size, and whether the result is complete.</li>
@@ -278,6 +281,12 @@
     <li><strong>Chunk index:</strong> for each (slice, tile), the bounds,
       the <code>net_keys</code>, and the range of operation indices. The
       pack's section directory adds each chunk block's byte offset.</li>
+    <li><strong>Design facts (a1, header only, never operations):</strong>
+      the project's <code>max_error</code> and copper-to-edge clearance;
+      zones and rule areas with their fill rules or keep-outs and their
+      authored outline with arcs; pad, padstack-layer, and footprint zone
+      rules where they differ from inheriting; courtyards per component and
+      side. Field map: <code>contracts/prism/field-maps/materialization.md</code>.</li>
   </ul>
   <h3>Correctness rules</h3>
   <ol>

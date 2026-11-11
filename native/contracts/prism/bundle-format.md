@@ -35,7 +35,7 @@ A bundle is one zip file per (revision key, generator id) (ADR §5). It holds th
 | `projections/project.json` | `projection` | parse | `prism.project.a0` | same | P4 | project metadata, C3, C5 |
 | `projections/system-interface.json` | `projection` | parse | `prism.system_interface.v1` | same | P5 | C4 |
 | `refilled/<board name>` | `refilled-board` | board | — | stage board `complete` or `partial`, and `config.zone_fills` absent | the job's refill (`generator.refill_procedure`, cli-spec.md §9.2); the CLI checks and copies it | the materializer, C3 |
-| `materialization/board.kmpack` | `materialization` | board | `kicad_monkey.materialization.a0` | stage board `complete` | B (fork materializer and pack) | C4, C5, C6 (sim: `prism-geometry`) |
+| `materialization/board.kmpack` | `materialization` | board | `kicad_monkey.materialization.a1` (a reader also accepts a0, amendment PI) | stage board `complete` | B (fork materializer and pack) | C4, C5, C6 (sim: `prism-geometry`) |
 | `viewer/models/components.glb` | `component-models` | models | — | stage models `complete` | the job's export (`generator.models_procedure`, cli-spec.md §9.3); the CLI canonicalizes and copies it (§4.5) | C4, C5 |
 | `models/assembly-hlr.json` | `assembly-hlr` | models | `prism.assembly_hlr.a0` | stage models `complete` **and** the stage ran with `--geometer` | the CLI's Geometer projections (`generator.hlr_procedure`, cli-spec.md §5.2.4) | E |
 
@@ -316,7 +316,7 @@ Every reader (WP-B's Rust reader, `bundle verify`, `bundle extract` and `--in`; 
 7. **Structured members.** For a member with `member_schema`:
    - a `prism.*` id: parse the JSON and validate it against the schema registered under that id in `generated/schema/`;
    - `kicad_monkey.design.a0`: parse the JSON and check that its `schema` equals the id (no JSON Schema exists, §2.1);
-   - `kicad_monkey.materialization.a0`: check the pack preamble (magic `KMMATPK\0` and a supported pack format version equal to `generator.pack_format_version`: fork `src/rs/kicad-monkey-materialization-pack/src/lib.rs:51-54`) and validate the header with the pack reader, as `prism-geometry` does (sim: `src/prism-geometry/src/lib.rs:82-118`).
+   - `kicad_monkey.materialization.a1` or `kicad_monkey.materialization.a0` (amendment PI): check the pack preamble (magic `KMMATPK\0` and a supported pack format version equal to `generator.pack_format_version`, 0 for both: `src/rs/prism-kicad-materialization-pack/src/lib.rs`), validate the header with the pack reader, as `prism-geometry` does (sim: `src/prism-geometry/src/lib.rs:82-118`), and check that the header's `schema` equals `member_schema`. The pack reader validates an a1 header with its `design_facts` and an a0 header without them.
    A reader that does not know an id cannot read that member; it treats it as missing and does not reject the bundle.
 
    **K's reader runs step 7 once per stored archive** (amendment C2r §2 item 9). When it stores an archive it runs `prism-kicad bundle verify`, every step on every member, and records the outcome with the archive. Its later reads of that archive run steps 1–6 only: the SHA-256 of step 6 ties the bytes read to the bytes that were validated. An archive whose verify failed is treated as rejected. The Rust reader, `bundle verify`, `extract` and `--in` are unchanged.

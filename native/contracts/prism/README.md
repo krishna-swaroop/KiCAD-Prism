@@ -89,7 +89,7 @@ Known issue for F1 and L:
 | stdout and stderr of `prism-kicad` | `prism.cli.*.a0` (7 roots: version, build_result, verify_report, extract_result, error, project_absent, diagnostic) | `Cli*A0` | [`cli-a0.tsp`](../../src/tsp/prism/cli-a0.tsp) | `examples/Cli*A0.example.json` | [cli](field-maps/cli.md) | B | K, MCP |
 | revision key, effective config, vectors | `prism.revision_key.{record,effective_config,vectors}.a1` | `RevisionKey*A1` | [`revision-key-a1.tsp`](../../src/tsp/prism/revision-key-a1.tsp) | `examples/RevisionKey*A1.example.json` | [revision-key](field-maps/revision-key.md) | B and K (two references) | K, B |
 
-`design.json` keeps the fork's `kicad_monkey.design.a0` and has no schema yet (ADR G16). `materialization/board.kmpack` is the fork's `kicad_monkey.materialization.a0`.
+`design.json` keeps the fork's `kicad_monkey.design.a0` and has no schema yet (ADR G16). `materialization/board.kmpack` is the fork's `kicad_monkey.materialization.a1` (amendment PI; readers also accept a0). Its contract is fork TypeSpec (`src/tsp/kicad_monkey/materialization-a0.tsp`, roots `MaterializationDocument` a0 and `MaterializationDocumentA1`); the header facts a1 added have a field map, [materialization](field-maps/materialization.md).
 
 Specs and records:
 
