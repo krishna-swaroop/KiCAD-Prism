@@ -446,37 +446,46 @@ export function PcbLayerList({
 }) {
     return (
         <>
-            {layers.map((layer) => (
-                <div
-                    key={layer.name}
-                    className={cn(
-                        "group flex items-center gap-2 border-l-2 px-2 py-1.5 text-xs hover:bg-accent",
-                        layer.highlighted ? "border-primary bg-accent" : "border-transparent",
-                    )}
-                >
-                    <button
-                        type="button"
-                        className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                        onClick={() => onHighlight?.(layer.name)}
+            {layers.map((layer) => {
+                // A board can rename a layer (User.9 -> "Script.Cobre"); show
+                // that name, but keep `name` for every call into the viewer.
+                const label = layer.userName ?? layer.name;
+                return (
+                    <div
+                        key={layer.name}
+                        className={cn(
+                            "group flex items-center gap-2 border-l-2 px-2 py-1.5 text-xs hover:bg-accent",
+                            layer.highlighted ? "border-primary bg-accent" : "border-transparent",
+                        )}
                     >
-                        <PcbLayerSwatch color={layer.color} />
-                        <span className={cn("truncate", !layer.visible && "text-muted-foreground")}>
-                            {layer.name}
-                        </span>
-                    </button>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-7"
-                        onClick={() => onToggleVisibility(layer.name, !layer.visible)}
-                        aria-label={`${layer.visible ? "Hide" : "Show"} ${layer.name}`}
-                    >
-                        {layer.visible
-                            ? <Eye className="size-3.5" />
-                            : <EyeOff className="size-3.5 text-muted-foreground" />}
-                    </Button>
-                </div>
-            ))}
+                        <button
+                            type="button"
+                            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                            onClick={() => onHighlight?.(layer.name)}
+                            title={layer.userName ? `${layer.userName} (${layer.name})` : undefined}
+                        >
+                            <PcbLayerSwatch color={layer.color} />
+                            <span className={cn("truncate", !layer.visible && "text-muted-foreground")}>
+                                {label}
+                            </span>
+                            {layer.userName && (
+                                <span className="shrink-0 text-muted-foreground">{layer.name}</span>
+                            )}
+                        </button>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7"
+                            onClick={() => onToggleVisibility(layer.name, !layer.visible)}
+                            aria-label={`${layer.visible ? "Hide" : "Show"} ${label}`}
+                        >
+                            {layer.visible
+                                ? <Eye className="size-3.5" />
+                                : <EyeOff className="size-3.5 text-muted-foreground" />}
+                        </Button>
+                    </div>
+                );
+            })}
         </>
     );
 }
