@@ -2103,7 +2103,7 @@ describe("ComparisonPresentationShell", () => {
         // The focus never writes the reviewer's shareable layer state.
         expect(onVisibleLayersChange).not.toHaveBeenCalled();
 
-        const toggle = await view.findByRole("button", { name: "Show In1.Cu" });
+        const toggle = await view.findByRole("button", { name: "Show Inner 1 (In1.Cu)" });
         fireEvent.click(toggle);
 
         await waitFor(() => {

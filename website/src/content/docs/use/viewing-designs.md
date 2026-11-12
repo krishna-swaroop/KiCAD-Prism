@@ -54,11 +54,21 @@ The **Board display** panel on the left of the **PCB** tab has two parts.
 
 **Layers**
 
-- **Layer preset** switches to a set of layers: **Front**, **Back**, **All
-  copper**, **Outer copper**, **Inner copper**, **Drawings**, **Show all** or
-  **Hide all**.
-- The eye icon next to each layer shows or hides it. Click a layer's name to
-  bring it to the front.
+- **Top** and **Bottom** show one side of the board with its outline.
+- **Presets** switches to a set of layers: **All copper**, **Outer copper**,
+  **Inner copper**, **Drawings**, **Show all** or **Hide all**.
+- Layers are grouped as on the physical board: **Copper**, **Solder mask**,
+  **Solder paste**, **Silkscreen**, **Adhesive**, **Mechanical**,
+  **Fabrication** and **Documentation**. Click a group's name to fold it; its
+  eye icon shows or hides every layer in the group. **Solder mask**,
+  **Fabrication** and **Adhesive** start folded, and so does
+  **Documentation** unless it holds a layer you renamed.
+- Each layer has a plain name (**Top**, **Inner 2**, **Board outline**) with
+  KiCad's name (such as `In2.Cu`) next to it in grey. A layer you renamed in
+  KiCad's board setup appears under your name instead.
+- The eye icon next to a layer shows or hides it; a visible layer's eye
+  appears when you point at the row. Click a layer's name to bring it to the
+  front.
 
 <video autoplay loop muted playsinline poster="/KiCAD-Prism/media/layers-poster.jpg">
   <source src="/KiCAD-Prism/media/layers.webm" type="video/webm" />

@@ -1,9 +1,9 @@
-import { act, fireEvent, render } from "@testing-library/react";
+import { act, fireEvent, render, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { EcadViewer } from "@/lib/ecad-viewer";
 import { fakeEcadViewer, type FakeEcadViewerOptions } from "@/test/fake-ecad-viewer";
 import type { EcadPcbViewState } from "@/types/ecad-viewer";
-import { EcadViewerControls, SchematicPageTree } from "./ecad-viewer-controls";
+import { EcadViewerControls, PcbLayerList, SchematicPageTree } from "./ecad-viewer-controls";
 
 /** The adapter over a fake element, as the Visualizer holds it. */
 function adapted(view: "sch" | "pcb", options: FakeEcadViewerOptions) {
@@ -63,6 +63,112 @@ describe("EcadViewerControls PCB objects tab", () => {
     fireEvent.click(view.getByRole("button", { name: "Objects & filters" }));
     expect(view.getByRole("checkbox", { name: "Pad numbers" }).getAttribute("aria-checked")).toBe("false");
     expect(view.getByRole("checkbox", { name: "Net names on pads" }).getAttribute("aria-checked")).toBe("true");
+  });
+});
+
+describe("PcbLayerList", () => {
+  const layers = [
+    { name: "F.Cu", color: "#c83434", visible: true, highlighted: false },
+    { name: "User.9", userName: "Script.Cobre", color: "#c2c2c2", visible: true, highlighted: false },
+  ];
+
+  it("shows a board's custom layer name with the built-in name beside it", () => {
+    const view = render(<PcbLayerList layers={layers} onToggleVisibility={vi.fn()} />);
+
+    expect(view.getByText("Script.Cobre")).toBeTruthy();
+    expect(view.getByText("User.9")).toBeTruthy();
+    expect(view.getByTitle("Script.Cobre (User.9)")).toBeTruthy();
+    // A layer without a custom name gets a plain one, still beside its KiCad name.
+    expect(view.getByTitle("Top (F.Cu)")).toBeTruthy();
+  });
+
+  it("keeps the built-in name for visibility and highlight calls", () => {
+    const onToggleVisibility = vi.fn();
+    const onHighlight = vi.fn();
+    const view = render(
+      <PcbLayerList layers={layers} onToggleVisibility={onToggleVisibility} onHighlight={onHighlight} />,
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Hide Script.Cobre (User.9)" }));
+    expect(onToggleVisibility).toHaveBeenCalledWith("User.9", false);
+
+    fireEvent.click(view.getByText("Script.Cobre"));
+    expect(onHighlight).toHaveBeenCalledWith("User.9");
+  });
+});
+
+describe("EcadViewerControls PCB layers tab", () => {
+  function stubLayers() {
+    const state: EcadPcbViewState = {
+      layers: ["F.Cu", "In1.Cu", "B.Cu", "F.Mask", "F.SilkS", "B.SilkS", "Edge.Cuts", "F.Fab"].map((name) => ({
+        name,
+        color: "#888888",
+        visible: true,
+        highlighted: false,
+      })),
+      objectOpacity: { tracks: 1, vias: 1, pads: 1, zones: 1 },
+      objectVisibility: {
+        references: true,
+        values: true,
+        footprintText: true,
+        hiddenText: false,
+        padNumbers: true,
+        padNetNames: true,
+        trackNetNames: true,
+      },
+      highlightTracks: true,
+    };
+    const element = fakeEcadViewer({ pcb: state });
+    const viewer = new EcadViewer("pcb");
+    viewer.attach(element);
+    return { viewer, element };
+  }
+
+  it("groups layers by what they are on the board, under plain names", () => {
+    const { viewer } = stubLayers();
+    const view = render(<EcadViewerControls context="PCB" viewer={viewer} />);
+    const copper = view.getByRole("region", { name: "Copper" });
+    expect(copper.textContent).toContain("Inner 1");
+    expect(copper.textContent).toContain("In1.Cu");
+    expect(view.getByRole("region", { name: "Mechanical" }).textContent).toContain("Board outline");
+  });
+
+  it("starts with solder mask and fabrication folded", () => {
+    const { viewer } = stubLayers();
+    const view = render(<EcadViewerControls context="PCB" viewer={viewer} />);
+    const heading = (name: string) =>
+      within(view.getByRole("region", { name })).getAllByRole("button")[0]!;
+    expect(heading("Copper").getAttribute("aria-expanded")).toBe("true");
+    expect(heading("Solder mask").getAttribute("aria-expanded")).toBe("false");
+    expect(heading("Fabrication").getAttribute("aria-expanded")).toBe("false");
+    expect(view.queryByText("F.Fab")).toBeNull();
+
+    fireEvent.click(heading("Fabrication"));
+    expect(heading("Fabrication").getAttribute("aria-expanded")).toBe("true");
+    expect(view.getByText("F.Fab")).toBeTruthy();
+  });
+
+  it("hides and shows a whole group through the per-layer call", () => {
+    const { viewer, element } = stubLayers();
+    const view = render(<EcadViewerControls context="PCB" viewer={viewer} />);
+
+    fireEvent.click(view.getByRole("button", { name: "Hide all copper layers" }));
+    expect(element.setPcbLayerVisibility).toHaveBeenCalledTimes(3);
+    expect(element.setPcbLayerVisibility).toHaveBeenCalledWith("In1.Cu", false);
+    expect(element.setPcbLayerVisibility).not.toHaveBeenCalledWith("F.SilkS", false);
+
+    fireEvent.click(view.getByRole("button", { name: "Show all copper layers" }));
+    expect(element.setPcbLayerVisibility).toHaveBeenLastCalledWith("B.Cu", true);
+  });
+
+  it("switches board side with the Top / Bottom presets", () => {
+    const { viewer, element } = stubLayers();
+    const view = render(<EcadViewerControls context="PCB" viewer={viewer} />);
+    const side = view.getByRole("group", { name: "Board side" });
+    fireEvent.click(within(side).getByRole("button", { name: "Bottom" }));
+    expect(element.applyPcbLayerPreset).toHaveBeenCalledWith("back");
+    fireEvent.click(within(side).getByRole("button", { name: "Top" }));
+    expect(element.applyPcbLayerPreset).toHaveBeenCalledWith("front");
   });
 });
 

@@ -8,6 +8,7 @@ import {
     type ReactNode,
 } from "react";
 import {
+    ChevronDown,
     ChevronLeft,
     ChevronRight,
     Eye,
@@ -35,6 +36,12 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
+import {
+    groupPcbLayers,
+    pcbVisibleSide,
+    type PcbLayerGroup,
+    type PcbLayerGroupId,
+} from "@/lib/pcb-layer-groups";
 import { useCommittedRef } from "@/hooks/use-committed-ref";
 import { useEcadViewer, type EcadViewer, type PcbLayerPreset } from "@/lib/ecad-viewer";
 import type { EcadPcbLayerState, EcadSchematicPageState } from "@/types/ecad-viewer";
@@ -50,8 +57,6 @@ const MIN_RAIL_WIDTH = 200;
 const MAX_RAIL_WIDTH = 420;
 
 const pcbPresets = [
-    ["front", "Front"],
-    ["back", "Back"],
     ["copper", "All copper"],
     ["outer-copper", "Outer copper"],
     ["inner-copper", "Inner copper"],
@@ -122,12 +127,17 @@ export function EcadViewerControls({
                     />
                     {section === "layers" ? (
                         <>
-                            <div className="border-b p-3">
+                            <div className="flex items-center gap-2 border-b p-3">
+                                <PcbSideSwitch
+                                    layers={pcbState?.layers ?? []}
+                                    onApplyPreset={(preset) => viewer?.applyPcbLayerPreset(preset)}
+                                />
                                 <Select
+                                    value=""
                                     onValueChange={(value) => viewer?.applyPcbLayerPreset(value as PcbLayerPreset)}
                                 >
-                                    <SelectTrigger className="w-full">
-                                        <SelectValue placeholder="Layer preset" />
+                                    <SelectTrigger className="h-8 min-w-0 flex-1 text-xs" aria-label="Layer preset">
+                                        <SelectValue placeholder="Presets" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {pcbPresets.map(([value, label]) => (
@@ -418,10 +428,10 @@ function ControlHeading({ children }: { children: ReactNode }) {
  * rail, the comparison layer panel, and the comparison property sheet all draw
  * this one mark rather than three near-identical squares.
  */
-export function PcbLayerSwatch({ color }: { color: string }) {
+export function PcbLayerSwatch({ color, dimmed = false }: { color: string; dimmed?: boolean }) {
     return (
         <span
-            className="size-3 shrink-0 border"
+            className={cn("size-3 shrink-0 border", dimmed && "opacity-35")}
             style={{ backgroundColor: color }}
             aria-hidden="true"
         />
@@ -429,11 +439,55 @@ export function PcbLayerSwatch({ color }: { color: string }) {
 }
 
 /**
- * Per-layer visibility and highlight rows.
+ * Groups a review rarely needs open; their header still shows how many layers
+ * are on. Documentation stays open when the board has renamed one of its
+ * layers, since a named User layer is one somebody meant to be found.
+ */
+function layerGroupStartsOpen(group: PcbLayerGroup): boolean {
+    if (group.id === "mask" || group.id === "fabrication" || group.id === "adhesive") return false;
+    if (group.id === "documentation") return group.layers.some((row) => row.layer.userName);
+    return true;
+}
+
+/**
+ * Top / Bottom: show one side of the board (plus its outline), the two views a
+ * reviewer flips between most. Lit while the visible layers are exactly one
+ * side, so it also reads back a preset applied elsewhere.
+ */
+export function PcbSideSwitch({
+    layers,
+    onApplyPreset,
+}: {
+    layers: readonly EcadPcbLayerState[];
+    onApplyPreset: (preset: "front" | "back") => void;
+}) {
+    const side = pcbVisibleSide(layers);
+    return (
+        <div className="flex shrink-0 rounded-md border p-0.5" role="group" aria-label="Board side">
+            {([["front", "top", "Top"], ["back", "bottom", "Bottom"]] as const).map(([preset, value, label]) => (
+                <Button
+                    key={preset}
+                    variant={side === value ? "secondary" : "ghost"}
+                    size="sm"
+                    className="h-7 px-2.5 text-xs"
+                    aria-pressed={side === value}
+                    onClick={() => onApplyPreset(preset)}
+                >
+                    {label}
+                </Button>
+            ))}
+        </div>
+    );
+}
+
+/**
+ * Per-layer visibility and highlight rows, grouped by what each layer is on
+ * the physical board (copper, solder mask, paste, silkscreen, ...).
  *
  * Presentational on purpose: the Visualizer drives the viewer directly while
  * the comparison wraps these in its own route-focus behaviour, so ownership of
- * the layer state stays with the caller.
+ * the layer state stays with the caller. A group's eye shows or hides every
+ * layer in it through the same per-layer callback.
  */
 export function PcbLayerList({
     layers,
@@ -444,39 +498,102 @@ export function PcbLayerList({
     onToggleVisibility: (name: string, visible: boolean) => void;
     onHighlight?: (name: string) => void;
 }) {
+    const groups = useMemo(() => groupPcbLayers(layers), [layers]);
+    // Groups the reviewer opened or closed against their default.
+    const [toggled, setToggled] = useState<ReadonlySet<PcbLayerGroupId>>(() => new Set());
+    const toggleOpen = (id: PcbLayerGroupId) => setToggled((current) => {
+        const next = new Set(current);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+    });
+
     return (
         <>
-            {layers.map((layer) => (
-                <div
-                    key={layer.name}
-                    className={cn(
-                        "group flex items-center gap-2 border-l-2 px-2 py-1.5 text-xs hover:bg-accent",
-                        layer.highlighted ? "border-primary bg-accent" : "border-transparent",
-                    )}
-                >
-                    <button
-                        type="button"
-                        className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                        onClick={() => onHighlight?.(layer.name)}
-                    >
-                        <PcbLayerSwatch color={layer.color} />
-                        <span className={cn("truncate", !layer.visible && "text-muted-foreground")}>
-                            {layer.name}
-                        </span>
-                    </button>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-7"
-                        onClick={() => onToggleVisibility(layer.name, !layer.visible)}
-                        aria-label={`${layer.visible ? "Hide" : "Show"} ${layer.name}`}
-                    >
-                        {layer.visible
-                            ? <Eye className="size-3.5" />
-                            : <EyeOff className="size-3.5 text-muted-foreground" />}
-                    </Button>
-                </div>
-            ))}
+            {groups.map((group) => {
+                const visibleCount = group.layers.filter((row) => row.layer.visible).length;
+                const anyVisible = visibleCount > 0;
+                const open = layerGroupStartsOpen(group) !== toggled.has(group.id);
+                return (
+                    <section key={group.id} className="mb-1" aria-label={group.label}>
+                        <div className="group/heading flex items-center gap-1 px-1 py-1">
+                            <button
+                                type="button"
+                                className="flex min-w-0 flex-1 items-center gap-1 rounded-sm py-0.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                                onClick={() => toggleOpen(group.id)}
+                                aria-expanded={open}
+                            >
+                                {open
+                                    ? <ChevronDown className="size-3.5 shrink-0" />
+                                    : <ChevronRight className="size-3.5 shrink-0" />}
+                                <span className="truncate">{group.label}</span>
+                                <span className="ml-1 font-mono text-[10px] font-normal tabular-nums tracking-normal">
+                                    {visibleCount}/{group.layers.length}
+                                </span>
+                            </button>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-7"
+                                onClick={() => {
+                                    for (const row of group.layers) {
+                                        if (row.layer.visible === anyVisible) {
+                                            onToggleVisibility(row.layer.name, !anyVisible);
+                                        }
+                                    }
+                                }}
+                                aria-label={`${anyVisible ? "Hide" : "Show"} all ${group.label.toLowerCase()} layers`}
+                            >
+                                {anyVisible
+                                    ? <Eye className="size-3.5 text-muted-foreground" />
+                                    : <EyeOff className="size-3.5 text-muted-foreground" />}
+                            </Button>
+                        </div>
+                        {open && group.layers.map(({ layer, label, canonical }) => (
+                            <div
+                                key={layer.name}
+                                className={cn(
+                                    "group flex items-center gap-2 border-l-2 py-1 pl-6 pr-2 text-xs hover:bg-accent",
+                                    layer.highlighted ? "border-primary bg-accent" : "border-transparent",
+                                )}
+                            >
+                                <button
+                                    type="button"
+                                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                    onClick={() => onHighlight?.(layer.name)}
+                                    title={canonical ? `${label} (${canonical})` : label}
+                                >
+                                    <PcbLayerSwatch color={layer.color} dimmed={!layer.visible} />
+                                    <span className={cn("truncate", !layer.visible && "text-muted-foreground")}>
+                                        {label}
+                                    </span>
+                                    {canonical && (
+                                        <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">
+                                            {canonical}
+                                        </span>
+                                    )}
+                                </button>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className={cn(
+                                        "size-7",
+                                        // A visible layer's eye is noise in a long list; it shows
+                                        // on hover and focus. A hidden layer always says so.
+                                        layer.visible && "opacity-0 focus-visible:opacity-100 group-hover:opacity-100",
+                                    )}
+                                    onClick={() => onToggleVisibility(layer.name, !layer.visible)}
+                                    aria-label={`${layer.visible ? "Hide" : "Show"} ${canonical ? `${label} (${canonical})` : label}`}
+                                >
+                                    {layer.visible
+                                        ? <Eye className="size-3.5" />
+                                        : <EyeOff className="size-3.5 text-muted-foreground" />}
+                                </Button>
+                            </div>
+                        ))}
+                    </section>
+                );
+            })}
         </>
     );
 }
