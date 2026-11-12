@@ -54,6 +54,8 @@ export class FakeEcadViewer extends HTMLElement implements ECadViewerElement {
     setMeasureUnits?: ECadViewerElement["setMeasureUnits"];
     getPcbViewState?: () => EcadPcbViewState | null;
     setPcbObjectVisibility?: ECadViewerElement["setPcbObjectVisibility"];
+    setPcbLayerVisibility?: ECadViewerElement["setPcbLayerVisibility"];
+    applyPcbLayerPreset?: ECadViewerElement["applyPcbLayerPreset"];
     getSchematicPages?: () => EcadSchematicPageState[];
     getActiveSchematicPage?: ECadViewerElement["getActiveSchematicPage"];
 
@@ -109,6 +111,12 @@ export function fakeEcadViewer(options: FakeEcadViewerOptions = {}): FakeEcadVie
         viewer.setPcbObjectVisibility = vi.fn((kind: EcadPcbObjectVisibilityKind, visible: boolean) => {
             if (state) state.objectVisibility[kind] = visible;
         });
+        viewer.setPcbLayerVisibility = vi.fn((name: string, visible: boolean) => {
+            if (!state) return false;
+            state.layers = state.layers.map((layer) => (layer.name === name ? { ...layer, visible } : layer));
+            return true;
+        });
+        viewer.applyPcbLayerPreset = vi.fn();
     }
     if (options.pages) {
         const pages = options.pages;

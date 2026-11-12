@@ -1,6 +1,6 @@
 import { Layers3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { PcbLayerList } from "@/components/ecad-viewer-controls";
+import { PcbLayerList, PcbSideSwitch } from "@/components/ecad-viewer-controls";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
     Select,
@@ -13,8 +13,6 @@ import { cn } from "@/lib/utils";
 import type { ECadViewerElement, EcadPcbLayerState } from "@/types/ecad-viewer";
 
 const PCB_PRESETS = [
-    ["front", "Front"],
-    ["back", "Back"],
     ["copper", "All copper"],
     ["outer-copper", "Outer copper"],
     ["inner-copper", "Inner copper"],
@@ -89,8 +87,10 @@ export function ComparisonPcbLayersPanel({
             className={cn("flex h-full w-full flex-col bg-background/95", className)}
             aria-label="PCB layer visibility"
         >
-            <div className="border-b p-3">
+            <div className="flex items-center gap-2 border-b p-3">
+                <PcbSideSwitch layers={layers} onApplyPreset={onApplyPreset} />
                 <Select
+                    value=""
                     onValueChange={(value) =>
                         onApplyPreset(
                             value as Parameters<
@@ -101,8 +101,11 @@ export function ComparisonPcbLayersPanel({
                         )
                     }
                 >
-                    <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Layer preset" />
+                    <SelectTrigger
+                        className="h-8 min-w-0 flex-1 text-xs"
+                        aria-label="Layer preset"
+                    >
+                        <SelectValue placeholder="Presets" />
                     </SelectTrigger>
                     <SelectContent>
                         {PCB_PRESETS.map(([value, label]) => (
