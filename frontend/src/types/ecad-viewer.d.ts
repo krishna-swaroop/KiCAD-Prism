@@ -105,7 +105,10 @@ export interface EcadSchematicPageState {
 }
 
 export interface EcadPcbLayerState {
+    /** Canonical KiCad layer name (e.g. "User.9"); the key for viewer calls. */
     name: string;
+    /** The board's custom name for the layer, present only when it differs. */
+    userName?: string;
     color: string;
     visible: boolean;
     highlighted: boolean;

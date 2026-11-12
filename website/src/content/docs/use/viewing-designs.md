@@ -59,6 +59,8 @@ The **Board display** panel on the left of the **PCB** tab has two parts.
   **Hide all**.
 - The eye icon next to each layer shows or hides it. Click a layer's name to
   bring it to the front.
+- A layer you renamed in KiCad's board setup appears under that name, with
+  KiCad's built-in name (such as `User.9`) next to it in grey.
 
 <video autoplay loop muted playsinline poster="/KiCAD-Prism/media/layers-poster.jpg">
   <source src="/KiCAD-Prism/media/layers.webm" type="video/webm" />
