@@ -146,9 +146,11 @@ export function Semantic3dControls({
                         <div className="p-2">
                             <PcbLayerList
                                 layers={layers}
-                                onToggleVisibility={(name, visible) => {
-                                    const id = layerIdByName.get(name);
-                                    if (id !== undefined) viewer?.setLayerVisible?.(id, visible);
+                                onToggleVisibility={(names, visible) => {
+                                    for (const name of names) {
+                                        const id = layerIdByName.get(name);
+                                        if (id !== undefined) viewer?.setLayerVisible?.(id, visible);
+                                    }
                                 }}
                             />
                             {!layers.length && (

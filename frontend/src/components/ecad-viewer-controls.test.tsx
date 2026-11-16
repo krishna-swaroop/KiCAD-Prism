@@ -90,7 +90,7 @@ describe("PcbLayerList", () => {
     );
 
     fireEvent.click(view.getByRole("button", { name: "Hide Script.Cobre (User.9)" }));
-    expect(onToggleVisibility).toHaveBeenCalledWith("User.9", false);
+    expect(onToggleVisibility).toHaveBeenCalledWith(["User.9"], false);
 
     fireEvent.click(view.getByText("Script.Cobre"));
     expect(onHighlight).toHaveBeenCalledWith("User.9");

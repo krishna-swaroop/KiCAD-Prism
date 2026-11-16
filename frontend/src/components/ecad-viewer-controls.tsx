@@ -150,7 +150,9 @@ export function EcadViewerControls({
                                 <div className="p-2">
                                     <PcbLayerList
                                         layers={pcbState?.layers ?? []}
-                                        onToggleVisibility={(name, visible) => viewer?.setPcbLayerVisibility(name, visible)}
+                                        onToggleVisibility={(names, visible) => {
+                                            for (const name of names) viewer?.setPcbLayerVisibility(name, visible);
+                                        }}
                                         onHighlight={(name) => viewer?.setPcbLayerHighlight(name)}
                                     />
                                 </div>
@@ -486,8 +488,7 @@ export function PcbSideSwitch({
  *
  * Presentational on purpose: the Visualizer drives the viewer directly while
  * the comparison wraps these in its own route-focus behaviour, so ownership of
- * the layer state stays with the caller. A group's eye shows or hides every
- * layer in it through the same per-layer callback.
+ * the layer state stays with the caller. A group's eye sends all changed layers in one visibility update.
  */
 export function PcbLayerList({
     layers,
@@ -495,7 +496,7 @@ export function PcbLayerList({
     onHighlight,
 }: {
     layers: readonly EcadPcbLayerState[];
-    onToggleVisibility: (name: string, visible: boolean) => void;
+    onToggleVisibility: (names: readonly string[], visible: boolean) => void;
     onHighlight?: (name: string) => void;
 }) {
     const groups = useMemo(() => groupPcbLayers(layers), [layers]);
@@ -536,11 +537,11 @@ export function PcbLayerList({
                                 size="icon"
                                 className="size-7"
                                 onClick={() => {
-                                    for (const row of group.layers) {
-                                        if (row.layer.visible === anyVisible) {
-                                            onToggleVisibility(row.layer.name, !anyVisible);
-                                        }
+                                    const names: string[] = [];
+                                    for (const { layer } of group.layers) {
+                                        if (layer.visible === anyVisible) names.push(layer.name);
                                     }
+                                    onToggleVisibility(names, !anyVisible);
                                 }}
                                 aria-label={`${anyVisible ? "Hide" : "Show"} all ${group.label.toLowerCase()} layers`}
                             >
@@ -582,7 +583,7 @@ export function PcbLayerList({
                                         // on hover and focus. A hidden layer always says so.
                                         layer.visible && "opacity-0 focus-visible:opacity-100 group-hover:opacity-100",
                                     )}
-                                    onClick={() => onToggleVisibility(layer.name, !layer.visible)}
+                                    onClick={() => onToggleVisibility([layer.name], !layer.visible)}
                                     aria-label={`${layer.visible ? "Hide" : "Show"} ${canonical ? `${label} (${canonical})` : label}`}
                                 >
                                     {layer.visible

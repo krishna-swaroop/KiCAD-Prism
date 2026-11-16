@@ -23,7 +23,7 @@ const PCB_PRESETS = [
 
 export type ComparisonPcbLayersPanelProps = {
     layers: EcadPcbLayerState[];
-    onToggleVisibility: (name: string, visible: boolean) => void;
+    onToggleVisibility: (names: readonly string[], visible: boolean) => void;
     onApplyPreset: (
         preset: Parameters<
             NonNullable<ECadViewerElement["applyPcbLayerPreset"]>
