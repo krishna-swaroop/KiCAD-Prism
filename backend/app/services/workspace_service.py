@@ -303,6 +303,7 @@ class WorkspaceService:
         has_ibom: bool = False,
         prism_json_hash: Optional[str] = None,
         project_id: Optional[str] = None,
+        import_branch: Optional[str] = None,
     ) -> str:
         """Register a project, minting an id unless the caller already has one.
 
@@ -319,14 +320,14 @@ class WorkspaceService:
                     project_file_rel,
                     schematic_rel,pcb_rel,thumbnail_rel,thumbnail_source,thumbnail_digest,
                     thumbnail_media_type,thumbnail_size_bytes,jobset_rel,
-                    has_3d_model,has_ibom,registered_at,last_modified,prism_json_hash)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    has_3d_model,has_ibom,registered_at,last_modified,prism_json_hash,import_branch)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (
                     project_id, repo_id, name, display_name, description, relative_path, folder_id,
                     project_file_rel,
                     schematic_rel, pcb_rel, thumbnail_rel, thumbnail_source, thumbnail_digest,
                     thumbnail_media_type, thumbnail_size_bytes, jobset_rel,
-                    has_3d_model, has_ibom, now, now, prism_json_hash,
+                    has_3d_model, has_ibom, now, now, prism_json_hash, import_branch,
                 ),
             )
             conn.commit()
@@ -421,7 +422,7 @@ class WorkspaceService:
             return False
         allowed = {
             "name", "display_name", "description", "folder_id",
-            "project_file_rel",
+            "project_file_rel", "import_branch",
             "schematic_rel", "pcb_rel", "thumbnail_rel", "jobset_rel",
             "thumbnail_source", "thumbnail_digest", "thumbnail_media_type",
             "thumbnail_size_bytes",

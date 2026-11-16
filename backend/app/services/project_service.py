@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
 from git import Repo
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.config import settings
 from app.release_studio.jobset import WORKFLOW_OUTPUT_IDS as _WORKFLOW_OUTPUT_IDS
@@ -37,6 +37,7 @@ class Project(BaseModel):
     # projects, and this is what tells them apart. Empty for projects registered
     # before Prism recorded it, which are the only project in their directory.
     project_file: Optional[str] = None
+    import_branch: Optional[str] = Field(default=None, exclude=True)
     parent_repo: Optional[str] = None  # Parent monorepo name
     repo_url: Optional[str] = None  # Original Git URL
     # The repository's real git origin, asked of git rather than trusting `url`
@@ -133,6 +134,7 @@ def _workspace_row_to_project(row: dict) -> Project:
         # sorts", so a directory holding two projects built the wrong one while
         # the workspace, reading the other converter, showed the right one.
         project_file=row.get("project_file_rel") or None,
+        import_branch=row.get("import_branch"),
         parent_repo=row.get("parent_repo"),
         repo_url=row.get("repo_url"),
         import_type=row.get("import_type"),

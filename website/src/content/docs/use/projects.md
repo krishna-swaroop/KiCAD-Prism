@@ -27,7 +27,9 @@ usual, and Prism follows the remote.
 3. Select **Analyze**. Prism queues a job that reads the repository and looks
    for KiCad projects. The dialog shows each step while it runs.
 4. Pick the branch to import in **Branch**. Changing it analyzes that branch
-   again, since another branch can hold different boards.
+   again, since another branch can hold different boards. Each project opens
+   on the branch selected at import, even when another project from the same
+   repository was imported from a different branch.
 5. If the repository holds several KiCad projects, tick the ones you want, or
    use **Select All**. Projects already in the workspace are marked
    **Imported**.

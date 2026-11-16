@@ -12,7 +12,7 @@ from app.api._helpers import get_project_for_role_or_404
 from app.api.projects import _load_project_readme_content
 from app.api.projects_models import ProjectOverview
 from app.core.security import AuthenticatedUser, require_viewer
-from app.services import project_import_service, project_metadata_service, project_outputs, project_service
+from app.services import project_import_service, project_metadata_service, project_outputs, project_revision, project_service
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +107,8 @@ def _stored_repository(
     repo_path, _relative_path = project_outputs.repo_context(project)
 
     record, current = project_metadata_service.stored_metadata_is_current(
-        project.id, project.path, anchor, repo_path
+        project.id, project.path, anchor, repo_path,
+        revision_ref=project_revision.default_ref(project),
     )
     if not current:
         try:

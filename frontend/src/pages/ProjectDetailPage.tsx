@@ -81,6 +81,7 @@ interface ProjectOverviewResponse {
 
 interface ProjectBranchesResponse {
     branches: ProjectBranch[];
+    default_ref?: string | null;
 }
 
 const NO_BRANCHES: ProjectBranch[] = [];
@@ -152,13 +153,12 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
             null,
         [branches, selectedBranchRef]
     );
-    // The empty-value option means "the branch the repo is checked out to".
-    // Show that branch's name rather than the generic "Current checkout".
     const currentBranch = useMemo(
         () => branches.find((branch) => branch.is_current) || null,
         [branches]
     );
-    const defaultBranch = currentBranch || branches[0] || null;
+    const defaultBranch = branches.find((branch) => branch.ref === branchesRead.data?.default_ref)
+        || currentBranch || branches[0] || null;
     const activeBranchRef = selectedBranchRef || defaultBranch?.ref || null;
     const activeCommit = currentCommit || selectedBranch?.commit || defaultBranch?.commit || null;
     const viewerSelectionKey = `${projectId ?? ""}:${activeBranchRef ?? ""}:${currentCommit ?? ""}`;
@@ -453,7 +453,7 @@ export function ProjectDetailPage({ user }: { user: User | null }) {
                 <BranchSelect
                     branches={branches}
                     selected={selectedBranch}
-                    current={currentBranch}
+                    current={defaultBranch}
                     loading={branchesLoading}
                     error={branchError}
                     onChange={handleBranchChange}

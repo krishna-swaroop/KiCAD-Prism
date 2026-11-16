@@ -62,7 +62,7 @@ def schedule_import_follow_ups(
     outcomes: list[dict[str, str]] = []
     for project_id in project_ids:
         if settings.PRISM_DESIGN_BUNDLE_AUTO_BUILD:
-            # The design bundle of the imported HEAD (ADR §4.4); a failure to
+            # The design bundle of the imported revision (ADR §4.4); a failure to
             # queue it is recorded like the others and never fails the import.
             outcomes.append(
                 schedule_import_follow_up(project_id, "design_bundle", queue_for_head, requested_by=requested_by)

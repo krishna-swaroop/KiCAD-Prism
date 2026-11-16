@@ -124,7 +124,7 @@ def bundle_read(
 ) -> BundleRead:
     """The bundle's answer for ``paths``, or a typed pending/failed answer.
 
-    ``commit=None`` reads the checkout's HEAD. The build is queued when a
+    ``commit=None`` reads the project's default revision. The build is queued when a
     member is not ready, exactly as before, so a later retry reads the bundle.
     """
 

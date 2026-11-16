@@ -13,9 +13,8 @@ const CHEVRON =
     "url(\"data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")";
 
 /**
- * The branch the project is viewed on. The empty value is the branch the
- * clone is checked out to, shown by its name; that branch is not listed a
- * second time.
+ * The empty value selects the project's default branch. Show it by name
+ * without duplicating it among the other branches.
  */
 export function BranchSelect({ branches, selected, current, loading, error, onChange }: {
     branches: readonly ProjectBranch[];
@@ -29,7 +28,7 @@ export function BranchSelect({ branches, selected, current, loading, error, onCh
         <div className="hidden min-w-0 items-center gap-1.5 md:flex">
             <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
             <select
-                // An explicit ?branch= naming the current branch maps back to
+                // An explicit ?branch= naming the default branch maps back to
                 // the default entry, which stands for it.
                 value={selected && selected.ref !== current?.ref ? selected.ref : ""}
                 onChange={(event) => onChange(event.target.value)}
@@ -39,7 +38,7 @@ export function BranchSelect({ branches, selected, current, loading, error, onCh
                 style={{ backgroundImage: CHEVRON, backgroundPosition: "right 0.5rem center", backgroundSize: "1rem" }}
             >
                 <option value="">{loading ? "Loading branches…" : current?.name || "Current checkout"}</option>
-                {branches.flatMap((branch) => (branch.is_current ? [] : [
+                {branches.flatMap((branch) => (branch.ref === current?.ref ? [] : [
                     <option key={branch.ref} value={branch.ref}>{branch.name}</option>,
                 ]))}
             </select>

@@ -449,7 +449,9 @@ def get_commit_distance(repo_path: str, commit_hash: str, relative_path: str = N
         raise HTTPException(status_code=500, detail=f"Git error: {str(error)}") from error
 
 
-def get_branches(repo_path: str, relative_path: str = None) -> dict[str, Any]:
+def get_branches(
+    repo_path: str, relative_path: str | None = None, *, import_branch: str | None = None
+) -> dict[str, Any]:
     """
     Show fetched remote branches as the canonical view of a linked repository.
     Fall back to local branches for repositories without fetched remote refs.
@@ -527,7 +529,12 @@ def get_branches(repo_path: str, relative_path: str = None) -> dict[str, Any]:
             item["ref"].casefold(),
         )
     )
-    default_branch = next((item for item in branches if item["is_current"]), None) or (branches[0] if branches else None)
+    preferred = next(
+        (item for item in branches if item["ref"] == f"origin/{import_branch}"), None
+    ) if import_branch else None
+    default_branch = preferred or next(
+        (item for item in branches if item["is_current"]), branches[0] if branches else None
+    )
     return {
         "branches": branches,
         "current_branch": active_branch,

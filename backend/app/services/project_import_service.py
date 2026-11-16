@@ -7,9 +7,11 @@ import os
 import hashlib
 import mimetypes
 import shutil
+import subprocess
 import tempfile
-from pathlib import Path
+from contextlib import ExitStack
 from functools import wraps
+from pathlib import Path
 from typing import Callable, List, Optional, Sequence
 from dataclasses import dataclass
 from git import Repo, RemoteProgress
@@ -108,13 +110,17 @@ def find_existing_repository(parsed: ParsedRemote) -> Optional[dict]:
 
 
 def _validate_ref(ref: Optional[str]) -> Optional[str]:
-    """Reject anything that git would read as an option rather than a ref."""
+    """Accept a branch name that can also safely form a fetch refspec."""
     if ref is None:
         return None
     candidate = ref.strip()
     if not candidate:
         return None
-    if candidate.startswith("-") or any(char.isspace() for char in candidate):
+    if candidate.startswith("-") or subprocess.run(
+        ["git", "check-ref-format", f"refs/heads/{candidate}"],
+        capture_output=True,
+        check=False,
+    ).returncode:
         raise ValueError(f"Invalid branch name: {ref!r}")
     return candidate
 
@@ -460,6 +466,8 @@ def generate_thumbnail_for_project(
     project_path: str,
     logs_list: Optional[List[str]] = None,
     anchor: Optional[str] = None,
+    *,
+    source_path: Optional[str] = None,
 ) -> bool:
     """
     Find the main .kicad_pcb file and run kicad-cli pcb render to generate a thumbnail.
@@ -467,7 +475,7 @@ def generate_thumbnail_for_project(
     try:
         from PIL import Image
 
-        resolved = path_config_service.resolve_paths(project_path, anchor=anchor)
+        resolved = path_config_service.resolve_paths(source_path or project_path, anchor=anchor)
         pcb_file = resolved.pcb
         if not pcb_file or not os.path.exists(pcb_file):
             if logs_list is not None:
@@ -679,7 +687,7 @@ def run_project_analyze_job_v3(context: JobContext) -> JobResult:
         raise ValueError(f"Branch '{requested_ref}' does not exist on this remote")
     selected_ref = requested_ref or default_branch
 
-    projects, import_type = _discover_remote_projects(
+    projects, import_type, _ = _discover_remote_projects(
         context,
         parsed,
         stage="clone-metadata",
@@ -759,7 +767,7 @@ def _discover_remote_projects(
     stage: str,
     percent_ceiling: float,
     ref: Optional[str] = None,
-) -> tuple[List[DiscoveredProject], str]:
+) -> tuple[List[DiscoveredProject], str, str | None]:
     """Clone just enough of a remote to enumerate the KiCad projects inside it.
 
     Blobless, single-branch, no-checkout: the tree listing is all that is
@@ -805,7 +813,10 @@ def _discover_remote_projects(
             force=True,
         )
         projects = discover_projects_from_repo(repo)
-        return projects, classify_import_type(projects)
+        branch = ref
+        if branch is None and not repo.head.is_detached:
+            branch = repo.active_branch.name
+        return projects, classify_import_type(projects), branch
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -815,6 +826,7 @@ def _register_planned_projects(
     target_path: Path,
     repo_id: str,
     context: JobContext,
+    import_branch: str | None = None,
 ) -> list[str]:
     """Register only the projects named by the plan."""
 
@@ -837,6 +849,11 @@ def _register_planned_projects(
                 )
             description = f"{plan.repo_name} / {project.name}"
         cached = resolve_cached_paths(str(project_root), anchor=project.project_file)
+        # The remote tree supplied the anchor. The shared checkout may not
+        # even have the project's directory, so its path scan may return {}.
+        cached["project_file_rel"] = project.project_file or ""
+        if import_branch:
+            cached["import_branch"] = import_branch
         if project.adopt_project_id:
             workspace.update_project(project.adopt_project_id, **cached)
             imported_ids.append(project.adopt_project_id)
@@ -882,7 +899,7 @@ def run_project_import_job_v3(context: JobContext) -> JobResult:
     # the repository itself before choosing a target directory, so a crafted
     # request cannot pick the on-disk layout or escape the checkout with a
     # relative path like "../../etc".
-    discovered, import_type = _discover_remote_projects(
+    discovered, import_type, import_branch = _discover_remote_projects(
         context, parsed, stage="validate-import", percent_ceiling=8.0, ref=ref
     )
     if not discovered:
@@ -974,6 +991,15 @@ def run_project_import_job_v3(context: JobContext) -> JobResult:
                     error, target=git_remote_access.describe_target(parsed), host=parsed.host
                 ) from error
             cloned_in_job = True
+        if adopted_checkout and import_branch:
+            # Refresh just this ref. Switching the shared checkout would move
+            # every other project in the repository to the imported branch.
+            existing_checkout.git.fetch(
+                "--", repo_url,
+                f"+refs/heads/{import_branch}:refs/remotes/origin/{import_branch}",
+                env=git_remote_access.git_env(),
+                kill_after_timeout=settings.PRISM_GIT_FETCH_TIMEOUT_SECONDS,
+            )
         repo_hydration.hydrate(target_path, env=git_remote_access.git_env())
 
         context.check_cancelled()
@@ -993,7 +1019,7 @@ def run_project_import_job_v3(context: JobContext) -> JobResult:
                 import_type="single" if import_type == "type1" else "multi",
             )
             registered = True
-        imported_ids = _register_planned_projects(plan, target_path, repo_id, context)
+        imported_ids = _register_planned_projects(plan, target_path, repo_id, context, import_branch)
         registered = True
         # Render boards in their own jobs. The projects are registered and
         # browsable now; thumbnails fill in as each render finishes, rather than
@@ -1072,6 +1098,20 @@ def start_project_metadata_job(project_id: str, *, requested_by: str = "") -> Op
     return str(queued["job_id"])
 
 
+def _imported_revision_checkout(
+    stack: ExitStack,
+    row: dict,
+    *,
+    source_set: project_revision.SourceSet = project_revision.FULL_TREE,
+) -> project_revision.RevisionCheckout | None:
+    if not row.get("import_branch"):
+        return None
+    location = project_revision.locate(row)
+    return stack.enter_context(
+        project_revision.checkout(location, project_revision.default_ref(row), source_set=source_set)
+    )
+
+
 def run_project_metadata_job_v3(context: JobContext) -> JobResult:
     from app.services import project_metadata_service
 
@@ -1080,7 +1120,7 @@ def run_project_metadata_job_v3(context: JobContext) -> JobResult:
     if not row:
         raise ValueError("Project not found")
     project_path = str(row.get("path") or "")
-    if not project_path or not os.path.isdir(project_path):
+    if not project_path or (not row.get("import_branch") and not os.path.isdir(project_path)):
         raise ValueError(f"Project path not found: {project_path}")
     anchor = str(row.get("project_file_rel") or "") or infer_project_anchor(project_path)
 
@@ -1090,8 +1130,6 @@ def run_project_metadata_job_v3(context: JobContext) -> JobResult:
         percent=10,
         force=True,
     )
-    schematic_path = project_service.find_schematic_file(project_path, anchor)
-    pcb_path = project_service.find_pcb_file(project_path, anchor)
     try:
         location = project_revision.locate(row)
         repo_path, relative_path = str(location.repo_root), location.sub_path
@@ -1102,14 +1140,20 @@ def run_project_metadata_job_v3(context: JobContext) -> JobResult:
     from app.services.design_bundle.errors import DesignDataFailed, DesignDataPending
 
     try:
-        computed = project_metadata_service.refresh_project_metadata(
-            project_id,
-            project_path,
-            schematic_path,
-            pcb_path,
-            repo_path=repo_path,
-            relative_path=relative_path, anchor=anchor,
-        )
+        with ExitStack() as stack:
+            checkout = _imported_revision_checkout(
+                stack, row, source_set=project_revision.KICAD_SOURCES
+            )
+            source = str(checkout.project_dir) if checkout else project_path
+            computed = project_metadata_service.refresh_project_metadata(
+                project_id,
+                source,
+                project_service.find_schematic_file(source, anchor),
+                project_service.find_pcb_file(source, anchor),
+                repo_path=repo_path,
+                relative_path=relative_path, anchor=anchor,
+                **({"commit": checkout.commit} if checkout else {}),
+            )
     except DesignDataPending as error:
         # The design bundle is building; it was queued by the read. Retry soon.
         raise RetryableJobError(str(error), code="design-data-pending", retry_after_seconds=3) from error
@@ -1178,7 +1222,7 @@ def run_project_thumbnail_job_v3(context: JobContext) -> JobResult:
     if not row:
         raise ValueError("Project not found")
     project_path = str(row.get("path") or "")
-    if not project_path or not os.path.isdir(project_path):
+    if not project_path or (not row.get("import_branch") and not os.path.isdir(project_path)):
         raise ValueError(f"Project path not found: {project_path}")
     anchor = str(row.get("project_file_rel") or "") or infer_project_anchor(project_path)
 
@@ -1189,7 +1233,12 @@ def run_project_thumbnail_job_v3(context: JobContext) -> JobResult:
         force=True,
     )
     logs: list[str] = []
-    rendered = generate_thumbnail_for_project(project_path, logs, anchor=anchor)
+    with ExitStack() as stack:
+        checkout = _imported_revision_checkout(stack, row)
+        rendered = generate_thumbnail_for_project(
+            project_path, logs, anchor=anchor,
+            **({"source_path": str(checkout.project_dir)} if checkout else {}),
+        )
     for line in logs:
         print(line, flush=True)
     context.check_cancelled()

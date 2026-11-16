@@ -27,7 +27,7 @@ vi.mock("@/components/visualizer", () => ({
 }));
 
 const MAIN = { name: "main", ref: "main", source: "local", is_current: true, hash: "a1", commit: "a1" };
-let BRANCHES = { branches: [{ ...MAIN }] };
+let BRANCHES: { branches: (typeof MAIN)[]; default_ref?: string } = { branches: [{ ...MAIN }] };
 
 function branchRequests(): number {
     return vi.mocked(fetchJson).mock.calls.filter(([url]) => String(url).endsWith("/branches")).length;
@@ -118,6 +118,20 @@ describe("ProjectDetailPage branch polling", () => {
         await new Promise((resolve) => setTimeout(resolve, 20));
 
         expect(branchRequests()).toBe(1);
+    });
+
+    it("opens the imported branch and keeps the shared checkout branch selectable", async () => {
+        BRANCHES = {
+            branches: [MAIN, { ...MAIN, name: "board-b", ref: "origin/board-b", is_current: false, commit: "b2" }],
+            default_ref: "origin/board-b",
+        };
+        renderPage("/project/p1?section=visualizers");
+        expect(await screen.findByText("viewer at b2")).toBeInTheDocument();
+        expect(screen.getByRole("option", { name: "board-b" })).toHaveValue("");
+        expect(screen.getByRole("option", { name: "main" })).toHaveValue("main");
+
+        fireEvent.change(screen.getByRole("combobox"), { target: { value: "main" } });
+        expect(await screen.findByText("viewer at a1")).toBeInTheDocument();
     });
 
     it("keeps the visualizer on the commit it opened when the branch head moves", async () => {
