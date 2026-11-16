@@ -476,8 +476,11 @@ async def get_project_branches(
 ):
     """List branch refs that can be viewed without switching the working checkout."""
     project = get_project_for_role_or_404(project_id, user.role)
-    repo_path, relative_path = project_outputs.repo_context(project)
-    return await asyncio.to_thread(get_branches, repo_path, relative_path)
+    location = project_outputs.project_location(project)
+    branch_path = location.repo_path(location.anchor) if location.anchor else location.sub_path
+    return await asyncio.to_thread(
+        get_branches, str(location.repo_root), branch_path, import_branch=project.import_branch
+    )
 
 def _resolve_thumbnail_file(project, row: Optional[dict]) -> Optional[Path]:
     """Locate a project's thumbnail, wherever it is kept.

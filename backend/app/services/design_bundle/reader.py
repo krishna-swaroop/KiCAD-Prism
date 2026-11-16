@@ -111,7 +111,7 @@ def _working_tree_dirty(row: Mapping[str, Any], key: Any) -> bool:
 
 
 def open_revision(project_id: str, commit: str | None = None, *, queue: bool = False, requested_by: str = "") -> OpenedRevision:
-    """The stored bundle of ``project_id`` at ``commit`` (``HEAD`` when ``None``), as far as it got."""
+    """The stored bundle at the requested commit or the project default, as far as it got."""
 
     from app.services.workspace_service import workspace
 
@@ -120,7 +120,7 @@ def open_revision(project_id: str, commit: str | None = None, *, queue: bool = F
         raise LookupError(f"Project '{project_id}' not found")
     key = jobs.project_key(row, commit)
     dirty = False
-    if commit is None:
+    if commit is None and not row.get("import_branch"):
         try:
             dirty = _working_tree_dirty(row, key)
         except Exception:  # noqa: BLE001 - a status read must not lose the bundle

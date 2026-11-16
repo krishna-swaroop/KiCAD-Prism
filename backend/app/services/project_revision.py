@@ -155,6 +155,12 @@ def resolve_commit(where: ProjectLocation | Path | str, ref: str) -> str:
     return result.stdout.strip()
 
 
+def default_ref(project: Any) -> str:
+    """The project's imported branch tip, or the checkout HEAD for older projects."""
+    branch = _field(project, "import_branch")
+    return f"refs/remotes/origin/{branch}" if branch else "HEAD"
+
+
 def project_file_rel(location: ProjectLocation) -> str:
     """The repository-relative path of the project's ``.kicad_pro`` (working tree)."""
 

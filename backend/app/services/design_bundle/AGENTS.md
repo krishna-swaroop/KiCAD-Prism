@@ -25,7 +25,7 @@ is an ADR amendment.
 | `backfill.py`, `retention.py` | The worker's paced prebuild (alias or queue, one build at a time; an interactive request preempts a queued or running backfill build) and bundle retention, which keeps the prebuild set and every aliased archive. |
 | `regenerate.py` | A designer's forced rebuild of one commit's or a whole project's design data, skipping reuse. |
 | `repo_hydration.py` | Submodules and LFS objects for import and sync. |
-| `reader.py` | How a consumer opens a revision's bundle and reads members. A request without a commit reads the checkout's HEAD; a dirty read set is reported through the read's response headers. `models_outdated` says the stored parts were exported with other KiCad libraries than are bound now (only the variables the board uses count); `refresh_models` queues the models stage alone over the stored archive. |
+| `reader.py` | How a consumer opens a revision's bundle and reads members. A request without a commit reads the imported branch tip, or the checkout's HEAD for a project without a recorded branch. The working-tree read-set status is reported for checkout HEAD. `models_outdated` says the stored parts were exported with other KiCad libraries than are bound now (only the variables the board uses count); `refresh_models` queues the models stage alone over the stored archive. |
 | `consumer.py` | `bundle_read`: a consumer opens its members, or raises the typed pending/failed answer (not a legacy fallback). `bundle_read_if_ready` is Design Comparison's source-tree mode. Every consumer goes through it. |
 | `errors.py` | `DesignDataPending` (HTTP 202) and `DesignDataFailed` (HTTP 422) and the one handler pair `app.main` registers for every design-data route. |
 

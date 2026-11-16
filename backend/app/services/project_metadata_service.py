@@ -15,7 +15,7 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
-from app.services import kicad_board_stats_service, project_properties_service
+from app.services import kicad_board_stats_service, project_properties_service, project_revision
 from app.services.project_history_scope import ProjectHistory, project_history
 from app.services.workspace_service import workspace
 
@@ -104,7 +104,9 @@ def repo_fingerprint(repo_path: Optional[str]) -> str:
 
 
 def compute_repository_facts(
-    repo_path: str, relative_path: Optional[str], history: Optional[ProjectHistory] = None
+    repo_path: str, relative_path: Optional[str], history: Optional[ProjectHistory] = None,
+    *,
+    commit: Optional[str] = None,
 ) -> dict[str, Any]:
     """The latest commit and tag the card shows.
 
@@ -122,7 +124,7 @@ def compute_repository_facts(
         releases = get_releases_filtered(repo_path, relative_path)
     else:
         releases = get_releases(repo_path)
-    latest_page = get_commits_list_filtered(repo_path, relative_path, 1, history=history)
+    latest_page = get_commits_list_filtered(repo_path, relative_path, 1, ref=commit, history=history)
 
     latest_commits = latest_page["commits"] if isinstance(latest_page, dict) else latest_page
     return {
@@ -157,10 +159,11 @@ def _bundle_file_metadata(
     files_fingerprint: str,
     *,
     requested_by: str = "",
+    commit: Optional[str] = None,
 ) -> dict[str, Any]:
     """The card's file metadata from the bundle's ``projections/project.json``.
 
-    ``bundle_read`` reads the checkout's HEAD when no commit is named and raises
+    ``bundle_read`` reads the default revision when no commit is named and raises
     ``DesignDataPending`` while the member builds (it queues the job) or
     ``DesignDataFailed`` when it cannot be built; the metadata job retries the
     former and fails with the latter. A member that is a final non-member (no
@@ -170,7 +173,7 @@ def _bundle_file_metadata(
     from app.services.design_bundle import consumer
 
     read = consumer.bundle_read(
-        "PROJECT_METADATA", project_id, None, ["projections/project.json"], requested_by=requested_by
+        "PROJECT_METADATA", project_id, commit, ["projections/project.json"], requested_by=requested_by
     )
     board_facts, stats_source = _board_facts(pcb_path)
     if not read.ready("projections/project.json"):
@@ -227,6 +230,8 @@ def refresh_project_metadata(
     repo_path: Optional[str] = None,
     relative_path: Optional[str] = None,
     anchor: Optional[str] = None,
+    *,
+    commit: Optional[str] = None,
 ) -> dict[str, Any]:
     """Recompute and store one project's metadata.
 
@@ -242,7 +247,7 @@ def refresh_project_metadata(
     and the fingerprint are the same.
     """
     stored = workspace.get_project_metadata(project_id)
-    files_fingerprint = source_fingerprint(
+    files_fingerprint = commit or source_fingerprint(
         schematic_path, pcb_path, locate_project_file(project_path, anchor)
     )
 
@@ -255,7 +260,7 @@ def refresh_project_metadata(
             "reused_file_metadata": True,
         }
     else:
-        computed = _bundle_file_metadata(project_id, pcb_path, files_fingerprint)
+        computed = _bundle_file_metadata(project_id, pcb_path, files_fingerprint, commit=commit)
         computed["reused_file_metadata"] = False
 
     repository: Optional[dict[str, Any]] = None
@@ -263,7 +268,7 @@ def refresh_project_metadata(
         try:
             rows = workspace.get_projects_by_repo(str(row["repo_id"])) if (row := workspace.get_project_by_id(project_id)) else []
             history = project_history(relative_path or "", anchor, project_id, rows)
-            repository = compute_repository_facts(repo_path, relative_path, history)
+            repository = compute_repository_facts(repo_path, relative_path, history, commit=commit)
         except Exception as error:
             # A card without a commit line beats a job that fails and leaves
             # the whole row unwritten.
@@ -289,6 +294,8 @@ def stored_metadata_is_current(
     project_path: str,
     anchor: Optional[str] = None,
     repo_path: Optional[str] = None,
+    *,
+    revision_ref: str = "HEAD",
 ) -> tuple[Optional[dict[str, Any]], bool]:
     """Return the stored row and whether it still describes the project.
 
@@ -310,6 +317,16 @@ def stored_metadata_is_current(
     record = workspace.get_project_metadata(project_id)
     if not record:
         return None, False
+
+    if revision_ref != "HEAD" and repo_path:
+        try:
+            commit = project_revision.resolve_commit(repo_path, revision_ref)
+        except project_revision.RevisionNotFound:
+            return record, False
+        return record, (
+            record.get("source_fingerprint") == commit
+            and record.get("repo_fingerprint") == repo_fingerprint(repo_path)
+        )
 
     # The same anchor the job stored the row with: an exact path when the row
     # has one, otherwise the directory's only project. A plain locator could

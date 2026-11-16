@@ -81,10 +81,10 @@ def _workspace():
 
 
 def project_key(row: Mapping[str, Any], commit: str | None = None) -> ProjectKey:
-    """The project's key at ``commit`` (its checkout's ``HEAD`` when ``None``)."""
+    """The project's key at ``commit``, or at its default revision."""
 
     location = project_revision.locate(row)
-    return key_at_commit(location.repo_root, ProjectRef.from_row(row), commit or "HEAD")
+    return key_at_commit(location.repo_root, ProjectRef.from_row(row), commit or project_revision.default_ref(row))
 
 
 def flags_of(key: ProjectKey) -> dict[str, str]:
@@ -177,7 +177,7 @@ def start_design_bundle_job(
     refresh_models: bool = False,
     models_wanted: Mapping[str, str | None] | None = None,
 ) -> str | None:
-    """Queue the bundle of ``project_id`` at ``commit`` (default ``HEAD``) on demand.
+    """Queue the bundle of ``project_id`` at ``commit`` (default project revision) on demand.
 
     Returns the job id; ``None`` when the project is absent at that commit,
     its bundle is already complete or served through an alias, or its last
@@ -270,7 +270,7 @@ def _preempt_backfill(interactive_job_id: str, *, requested_by: str, priority: i
 
 
 def queue_for_head(project_id: str, *, requested_by: str = "") -> str | None:
-    """After an import or a sync: the HEAD bundle, when ``PRISM_DESIGN_BUNDLE_AUTO_BUILD`` is on."""
+    """After an import or a sync: the default revision bundle, when ``PRISM_DESIGN_BUNDLE_AUTO_BUILD`` is on."""
 
     if not settings.PRISM_DESIGN_BUNDLE_AUTO_BUILD:
         return None
@@ -667,7 +667,7 @@ def _rerender_thumbnail_at_head(row: Mapping[str, Any], commit: str) -> None:
 
     project_id = str(row["id"])
     try:
-        if project_revision.resolve_commit(project_revision.locate(row), "HEAD") != commit:
+        if project_revision.resolve_commit(project_revision.locate(row), project_revision.default_ref(row)) != commit:
             return
         from app.services.project_import_service import start_thumbnail_job
 

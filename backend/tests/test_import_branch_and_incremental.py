@@ -14,7 +14,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from app.services import project_import_service
+from app.services import git_service, project_import_service
+from app.services.design_bundle import jobs
+from support.repo import commit_all, git, git_env, init_repo, write_files
 
 
 def _project(
@@ -249,6 +251,83 @@ class AddsProjectsToAnAlreadyImportedRepository(unittest.TestCase):
         repo.working_tree_dir = str(path)
         repo.git.ls_files.return_value = ""
         return repo
+
+
+class ImportsProjectsFromSeparateBranches(unittest.TestCase):
+    def test_incremental_import_uses_the_new_branch_without_moving_other_projects(self) -> None:
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        remote = root / "remote"
+        url = "https://example.com/boards.git"
+        env = git_env(
+            GIT_CONFIG_COUNT="1",
+            GIT_CONFIG_KEY_0=f"url.{remote.as_uri()}.insteadOf",
+            GIT_CONFIG_VALUE_0=url,
+        )
+        main = init_repo(
+            remote, {"board-a/a.kicad_pro": "{}", "board-a/a.kicad_pcb": "(kicad_pcb)"}
+        )
+        rows = {}
+        repository = {}
+
+        def register_repository(**values):
+            repository.update(id="repo-1", **values)
+            return repository["id"]
+
+        def register_project(**values):
+            project_id = f"prj-{len(rows) + 1}"
+            clone = repository["clone_path_abs"]
+            rows[project_id] = dict(
+                values, id=project_id, path=str(Path(clone) / values["relative_path"]),
+                parent_repo_path=clone,
+            )
+            return project_id
+
+        def assert_queued(project_ids, **_kwargs):
+            for project_id in project_ids:
+                key = jobs.project_key(rows[project_id])
+                self.assertFalse(key.absent)
+                queued_commits.append(key.commit)
+            return []
+
+        def import_board(branch, path):
+            return project_import_service.run_project_import_job_v3(SimpleNamespace(
+                payload={"repo_url": url, "ref": branch, "selected_paths": [path]},
+                check_cancelled=lambda: None,
+                progress=lambda **_kwargs: None,
+            ))
+
+        queued_commits = []
+        with (
+            mock.patch.object(project_import_service.project_service, "PROJECTS_ROOT", root / "projects"),
+            mock.patch.object(project_import_service.git_remote_access, "git_env", return_value=env),
+            mock.patch.object(project_import_service.repo_hydration, "hydrate"),
+            mock.patch.object(project_import_service, "find_existing_repository", side_effect=lambda _: repository or None),
+            mock.patch.object(project_import_service.workspace, "repository_clone_path", side_effect=lambda row: row["clone_path_abs"]),
+            mock.patch.object(project_import_service.workspace, "get_projects_by_repo", side_effect=lambda _: list(rows.values())),
+            mock.patch.object(project_import_service.workspace, "register_repository", side_effect=register_repository),
+            mock.patch.object(project_import_service.workspace, "register_project", side_effect=register_project),
+            mock.patch.object(project_import_service, "schedule_import_follow_ups", side_effect=assert_queued),
+        ):
+            first = import_board("main", "board-a").details["project_ids"][0]
+            # Put the second branch on the remote only after Prism has cloned.
+            git(remote, "switch", "-c", "feature/board-b")
+            git(remote, "rm", "-r", "board-a")
+            write_files(remote, {"board-b/b.kicad_pro": "{}", "board-b/b.kicad_pcb": "(kicad_pcb)"})
+            branch_b = commit_all(remote, "Second board")
+            second = import_board("feature/board-b", "board-b").details["project_ids"][0]
+
+        clone = Path(repository["clone_path_abs"])
+        self.assertEqual(git(clone, "rev-parse", "HEAD"), main)
+        self.assertFalse((clone / "board-b").exists())
+        self.assertEqual(rows[second]["project_file_rel"], "b.kicad_pro")
+        self.assertEqual(queued_commits, [main, branch_b])
+        self.assertEqual(jobs.project_key(rows[first]).commit, main)
+        self.assertEqual(jobs.project_key(rows[second]).commit, branch_b)
+        self.assertTrue(jobs.project_key(rows[second], main).absent)
+        branches = git_service.get_branches(
+            str(clone), "board-b/b.kicad_pro", import_branch=rows[second]["import_branch"],
+        )
+        self.assertEqual(branches["default_ref"], "origin/feature/board-b")
 
 
 if __name__ == "__main__":
