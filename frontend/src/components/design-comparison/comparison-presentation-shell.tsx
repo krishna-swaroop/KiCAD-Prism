@@ -1261,13 +1261,14 @@ export function ComparisonPresentationShell({
         setLayerFocusReleasedFor(layerFocusKey);
     };
 
-    const toggleLayer = (name: string, visible: boolean) => {
+    const toggleLayers = (names: readonly string[], visible: boolean) => {
         releaseLayerFocus();
+        const changed = new Set(names);
         for (const viewer of activeLayerViewers) {
-            viewer.setPcbLayerVisibility?.(name, visible);
+            for (const name of changed) viewer.setPcbLayerVisibility?.(name, visible);
         }
         const next = pcbLayers.map((layer) =>
-            layer.name === name ? { ...layer, visible } : layer,
+            changed.has(layer.name) ? { ...layer, visible } : layer,
         );
         publishPcbLayers(next);
         onVisibleLayersChange(
@@ -1577,7 +1578,7 @@ export function ComparisonPresentationShell({
                     {rightRailTab === "layers" && domain === "pcb" ? (
                         <ComparisonPcbLayersPanel
                             layers={pcbLayers}
-                            onToggleVisibility={toggleLayer}
+                            onToggleVisibility={toggleLayers}
                             onApplyPreset={applyPreset}
                             onHighlight={highlightLayer}
                         />

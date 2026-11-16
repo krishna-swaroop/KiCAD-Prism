@@ -148,9 +148,11 @@ export const LayersRail = memo(function LayersRail({
                         <div className="p-2">
                             <PcbLayerList
                                 layers={rows}
-                                onToggleVisibility={(name) => {
-                                    const id = idByName.get(name);
-                                    if (id) onToggle(id);
+                                onToggleVisibility={(names) => {
+                                    for (const name of names) {
+                                        const id = idByName.get(name);
+                                        if (id) onToggle(id);
+                                    }
                                 }}
                                 onHighlight={(name) => {
                                     const id = idByName.get(name);

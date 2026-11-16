@@ -81,7 +81,7 @@ class FakeEcadViewer extends HTMLElement {
     readonly focusBBox = vi.fn(async () => null);
     readonly focusItem = vi.fn(async () => null);
     readonly getPcbViewState = vi.fn(() => ({
-        layers: this.layers,
+        layers: this.layers.map((layer) => ({ ...layer })),
         objectOpacity: {
             tracks: 1,
             vias: 1,
@@ -2103,7 +2103,7 @@ describe("ComparisonPresentationShell", () => {
         // The focus never writes the reviewer's shareable layer state.
         expect(onVisibleLayersChange).not.toHaveBeenCalled();
 
-        const toggle = await view.findByRole("button", { name: "Show In1.Cu" });
+        const toggle = await view.findByRole("button", { name: "Show Inner 1 (In1.Cu)" });
         fireEvent.click(toggle);
 
         await waitFor(() => {
@@ -2114,6 +2114,33 @@ describe("ComparisonPresentationShell", () => {
             "In1.Cu",
             "Edge.Cuts",
         ]);
+    });
+
+    it("publishes the full set of copper layers after a group toggle", async () => {
+        const onVisibleLayersChange = vi.fn();
+        const view = render(
+            <ComparisonPresentationShell
+                {...shellProps}
+                domain="pcb"
+                presentationMode="side-by-side"
+                documentDiff={pcbDocumentDiff}
+                files={pcbFiles}
+                initialVisibleLayers={["Edge.Cuts"]}
+                onVisibleLayersChange={onVisibleLayersChange}
+                rightRailTab="layers"
+            />,
+        );
+
+        fireEvent.click(await view.findByRole("button", { name: "Show all copper layers" }));
+        const expected = ["F.Cu", "In1.Cu", "B.Cu", "Edge.Cuts"];
+        expect(visibleLayers(0)).toEqual(expected);
+        expect(visibleLayers(1)).toEqual(expected);
+        expect(onVisibleLayersChange.mock.calls).toEqual([[expected]]);
+
+        fireEvent.click(view.getByRole("button", { name: "Hide all copper layers" }));
+        expect(visibleLayers(0)).toEqual(["Edge.Cuts"]);
+        expect(visibleLayers(1)).toEqual(["Edge.Cuts"]);
+        expect(onVisibleLayersChange.mock.calls).toEqual([[expected], [["Edge.Cuts"]]]);
     });
 
     it("overlays the shared PCB rail and insets only the compare pane", async () => {
