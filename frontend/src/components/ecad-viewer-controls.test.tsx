@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { EcadViewer } from "@/lib/ecad-viewer";
 import { fakeEcadViewer, type FakeEcadViewerOptions } from "@/test/fake-ecad-viewer";
 import type { EcadPcbViewState } from "@/types/ecad-viewer";
-import { EcadViewerControls, SchematicPageTree } from "./ecad-viewer-controls";
+import { EcadViewerControls, PcbLayerList, SchematicPageTree } from "./ecad-viewer-controls";
 
 /** The adapter over a fake element, as the Visualizer holds it. */
 function adapted(view: "sch" | "pcb", options: FakeEcadViewerOptions) {
@@ -63,6 +63,38 @@ describe("EcadViewerControls PCB objects tab", () => {
     fireEvent.click(view.getByRole("button", { name: "Objects & filters" }));
     expect(view.getByRole("checkbox", { name: "Pad numbers" }).getAttribute("aria-checked")).toBe("false");
     expect(view.getByRole("checkbox", { name: "Net names on pads" }).getAttribute("aria-checked")).toBe("true");
+  });
+});
+
+describe("PcbLayerList", () => {
+  const layers = [
+    { name: "F.Cu", color: "#c83434", visible: true, highlighted: false },
+    { name: "User.9", userName: "Script.Cobre", color: "#c2c2c2", visible: true, highlighted: false },
+  ];
+
+  it("shows a board's custom layer name with the built-in name beside it", () => {
+    const view = render(<PcbLayerList layers={layers} onToggleVisibility={vi.fn()} />);
+
+    expect(view.getByText("Script.Cobre")).toBeTruthy();
+    expect(view.getByText("User.9")).toBeTruthy();
+    expect(view.getByTitle("Script.Cobre (User.9)")).toBeTruthy();
+    // Layers without a custom name render exactly as before.
+    expect(view.getByText("F.Cu")).toBeTruthy();
+    expect(view.queryByTitle(/F\.Cu/)).toBeNull();
+  });
+
+  it("keeps the built-in name for visibility and highlight calls", () => {
+    const onToggleVisibility = vi.fn();
+    const onHighlight = vi.fn();
+    const view = render(
+      <PcbLayerList layers={layers} onToggleVisibility={onToggleVisibility} onHighlight={onHighlight} />,
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Hide Script.Cobre" }));
+    expect(onToggleVisibility).toHaveBeenCalledWith("User.9", false);
+
+    fireEvent.click(view.getByText("Script.Cobre"));
+    expect(onHighlight).toHaveBeenCalledWith("User.9");
   });
 });
 
