@@ -1763,6 +1763,7 @@ class ReleaseStudioPostgresSchemaTests(unittest.TestCase):
                 (142, "ops_profiles"),
                 (143, "kicad_libraries"),
                 (144, "kicad_library_failed_commit"),
+                (145, "project_import_branch"),
             ],
         )
 
