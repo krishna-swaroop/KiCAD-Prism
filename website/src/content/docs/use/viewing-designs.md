@@ -34,7 +34,8 @@ for what that means and what to do if it fails.
 ![The Schematic tab: the Schematic pages panel on the left lists the root sheet and its 19 sub-sheets, and the canvas shows the root sheet's hierarchical blocks](../../../assets/screenshots/schematic.jpg)
 
 The **Schematic pages** panel on the left lists every sheet in hierarchy
-order.
+order. The canvas draws each visible symbol field, including custom fields
+shown on the schematic.
 
 <video autoplay loop muted playsinline poster="/KiCAD-Prism/media/schematic-pages-poster.jpg">
   <source src="/KiCAD-Prism/media/schematic-pages.webm" type="video/webm" />
@@ -75,6 +76,10 @@ The **Board display** panel on the left of the **PCB** tab has two parts.
   tracks & vias**.
 - **Highlight connected track** emphasizes the copper connected to what you
   select.
+
+The board body fills closed `Edge.Cuts` outlines and leaves cutouts open.
+Hide `Edge.Cuts` to hide the body. Solder mask and paste openings for standard
+pads use the margins from the pad, its footprint, or the board setup.
 
 Net names drawn inside filled zones are not shown.
 
