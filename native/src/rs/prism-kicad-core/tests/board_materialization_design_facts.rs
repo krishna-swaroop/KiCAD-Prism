@@ -1,8 +1,8 @@
 //! a1's design facts on committed fixtures: zones with thermal reliefs and
 //! their rules (USB-PD), a keep-out rule area (the docs oracle), pads and
 //! footprints with local clearances, courtyards, the project's board rules,
-//! unique zone UIDs on a board with a nil and a repeated zone UUID, and that
-//! the facts add no operation.
+//! unique zone UIDs on a board with a nil and a repeated zone UUID, every
+//! footprint's pads in file order, and that the facts add no operation.
 
 use prism_kicad_contracts::generated::materialization_document::{
     BoardSide, DesignFacts, IslandRemoval, MaterializationDocumentA1, PadConnection, PathSegment,
@@ -385,4 +385,115 @@ fn cynthion_rule_areas_include_a_footprints_own() {
             .iter()
             .all(|rules| rules.pad_connection == Some(PadConnection::Solid))
     );
+}
+
+/// Each pad's `uuid`, in board file order, from the text.
+fn pad_uuids_in_file_order(board: &str) -> Vec<String> {
+    board
+        .split("(pad \"")
+        .skip(1)
+        .filter_map(|pad| {
+            let end = pad.find("\n\t\t)").unwrap_or(pad.len());
+            let pad = &pad[..end];
+            let at = pad.find("(uuid \"")? + 7;
+            pad[at..].split('"').next().map(str::to_owned)
+        })
+        .collect()
+}
+
+/// Every pad binding agrees with its listed pad on number, net and
+/// component, and every netted pad has a binding with its net.
+fn assert_pads_match_bindings(document: &MaterializationDocumentA1) {
+    let facts = facts(document);
+    let mut listed = std::collections::HashMap::new();
+    for footprint in &facts.footprint_pads {
+        let refdes = document
+            .components
+            .iter()
+            .find(|component| component.source_uid == footprint.source_uid)
+            .map(|component| component.refdes.clone());
+        assert!(refdes.is_some(), "{} is a component", footprint.source_uid);
+        for pad in &footprint.pads {
+            listed.insert(pad.source_uid.as_str(), (pad, refdes.clone()));
+        }
+    }
+    let netted: std::collections::HashSet<&str> = document
+        .binding
+        .iter()
+        .filter(|entry| {
+            entry.pad_number.is_some()
+                && entry.net_key.as_deref().is_some_and(|net| !net.is_empty())
+        })
+        .map(|entry| entry.source_uid.as_str())
+        .collect();
+    for (uid, (pad, _)) in &listed {
+        assert_eq!(pad.net_key.is_some(), netted.contains(uid), "pad {uid}");
+    }
+    for entry in document
+        .binding
+        .iter()
+        .filter(|entry| entry.pad_number.is_some())
+    {
+        let (pad, refdes) = listed
+            .get(entry.source_uid.as_str())
+            .unwrap_or_else(|| panic!("pad {} is listed", entry.source_uid));
+        assert_eq!(entry.pad_number.as_deref(), Some(pad.number.as_str()));
+        // paste and mask openings carry the pad but no net; copper of a
+        // pad without a net has the empty net, which the facts leave out
+        if let Some(net) = entry.net_key.as_deref() {
+            assert_eq!(
+                Some(net).filter(|net| !net.is_empty()),
+                pad.net_key.as_deref()
+            );
+        }
+        assert_eq!(&entry.refdes, refdes);
+    }
+}
+
+#[test]
+fn usb_pd_footprint_pads_are_every_pad_in_file_order() {
+    let board = read(&format!("{USB_PD}.kicad_pcb"));
+    let project = read(&format!("{USB_PD}.kicad_pro"));
+    let document = materialize(&board, Some(&project), &ALL);
+    let listed: Vec<&str> = facts(&document)
+        .footprint_pads
+        .iter()
+        .flat_map(|footprint| footprint.pads.iter().map(|pad| pad.source_uid.as_str()))
+        .collect();
+    assert_eq!(listed.len(), 139);
+    assert_eq!(listed, pad_uuids_in_file_order(&board));
+    assert_pads_match_bindings(&document);
+}
+
+/// Cynthion (KiCad 7, `tstamp` ids) lists all 1,472 pads, mounting holes
+/// with an empty number among them, and pads of one number more than once
+/// in a footprint (the first is the part's pin).
+#[test]
+fn cynthion_footprint_pads_keep_repeated_numbers_and_unnamed_pads() {
+    let stem = "fixtures/release-studio/cynthion/cynthion";
+    let board = read(&format!("{stem}.kicad_pcb"));
+    let project = read(&format!("{stem}.kicad_pro"));
+    let document = materialize(&board, Some(&project), &ALL);
+    let footprints = &facts(&document).footprint_pads;
+    let pads = footprints
+        .iter()
+        .map(|footprint| footprint.pads.len())
+        .sum::<usize>();
+    assert_eq!(pads, 1472);
+    assert!(
+        footprints
+            .iter()
+            .flat_map(|footprint| &footprint.pads)
+            .any(|pad| pad.number.is_empty())
+    );
+    let repeated = footprints.iter().any(|footprint| {
+        let mut seen = std::collections::HashSet::new();
+        footprint
+            .pads
+            .iter()
+            .filter(|pad| !pad.number.is_empty())
+            .any(|pad| !seen.insert(pad.number.as_str()))
+    });
+    assert!(repeated);
+    assert_pads_match_bindings(&document);
 }

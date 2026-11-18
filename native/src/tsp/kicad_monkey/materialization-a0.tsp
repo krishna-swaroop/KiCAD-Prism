@@ -756,6 +756,27 @@ model Courtyard {
   @minItems(1) regions: PlanarRegion2d[];
 }
 
+/** One pad of a footprint, as the board file lists it. */
+model FootprintPad {
+  /** The pad's binding `source_uid` (its UUID, or `pad@<offset>`). */
+  source_uid: string;
+  /** Pad number as written; may be empty (a mounting hole). */
+  number: string;
+  /** Absent for no net. */
+  net_key?: string;
+}
+
+/**
+ * A footprint's pads in board file order, whatever the scope and whether or
+ * not a pad has copper. The order decides which of several pads with one
+ * number is the part's pin (the first), which operation order cannot.
+ */
+model FootprintPads {
+  /** The component's `source_uid`. */
+  source_uid: string;
+  @minItems(1) pads: FootprintPad[];
+}
+
 /**
  * Design rules and regions that are not material: they draw nothing and
  * are not operations. Board facts like `nets`: every document of a board
@@ -770,7 +791,8 @@ model DesignFacts {
   pad_rules: PadRules[];
   footprint_rules: FootprintRules[];
   /** By component in file order, front before back. */
-  courtyards: Courtyard[];
+  courtyards: Courtyard[];  /** By component in file order; footprints without pads are left out. */
+  footprint_pads: FootprintPads[];
 }
 
 /** Resource-bounded materialization request. Source bytes are out of band. */

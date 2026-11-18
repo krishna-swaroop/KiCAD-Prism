@@ -27,7 +27,7 @@ fn document(version: &str) -> MaterializationDocumentA1 {
     });
     if version == "a1" {
         value["design_facts"] = json!({ "zones": [], "pad_rules": [], "footprint_rules": [],
-                                         "courtyards": [] });
+                                         "courtyards": [], "footprint_pads": [] });
     }
     serde_json::from_value(value).expect("document")
 }

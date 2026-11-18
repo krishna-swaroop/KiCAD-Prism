@@ -447,7 +447,8 @@ fn slice_four_records_are_checked() {
     );
 }
 
-/// The a1 facts: one copper zone, one rule area, a pad rule, a courtyard.
+/// The a1 facts: one copper zone, one rule area, a pad rule, a courtyard,
+/// a footprint's pads.
 fn design_facts() -> Value {
     let square = json!({ "kind": "planar_region_2d",
         "outer": { "start_nm": [0, 0], "segments": [
@@ -470,7 +471,10 @@ fn design_facts() -> Value {
         ],
         "pad_rules": [ { "source_uid": "pad-1", "clearance_nm": 100_000, "layers": [] } ],
         "footprint_rules": [],
-        "courtyards": [ { "source_uid": "fp-u1", "side": "front", "regions": [square] } ]
+        "courtyards": [ { "source_uid": "fp-u1", "side": "front", "regions": [square] } ],
+        "footprint_pads": [ { "source_uid": "fp-u1", "pads": [
+            { "source_uid": "pad-1", "number": "1", "net_key": "GND" },
+            { "source_uid": "pad@300", "number": "" } ] } ]
     })
 }
 
@@ -559,5 +563,15 @@ fn design_facts_are_checked() {
             value["design_facts"]["courtyards"][0]["regions"][0]["outer"]["segments"] = json!([]);
         }),
         Some("empty_path")
+    );
+    assert_eq!(
+        a1_code_after(|value| {
+            value["design_facts"]["footprint_pads"][0]["pads"][0]["net_key"] = json!("NOPE");
+        }),
+        Some("unknown_net")
+    );
+    assert_eq!(
+        a1_code_after(|value| value["design_facts"]["footprint_pads"][0]["pads"] = json!([])),
+        Some("empty_footprint_pads")
     );
 }

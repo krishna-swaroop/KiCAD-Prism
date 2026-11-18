@@ -991,6 +991,7 @@ holds all of them whatever its scope. Arrays are in file order.*/
 ///  "type": "object",
 ///  "required": [
 ///    "courtyards",
+///    "footprint_pads",
 ///    "footprint_rules",
 ///    "pad_rules",
 ///    "zones"
@@ -1005,6 +1006,13 @@ holds all of them whatever its scope. Arrays are in file order.*/
 ///      "type": "array",
 ///      "items": {
 ///        "$ref": "#/$defs/Courtyard"
+///      }
+///    },
+///    "footprint_pads": {
+///      "description": "By component in file order; footprints without pads are left out.",
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/FootprintPads"
 ///      }
 ///    },
 ///    "footprint_rules": {
@@ -1046,6 +1054,8 @@ pub struct DesignFacts {
     pub copper_edge_clearance_nm: ::std::option::Option<NonNegativeNm>,
     ///By component in file order, front before back.
     pub courtyards: ::std::vec::Vec<Courtyard>,
+    ///By component in file order; footprints without pads are left out.
+    pub footprint_pads: ::std::vec::Vec<FootprintPads>,
     pub footprint_rules: ::std::vec::Vec<FootprintRules>,
     ///KiCad's arc-approximation error (`max_error`) from the project file.
     #[serde(
@@ -1280,6 +1290,89 @@ pub struct Disk2d {
     #[serde(deserialize_with = "crate::materialization_contract::deserialize_disk_2d_kind")]
     pub kind: ::std::string::String,
     pub radius_nm: NonNegativeNm,
+}
+///One pad of a footprint, as the board file lists it.
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "One pad of a footprint, as the board file lists it.",
+///  "type": "object",
+///  "required": [
+///    "number",
+///    "source_uid"
+///  ],
+///  "properties": {
+///    "net_key": {
+///      "description": "Absent for no net.",
+///      "type": "string"
+///    },
+///    "number": {
+///      "description": "Pad number as written; may be empty (a mounting hole).",
+///      "type": "string"
+///    },
+///    "source_uid": {
+///      "description": "The pad's binding `source_uid` (its UUID, or `pad@<offset>`).",
+///      "type": "string"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct FootprintPad {
+    ///Absent for no net.
+    #[serde(
+        default,
+        deserialize_with = "crate::deserialize_present_nonnull",
+        skip_serializing_if = "::std::option::Option::is_none"
+    )]
+    pub net_key: ::std::option::Option<::std::string::String>,
+    ///Pad number as written; may be empty (a mounting hole).
+    pub number: ::std::string::String,
+    ///The pad's binding `source_uid` (its UUID, or `pad@<offset>`).
+    pub source_uid: ::std::string::String,
+}
+/**A footprint's pads in board file order, whatever the scope and whether or
+not a pad has copper. The order decides which of several pads with one
+number is the part's pin (the first), which operation order cannot.*/
+///
+/// <details><summary>JSON schema</summary>
+///
+/// ```json
+///{
+///  "description": "A footprint's pads in board file order, whatever the scope and whether or\nnot a pad has copper. The order decides which of several pads with one\nnumber is the part's pin (the first), which operation order cannot.",
+///  "type": "object",
+///  "required": [
+///    "pads",
+///    "source_uid"
+///  ],
+///  "properties": {
+///    "pads": {
+///      "type": "array",
+///      "items": {
+///        "$ref": "#/$defs/FootprintPad"
+///      },
+///      "minItems": 1
+///    },
+///    "source_uid": {
+///      "description": "The component's `source_uid`.",
+///      "type": "string"
+///    }
+///  },
+///  "additionalProperties": false
+///}
+/// ```
+/// </details>
+#[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct FootprintPads {
+    pub pads: ::std::vec::Vec<FootprintPad>,
+    ///The component's `source_uid`.
+    pub source_uid: ::std::string::String,
 }
 /**A footprint's zone rules for its pads, keyed by the component's
 `source_uid`. Present only for values it sets; a footprint that sets

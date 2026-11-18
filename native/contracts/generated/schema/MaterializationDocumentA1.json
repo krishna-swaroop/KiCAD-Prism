@@ -579,13 +579,21 @@
                         "$ref": "#/$defs/Courtyard"
                     },
                     "description": "By component in file order, front before back."
+                },
+                "footprint_pads": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/FootprintPads"
+                    },
+                    "description": "By component in file order; footprints without pads are left out."
                 }
             },
             "required": [
                 "zones",
                 "pad_rules",
                 "footprint_rules",
-                "courtyards"
+                "courtyards",
+                "footprint_pads"
             ],
             "unevaluatedProperties": {
                 "not": {}
@@ -1086,6 +1094,30 @@
             },
             "description": "A component's courtyard on one side, closed as KiCad closes it, in the\nboard frame: the graphics on `F.CrtYd` (front) or `B.CrtYd` (back),\nchained end to end within 0.01 mm."
         },
+        "FootprintPads": {
+            "type": "object",
+            "properties": {
+                "source_uid": {
+                    "type": "string",
+                    "description": "The component's `source_uid`."
+                },
+                "pads": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/$defs/FootprintPad"
+                    },
+                    "minItems": 1
+                }
+            },
+            "required": [
+                "source_uid",
+                "pads"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "A footprint's pads in board file order, whatever the scope and whether or\nnot a pad has copper. The order decides which of several pads with one\nnumber is the part's pin (the first), which operation order cannot."
+        },
         "Nm": {
             "type": "integer",
             "minimum": -2147483648,
@@ -1428,6 +1460,31 @@
                 "not": {}
             },
             "description": "Zone rules a padstack layer sets for itself (`(padstack (layer ...))`).\n`kicad_layer` is the selector as written: a copper layer name, or `Inner`\nfor every inner layer in KiCad's front/inner/back mode."
+        },
+        "FootprintPad": {
+            "type": "object",
+            "properties": {
+                "source_uid": {
+                    "type": "string",
+                    "description": "The pad's binding `source_uid` (its UUID, or `pad@<offset>`)."
+                },
+                "number": {
+                    "type": "string",
+                    "description": "Pad number as written; may be empty (a mounting hole)."
+                },
+                "net_key": {
+                    "type": "string",
+                    "description": "Absent for no net."
+                }
+            },
+            "required": [
+                "source_uid",
+                "number"
+            ],
+            "unevaluatedProperties": {
+                "not": {}
+            },
+            "description": "One pad of a footprint, as the board file lists it."
         },
         "Contour": {
             "type": "object",

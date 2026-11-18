@@ -601,6 +601,10 @@ export interface DesignFacts {
    * By component in file order, front before back.
    */
   courtyards: Courtyard[];
+  /**
+   * By component in file order; footprints without pads are left out.
+   */
+  footprint_pads: FootprintPads[];
 }
 /**
  * One zone or rule area on copper, as drawn. `outline` is the authored
@@ -736,4 +740,36 @@ export interface Courtyard {
    * @minItems 1
    */
   regions: [PlanarRegion2D, ...PlanarRegion2D[]];
+}
+/**
+ * A footprint's pads in board file order, whatever the scope and whether or
+ * not a pad has copper. The order decides which of several pads with one
+ * number is the part's pin (the first), which operation order cannot.
+ */
+export interface FootprintPads {
+  /**
+   * The component's `source_uid`.
+   */
+  source_uid: string;
+  /**
+   * @minItems 1
+   */
+  pads: [FootprintPad, ...FootprintPad[]];
+}
+/**
+ * One pad of a footprint, as the board file lists it.
+ */
+export interface FootprintPad {
+  /**
+   * The pad's binding `source_uid` (its UUID, or `pad@<offset>`).
+   */
+  source_uid: string;
+  /**
+   * Pad number as written; may be empty (a mounting hole).
+   */
+  number: string;
+  /**
+   * Absent for no net.
+   */
+  net_key?: string;
 }

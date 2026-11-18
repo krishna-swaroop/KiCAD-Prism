@@ -43,6 +43,12 @@ A zone's `source_uid` is its UUID. A nil UUID, or one an earlier zone of the boa
 
 `design_facts` is like `nets` and `net_classes`: every document of a board carries all of it, whatever the request's products, slices, nets or region. Filtering (`filter_document`, `PreparedBoard`) copies it unchanged, so correctness rule 2 (a filtered complete document equals the direct one) holds as before. The producer therefore always reads footprint graphics, which courtyards need, even for a request without drawn products.
 
+### D6. Footprint pads in file order (added before a1 left `feature/pi-suite`)
+
+`footprint_pads` lists every footprint's pads in board file order, with the pad number and net, whatever their copper. The AC engine takes the first pad of a repeated number as the part's pin, and counts a part's netted pins before accepting a two-terminal model; until now it read both from the raw board text, which a Prism bundle does not carry. Operation and binding order are spatial, so neither gives the file order, and a scoped document's bindings miss out-of-scope pads.
+
+The field is added to a1 itself rather than as a2: a1 has never left this branch (no `dev` build, no stored bundle outside development), and the out-of-repository reader is unsealed (D3). The generator moves to 0.15.1 so that no bundle built by 0.15.0 is reused.
+
 ## 3. The header shape
 
 ```text
@@ -60,7 +66,8 @@ design_facts: {
                  layers: [ { kicad_layer, …same optional rules } ] } ],
   footprint_rules: [ { source_uid, clearance_nm?, pad_connection?, thermal_gap_nm?,
                        thermal_spoke_width_nm? } ],
-  courtyards: [ { source_uid, side, regions: PlanarRegion2d[≥1] } ]
+  courtyards: [ { source_uid, side, regions: PlanarRegion2d[≥1] } ],
+  footprint_pads: [ { source_uid, pads: [ { source_uid, number, net_key? } ≥1 ] } ]
 }
 ```
 
@@ -71,6 +78,7 @@ design_facts: {
 - Zone fill values carry KiCad's parser default when the file omits them (KiCad reads them so). Pad, padstack-layer and footprint values are present only where the item sets them instead of inheriting (`zone_connect` −1 is absent); an item that sets nothing has no record.
 - Courtyards are the `F.CrtYd`/`B.CrtYd` graphics of each footprint, closed as the board profile is (chained within 0.01 mm, even-odd nesting). One that does not close is reported (`courtyard_not_closed`, no product) and kept when it has any closed region.
 - Arrays are in file order; courtyards by component in file order, front before back.
+- `footprint_pads` keys a footprint by its component `source_uid` and each pad by its binding `source_uid`; a pad's `number` may be empty (mounting holes, fiducials) and `net_key` is absent for no net (a pad binding writes the empty net). Footprints without pads are left out.
 
 ## 4. What is not in a1
 
@@ -87,7 +95,7 @@ The parser gained three typed zone fields for this (`PcbZone::corner_smoothing`,
 
 ## 5. Consequences
 
-- **Generator id:** `crate_version` 0.15.0 and `member_schemas` name `kicad_monkey.materialization.a1`, so the generator digest changes and every stored bundle is rebuilt on next use (amendment K2 §3.3). The pin table is re-blessed; parse-stage members are unchanged (only `bundle.json` and the pack change).
+- **Generator id:** `crate_version` 0.15.0 (0.15.1 with D6) and `member_schemas` name `kicad_monkey.materialization.a1`, so the generator digest changes and every stored bundle is rebuilt on next use (amendment K2 §3.3). The pin table is re-blessed; parse-stage members are unchanged (only `bundle.json` and the pack change).
 - **3D viewer:** draws nothing new. Lowering reads operations and the stack only; the header JSON grows (165 kB on cynthion's 66 zones and 348 courtyards). The committed WASM, the served viewer and the viewer's `demo.kmpack` are rebuilt.
 - **Fill comparison and cross-check:** unchanged; they read operations and binding only.
 - **Cost:** courtyard closure and zone records add about 0.1 s on cynthion in a release build; footprint graphics are now always decoded.

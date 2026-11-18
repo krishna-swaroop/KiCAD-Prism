@@ -1,6 +1,7 @@
 //! Rules of a1's `design_facts`: present exactly in a1, lengths in range,
 //! zones with unique source UIDs on known conductor slices in stack order,
-//! known nets, valid outlines, and exactly one of fill rules and keep-outs.
+//! known nets, valid outlines, and exactly one of fill rules and keep-outs;
+//! footprint pad lists that are not empty and name known nets.
 
 use super::shapes::validate_shape;
 use super::{Keys, check_length, check_optional_length};
@@ -42,7 +43,8 @@ pub(super) fn validate_design_facts(
     )?;
     validate_zones(facts, keys)?;
     validate_rules(facts)?;
-    validate_courtyards(facts)
+    validate_courtyards(facts)?;
+    validate_footprint_pads(facts, keys)
 }
 
 fn validate_zones(facts: &DesignFacts, keys: &Keys<'_>) -> Result<(), ValidationError> {
@@ -213,6 +215,32 @@ fn validate_courtyards(facts: &DesignFacts) -> Result<(), ValidationError> {
         }
         for (index, region) in courtyard.regions.iter().enumerate() {
             check_region(region, &format!("{path}.regions[{index}]"))?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_footprint_pads(facts: &DesignFacts, keys: &Keys<'_>) -> Result<(), ValidationError> {
+    for (position, footprint) in facts.footprint_pads.iter().enumerate() {
+        let path = format!("$.design_facts.footprint_pads[{position}]");
+        if footprint.pads.is_empty() {
+            return Err(validation_error(
+                "empty_footprint_pads",
+                format!("{path}.pads"),
+                "a listed footprint has at least one pad",
+            ));
+        }
+        let unknown = footprint.pads.iter().position(|pad| {
+            pad.net_key
+                .as_deref()
+                .is_some_and(|net| !keys.nets.contains(net))
+        });
+        if let Some(index) = unknown {
+            return Err(validation_error(
+                "unknown_net",
+                format!("{path}.pads[{index}].net_key"),
+                "a pad's net is listed in nets",
+            ));
         }
     }
     Ok(())

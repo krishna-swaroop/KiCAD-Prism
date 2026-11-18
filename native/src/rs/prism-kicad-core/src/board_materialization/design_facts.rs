@@ -6,11 +6,13 @@
 //!   (`max_error`) and the copper-to-edge clearance;
 //! - zones and rule areas ([`super::design_zones`]);
 //! - pad and footprint zone rules where they differ from inheriting;
-//! - courtyards per component and side, closed as the board profile is.
+//! - courtyards per component and side, closed as the board profile is;
+//! - every footprint's pads in file order, with number and net.
 
 use super::design_zones::{ZoneInputs, zone_facts};
 use super::emit::{Emitter, source_uid};
 use super::geometry::length;
+use super::nets::net_key;
 use super::profile::close_profile;
 use super::source_graphics::graphic_layers;
 use super::{MaterializationError, error};
@@ -20,8 +22,8 @@ use crate::pcb::{
 };
 use crate::project::{ProjectDocument, ProjectLimits};
 use prism_kicad_contracts::generated::materialization_document::{
-    BoardSide, Courtyard, DesignFacts, FootprintRules, NonNegativeNm, PadConnection, PadRules,
-    PadstackLayerRules,
+    BoardSide, Courtyard, DesignFacts, FootprintPad, FootprintPads, FootprintRules, NonNegativeNm,
+    PadConnection, PadRules, PadstackLayerRules,
 };
 use serde_json::Value;
 
@@ -71,6 +73,7 @@ pub(crate) fn design_facts(inputs: &FactInputs<'_>, emitter: &mut Emitter) -> De
         pad_rules: inputs.pads.iter().filter_map(pad_rules).collect(),
         footprint_rules: footprints.iter().filter_map(footprint_rules).collect(),
         courtyards: courtyards(footprints, inputs.graphics, emitter),
+        footprint_pads: footprint_pads(footprints, inputs.pads),
     }
 }
 
@@ -212,4 +215,33 @@ fn courtyards(
     }
     emitter.product = product;
     result
+}
+
+/// Each footprint's pads in file order; footprints without pads are left
+/// out.
+fn footprint_pads(footprints: &[PcbFootprint], pads: &[PcbPad]) -> Vec<FootprintPads> {
+    let mut owned: Vec<Vec<FootprintPad>> = vec![Vec::new(); footprints.len()];
+    for pad in pads {
+        if let Some(list) = owned.get_mut(pad.footprint_index) {
+            let net = net_key(&pad.net);
+            list.push(FootprintPad {
+                source_uid: source_uid("pad", pad.uuid.as_deref(), pad.source_range.start),
+                number: pad.number.clone(),
+                net_key: (!net.is_empty()).then_some(net),
+            });
+        }
+    }
+    footprints
+        .iter()
+        .zip(owned)
+        .filter(|(_, pads)| !pads.is_empty())
+        .map(|(footprint, pads)| FootprintPads {
+            source_uid: source_uid(
+                "footprint",
+                footprint.uuid.as_deref(),
+                footprint.source_range.start,
+            ),
+            pads,
+        })
+        .collect()
 }

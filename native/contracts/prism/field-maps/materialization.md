@@ -52,10 +52,16 @@ Pointers are RFC 6901 with `*` for every element of an array. Units: integer nan
 | `/design_facts/courtyards/*/source_uid` | string | — | required | the component's `source_uid` | sim | — |
 | `/design_facts/courtyards/*/side` | `BoardSide` | — | required | the courtyard layer | sim | — |
 | `/design_facts/courtyards/*/regions` | `PlanarRegion2d[]` | nm | required, ≥ 1; sorted by outer start (y, then x) | `close_profile` | sim | a courtyard that does not close is reported as `courtyard_not_closed` |
+| `/design_facts/footprint_pads` | `FootprintPads[]` | — | required; by component in file order; footprints without pads left out | `pcb/pads.rs` `PcbPad` grouped by `footprint_index`, `board_materialization/design_facts.rs` `footprint_pads` | sim: AC engine package pins and pin counts (amendment PI D6) | — |
+| `/design_facts/footprint_pads/*/source_uid` | string | — | required | the component's `source_uid` | sim | — |
+| `/design_facts/footprint_pads/*/pads` | `FootprintPad[]` | — | required, ≥ 1; board file order, every pad with or without copper | `PcbPad` | sim | — |
+| `/design_facts/footprint_pads/*/pads/*/source_uid` | string | — | required | the pad's binding `source_uid` (UUID, KiCad 7 `tstamp`, or `pad@<offset>`) | sim | — |
+| `/design_facts/footprint_pads/*/pads/*/number` | string | — | required; may be empty | `PcbPad::number` | sim | — |
+| `/design_facts/footprint_pads/*/pads/*/net_key` | string | — | optional; absent for no net | `nets.rs` `net_key` | sim | the pad's copper binding writes the empty net instead |
 
 ## How a golden is produced from today's code
 
-No golden exists: nothing in Prism produced these facts before a1. The tests in `prism-kicad-core/tests/board_materialization_design_facts.rs` check them against the source text of `fixtures/release-studio/usb-pd` (zones, thermal reliefs, pads with local rules, courtyards, the project's board rules), `native/parity/docs-oracle/board` (a keep-out rule area, a footprint rule) and `fixtures/release-studio/cynthion` (a KiCad 7 board: 66 zones, nine rule areas, one owned by a footprint).
+No golden exists: nothing in Prism produced these facts before a1. The tests in `prism-kicad-core/tests/board_materialization_design_facts.rs` check them against the source text of `fixtures/release-studio/usb-pd` (zones, thermal reliefs, pads with local rules, courtyards, the project's board rules), `native/parity/docs-oracle/board` (a keep-out rule area, a footprint rule) and `fixtures/release-studio/cynthion` (a KiCad 7 board: 66 zones, nine rule areas, one owned by a footprint). Footprint pads are checked against the order of `(pad …)` in the USB-PD text and against every pad binding (number, net, component) on USB-PD and cynthion (1,472 pads, repeated numbers, unnamed pads).
 
 ## Expected divergences
 

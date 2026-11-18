@@ -132,7 +132,8 @@ fn a1_design_facts_ride_in_the_header_of_format_zero() {
     a1.design_facts = Some(
         serde_json::from_value(json!({
             "max_error_nm": 5_000, "copper_edge_clearance_nm": 500_000,
-            "zones": [], "pad_rules": [], "footprint_rules": [], "courtyards": []
+            "zones": [], "pad_rules": [], "footprint_rules": [], "courtyards": [],
+            "footprint_pads": []
         }))
         .expect("facts"),
     );
@@ -149,8 +150,8 @@ fn a1_design_facts_ride_in_the_header_of_format_zero() {
     let reopened = open(&new).expect("a1 opens");
     assert_eq!(
         serde_json::to_value(&reopened.design_facts).expect("json"),
-        json!({ "copper_edge_clearance_nm": 500_000, "courtyards": [], "footprint_rules": [],
-                "max_error_nm": 5_000, "pad_rules": [], "zones": [] })
+        json!({ "copper_edge_clearance_nm": 500_000, "courtyards": [], "footprint_pads": [],
+                "footprint_rules": [], "max_error_nm": 5_000, "pad_rules": [], "zones": [] })
     );
     let old = open(&old).expect("an a0 pack still opens");
     assert_eq!(old.schema, "kicad_monkey.materialization.a0");
