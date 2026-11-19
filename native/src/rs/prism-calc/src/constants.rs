@@ -6,7 +6,7 @@ pub const C0: f64 = 299_792_458.0;
 pub const MU0: f64 = 1.256_637_062_12e-6;
 /// Vacuum permittivity, F/m (CODATA 2018).
 pub const EPS0: f64 = 8.854_187_812_8e-12;
-/// Free-space impedance, ohm (CODATA 2018). Saturn PCB Toolkit uses 120π = 376.99 instead.
+/// Free-space impedance, ohm (CODATA 2018). Some calculators use the approximation 120π = 376.99.
 pub const ETA0: f64 = 376.730_313_668;
 
 /// Copper resistivity at 20 °C, Ω·m, as used by the IPC current charts (annealed copper is 1.7241e-8).

@@ -1,6 +1,6 @@
 //! Closed-form PCB calculators.
 //!
-//! Each module implements one of the shared calculator specs (`Saturn-PCB-Reimpl/specs/`):
+//! Each module implements one of the shared calculator specs:
 //!
 //! | Module | Spec |
 //! |---|---|

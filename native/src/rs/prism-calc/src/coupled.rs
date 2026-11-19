@@ -10,7 +10,7 @@ use std::f64::consts::PI;
 
 /// Edge-coupled stripline coupling coefficient k in D7 as commonly cited (AN-905).
 ///
-/// Saturn PCB Toolkit v8.48 uses 0.374. The primary source is still to be checked (spec 02 Q2).
+/// Some calculators use 0.374. The primary source is still to be checked (spec 02 Q2).
 pub const STRIPLINE_COUPLING_K: f64 = 0.347;
 
 /// Hammerstad/Schneider microstrip εeff, spec 02 D2.
