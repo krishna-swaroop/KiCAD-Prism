@@ -1,0 +1,16 @@
+[package]
+name = "prism-calc"
+description = "Closed-form PCB calculators (impedance, coupling, current, fusing, vias) per the shared calculator specs"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license = "Apache-2.0"
+authors = ["KiCAD Prism contributors"]
+repository = "https://github.com/krishna-swaroop/KiCAD-Prism"
+publish = false
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

@@ -722,6 +722,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "prism-calc"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "prism-docs-lab"
 version = "0.1.0"
 dependencies = [
