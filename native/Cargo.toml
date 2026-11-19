@@ -13,6 +13,7 @@ members = [
     "src/rs/prism-vendors",
     "src/rs/prism-artwork",
     "src/rs/prism-docs-lab",
+    "src/rs/prism-calc",
 ]
 # Vendored third-party code (ADR amendment C3 §2 item 4): built as a path
 # dependency, kept out of the workspace's own lints and tests.

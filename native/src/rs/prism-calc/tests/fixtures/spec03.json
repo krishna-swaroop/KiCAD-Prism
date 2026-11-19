@@ -1,0 +1,86 @@
+{
+ "spec": "03",
+ "generator": "Generated from the calculator-spec reference implementations of the published equations. SI units.",
+ "cases": [
+  {
+   "id": "C1",
+   "model": "cross_section_area",
+   "inputs": {
+    "width": 0.00127,
+    "thickness": 3.50012e-05,
+    "etch": "none",
+    "count": 1
+   },
+   "expected": {
+    "area": 4.4451524e-08
+   },
+   "rel_tol": 1e-09
+  },
+  {
+   "id": "C2e",
+   "model": "ipc2221_current",
+   "inputs": {
+    "area": 4.4451524e-08,
+    "temperature_rise": 20.0,
+    "layer": "external"
+   },
+   "expected": {
+    "current": 3.8583655507423207
+   },
+   "rel_tol": 1e-09
+  },
+  {
+   "id": "C2i",
+   "model": "ipc2221_current",
+   "inputs": {
+    "area": 4.4451524e-08,
+    "temperature_rise": 20.0,
+    "layer": "internal"
+   },
+   "expected": {
+    "current": 1.9291827753711603
+   },
+   "rel_tol": 1e-09
+  },
+  {
+   "id": "C6",
+   "model": "ipc2221_area",
+   "inputs": {
+    "current": 2.0,
+    "temperature_rise": 10.0,
+    "layer": "external"
+   },
+   "expected": {
+    "area": 2.7350311201801983e-08
+   },
+   "rel_tol": 1e-09
+  },
+  {
+   "id": "C7",
+   "model": "copper_dc_resistance",
+   "inputs": {
+    "length": 0.025400000000000002,
+    "area": 4.4451524e-08,
+    "temperature_c": 50.0
+   },
+   "expected": {
+    "resistance": 0.010986983303429598
+   },
+   "rel_tol": 1e-09
+  },
+  {
+   "id": "C8",
+   "model": "skin_depth",
+   "inputs": {
+    "frequency": 1000000.0,
+    "resistivity": 1.72e-08,
+    "mu_r": 1.0
+   },
+   "expected": {
+    "skin_depth": 6.600614287034597e-05
+   },
+   "rel_tol": 1e-06,
+   "note": "mu0 = 4*pi*1e-7 in the reference; CODATA mu0 differs by 5e-10"
+  }
+ ]
+}
