@@ -167,11 +167,11 @@ class CatalogReleaseWorkflow:
                 "UPDATE components SET released_revision_id = %s, updated_at = %s WHERE id = %s",
                 (revision["id"], now, component_id),
             )
-        elif release_status == "archived" and str(component.get("released_revision_id") or "") == revision_id:
-            conn.execute(
-                "UPDATE components SET released_revision_id = '', updated_at = %s WHERE id = %s",
-                (now, component_id),
-            )
+        elif release_status == "archived" and str(component.get("released_revision_id") or ""):
+            # Archiving withdraws the part from placement whichever revision is
+            # current: after Released -> Open the draft is current, but the
+            # earlier release would otherwise keep serving KiCad (issue #1201).
+            self._withdraw_release(conn, component_id, str(component["released_revision_id"]), revision_id, actor, now)
         else:
             conn.execute("UPDATE components SET updated_at = %s WHERE id = %s", (now, component_id))
         if release_status == current_status:
@@ -299,6 +299,36 @@ class CatalogReleaseWorkflow:
             event_type="component.released",
             actor=actor,
             details={"manifest_hash": manifest_hash, "trusted_import": True},
+        )
+
+    def _withdraw_release(
+        self,
+        conn: Any,
+        component_id: str,
+        released_revision_id: str,
+        archived_revision_id: str,
+        actor: str,
+        now: str,
+    ) -> None:
+        """Clear the component's release; archive the released revision too when it is not the one archived."""
+        conn.execute(
+            "UPDATE components SET released_revision_id = '', updated_at = %s WHERE id = %s",
+            (now, component_id),
+        )
+        if released_revision_id == archived_revision_id:
+            return
+        conn.execute(
+            "UPDATE component_revisions SET release_status = 'archived', updated_at = %s "
+            "WHERE id = %s AND release_status = 'released'",
+            (now, released_revision_id),
+        )
+        self._revision_kernel.append_audit_event(
+            conn,
+            component_id=component_id,
+            revision_id=released_revision_id,
+            event_type="workflow.transitioned",
+            actor=actor,
+            details={"from": "released", "to": "archived", "archived_with_revision": archived_revision_id},
         )
 
     def _open_draft_from_release(
