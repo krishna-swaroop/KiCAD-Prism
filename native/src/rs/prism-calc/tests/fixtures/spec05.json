@@ -1,0 +1,51 @@
+{
+ "spec": "05",
+ "generator": "Generated from the calculator-spec reference implementations of the published equations. SI units.",
+ "cases": [
+  {
+   "id": "V1",
+   "model": "via_properties",
+   "inputs": {
+    "hole_diameter": 0.000254,
+    "plating": 2.54e-05,
+    "pad_diameter": 0.000508,
+    "antipad_diameter": 0.000762,
+    "length": 0.0015748000000000001,
+    "eps_r": 4.6,
+    "line_z0": 50.0
+   },
+   "expected": {
+    "barrel_area": 2.22951290802899e-08,
+    "capacitance": 8.042639999999999e-13,
+    "inductance": 1.3262473170027184e-09,
+    "impedance": 40.608125668940474,
+    "resonant_frequency": 4873136289.930386,
+    "rise_time_degradation": 4.4234520000000004e-11,
+    "thermal_resistance": 176.14529302544483,
+    "resistance_20c": 0.001214909315055098
+   },
+   "rel_tol": 1e-09
+  },
+  {
+   "id": "V2",
+   "model": "diff_via_pair",
+   "inputs": {
+    "drill_diameter": 0.00030480000000000004,
+    "spacing": 0.001524,
+    "antipad_height": 0.001016,
+    "antipad_width": 0.00254,
+    "eps_r": 4.6,
+    "anisotropy_pct": 18.0,
+    "baud_rate": 1000000000.0
+   },
+   "expected": {
+    "eps_avg": 5.013999999999999,
+    "z_single": 53.877312702064806,
+    "z_diff": 107.75462540412961,
+    "eps_eff": 6.517536142849086,
+    "max_stub_length": 0.00835740172814907
+   },
+   "rel_tol": 1e-09
+  }
+ ]
+}
