@@ -59,7 +59,8 @@ A QA reviewer who sends a component back moves it to **In progress** and must
 leave a note saying what to change. A released revision never changes: to
 change a released component, move it back to **Open**, which starts a new draft
 revision. The released revision stays available until the new one is
-released.
+released. Archiving the draft withdraws the released revision too, so the part
+leaves KiCad.
 
 ## Create a component
 

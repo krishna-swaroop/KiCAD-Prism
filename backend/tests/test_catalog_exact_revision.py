@@ -278,6 +278,30 @@ class ExactRevisionTests(unittest.TestCase):
         with self.assertRaises(NotFound):
             self.service.build_inline_bundle(component_id, "", first["revision_id"])
 
+    def test_archiving_a_reopened_part_withdraws_its_release_from_kicad(self) -> None:
+        """Released -> Open -> Archived leaves nothing placeable (issue #1201)."""
+        first, second, draft = self._part()
+        component_id = str(first["id"])
+        mpn = f"EXACT-{self.token}"
+        self.assertEqual(len(self.service.list_remote_component_heads(query=mpn)["items"]), 1)
+
+        self.service.set_release_status(component_id, "archived", actor=ACTOR)
+
+        self.assertEqual(self.service.list_remote_component_heads(query=mpn)["items"], [])
+        for revision_id in ("", first["revision_id"], second["revision_id"]):
+            with self.subTest(revision_id=revision_id):
+                self.assertIsNone(provider_revisions.released_component(component_id, revision_id))
+        with self.service.connection() as conn:
+            statuses = {
+                str(row["id"]): str(row["release_status"])
+                for row in conn.execute(
+                    "SELECT id, release_status FROM component_revisions WHERE id IN (%s, %s)",
+                    (second["revision_id"], draft["revision_id"]),
+                ).fetchall()
+            }
+            conn.rollback()
+        self.assertEqual(statuses, {second["revision_id"]: "archived", draft["revision_id"]: "archived"})
+
 
 if __name__ == "__main__":
     unittest.main()
