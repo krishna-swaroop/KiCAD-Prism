@@ -46,6 +46,9 @@ presence only),
 matching remote-provider representation, not the default placement pair),
 `library-component-quick-view.tsx`,
 `library-component-mates.tsx` (a part's "mates with" list and editor),
+`library-component-create-from.tsx` and `library-component-create-from-fields.tsx`
+("Create from": a new component that links the released revision's assets; the
+form is filled from that revision, and the fields it does not show are kept),
 `library-component-models.tsx` (STEP → GLB status, alignment editor and Geometer preview),
 `library-asset-link-picker.tsx`.
 

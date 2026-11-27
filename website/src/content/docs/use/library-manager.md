@@ -74,6 +74,26 @@ leaves KiCad.
 5. Under **Representations**, check that the symbol is paired with the right
    footprint. Add another pairing if the part comes in more than one variant.
 
+### Create a component from another one
+
+Parts in a series, such as 0603 resistors, use the same symbol, footprint and
+3D model. To add a value to a series:
+
+1. Open a released component of the series and select **Create from**.
+2. The form shows the released revision's fields. **Manufacturer part number**
+   and **Datasheet URL** are empty: enter the values of the new part, and change
+   **Value** and **Description**.
+3. Select **Create revision**.
+
+The new component links the same files as the released revision: symbol,
+footprint, 3D models, SPICE models and representations. Prism does not copy the
+files, and later changes to the source component do not change the new one. The
+new component also keeps the source's vendor, thermal, temperature, power and
+custom fields, but not its vendor part number or SAP code. It starts in
+**Open**, and it goes through review and release like any other component.
+
+**Create from** is available only when the component has a released revision.
+
 ## Import components
 
 Open **Import Center**. It offers three sources:

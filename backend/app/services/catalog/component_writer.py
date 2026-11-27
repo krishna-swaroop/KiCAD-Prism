@@ -13,8 +13,10 @@ import json
 from typing import Any
 import uuid
 
+from app.core.errors import NotFound
+from app.services.catalog import models as catalog_models
 from app.services.catalog.component_identity import ComponentIdentity, find_identity_holder
-from app.services.catalog.conflicts import revision_conflict
+from app.services.catalog.conflicts import CatalogConflict, revision_conflict
 from app.services.catalog.field_rules import custom_field_errors, missing_custom_fields
 from app.services.catalog.locking import CatalogLockOperations
 from app.services.catalog.metadata_normalization import (
@@ -33,6 +35,10 @@ from app.services.catalog.runtime import CatalogRuntime
 
 SOURCE_MANUAL = "manual"
 SOURCE_EXTERNAL = "external"
+
+# The first revision of a component made from another component's released revision.
+CHANGE_KIND_CREATE_FROM = "create_from"
+SOURCE_NOT_RELEASED_CODE = "source_not_released"
 
 # Request keys a metadata patch may carry, mapped to the revision column they set.
 METADATA_PATCH_COLUMNS: dict[str, str] = {
@@ -364,7 +370,7 @@ class CatalogComponentWriter:
                 component_id,
                 1,
                 "",
-                "create" if source == SOURCE_MANUAL else change_kind,
+                change_kind if source != SOURCE_MANUAL or change_kind == CHANGE_KIND_CREATE_FROM else "create",
                 change_summary,
                 actor,
                 "",
@@ -396,21 +402,81 @@ class CatalogComponentWriter:
         actor: str = "",
         change_summary: str = "Create component",
     ) -> str:
-        """A new component."""
+        """A new component.
+
+        With ``payload["source"]`` (``component_id`` and ``expected_revision_id``)
+        the first revision links the assets, representations, previews and
+        model alignment of the source's released revision. Metadata always comes
+        from ``payload``; nothing is copied from the source.
+        """
+        payload = dict(payload)
+        source = payload.pop("source", None)
         component_id = str(uuid.uuid4())
         metadata = normalize_metadata(payload)
         self.assert_custom_fields_present(conn, metadata)
-        self.upsert_metadata_row(
+        if not source:
+            self.upsert_metadata_row(
+                conn,
+                runtime,
+                component_id=component_id,
+                metadata=metadata,
+                now=utc_now_iso(),
+                existing_component_id=None,
+                actor=actor,
+                change_summary=change_summary,
+            )
+            return component_id
+        source_component_id = str(source.get("component_id") or "").strip()
+        source_revision_id = self.released_source_revision(
+            conn, source_component_id, str(source.get("expected_revision_id") or "").strip()
+        )
+        now = utc_now_iso()
+        _, revision_id = self.upsert_metadata_row(
             conn,
             runtime,
             component_id=component_id,
             metadata=metadata,
-            now=utc_now_iso(),
+            now=now,
             existing_component_id=None,
             actor=actor,
             change_summary=change_summary,
+            finalize_revision=False,
+            change_kind=CHANGE_KIND_CREATE_FROM,
+        )
+        self._revision_kernel.copy_revision_links(conn, source_revision_id, revision_id, now)
+        self._revision_kernel.inherit_validation_evidence(conn, source_revision_id, revision_id)
+        catalog_models.copy_alignments(conn, source_component_id, component_id, revision_id, actor=actor, now=now)
+        self._finalizer.finalize_revision(
+            conn,
+            runtime,
+            component_id=component_id,
+            revision_id=revision_id,
+            event_type="component.created",
+            actor=actor,
+            details={
+                "change_kind": CHANGE_KIND_CREATE_FROM,
+                "change_summary": change_summary,
+                "source_component_id": source_component_id,
+                "source_revision_id": source_revision_id,
+            },
         )
         return component_id
+
+    @staticmethod
+    def released_source_revision(conn: Any, component_id: str, expected_revision_id: str) -> str:
+        """The released revision to create from, held so that no release changes it before commit."""
+        row = conn.execute(
+            "SELECT id, is_active, released_revision_id FROM components WHERE id = %s FOR SHARE",
+            (component_id,),
+        ).fetchone() if component_id else None
+        if not row or not int(row["is_active"] or 0):
+            raise NotFound("Source component not found")
+        released_revision_id = str(row["released_revision_id"] or "")
+        if not released_revision_id:
+            raise CatalogConflict("Source component has no released revision", code=SOURCE_NOT_RELEASED_CODE)
+        if released_revision_id != expected_revision_id:
+            raise CatalogConflict("Source component was released again: refresh it before creating from it")
+        return released_revision_id
 
     def update_metadata(
         self,

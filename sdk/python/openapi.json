@@ -9790,6 +9790,27 @@
         "title": "CreateFolderRequest",
         "type": "object"
       },
+      "CreateFromSource": {
+        "description": "Link this component's released assets; a release newer than ``expected_revision_id`` is 412.",
+        "properties": {
+          "component_id": {
+            "minLength": 1,
+            "title": "Component Id",
+            "type": "string"
+          },
+          "expected_revision_id": {
+            "minLength": 1,
+            "title": "Expected Revision Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "component_id",
+          "expected_revision_id"
+        ],
+        "title": "CreateFromSource",
+        "type": "object"
+      },
       "CreateManualComponentRequest": {
         "properties": {
           "category": {
@@ -9859,6 +9880,16 @@
             "default": "",
             "title": "Sap Code",
             "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CreateFromSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "temp_max_c": {
             "default": "",

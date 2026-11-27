@@ -202,6 +202,26 @@ def set_alignment(conn: Any, component_id: str, asset_id: str, alignment: Mappin
     )
 
 
+def copy_alignments(conn: Any, source_component_id: str, component_id: str, revision_id: str, *, actor: str,
+                    now: str) -> None:
+    """Give ``component_id`` the source's alignment of each model that ``revision_id`` links.
+
+    A component made from another one shares its models; the same model in the
+    same series has the same mating frame.
+    """
+    conn.execute(
+        """
+        INSERT INTO catalog_model_alignment (component_id, asset_id, alignment_json, updated_by, updated_at)
+        SELECT %s, alignment.asset_id, alignment.alignment_json, %s, %s
+        FROM catalog_model_alignment alignment
+        JOIN revision_assets link ON link.asset_id = alignment.asset_id AND link.revision_id = %s
+        WHERE alignment.component_id = %s AND link.asset_type = '3dmodel'
+        ON CONFLICT (component_id, asset_id) DO NOTHING
+        """,
+        (component_id, actor, now, revision_id, source_component_id),
+    )
+
+
 def model_doc(asset: Mapping[str, Any], glb: Optional[Mapping[str, Any]], alignment: Optional[Mapping[str, Any]]) -> dict:
     return {
         "assetId": str(asset["id"]), "name": str(asset["name"]), "stepSha256": str(asset["sha256"]),

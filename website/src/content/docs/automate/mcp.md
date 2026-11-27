@@ -98,7 +98,7 @@ To review a change, an assistant calls `compare_revisions`, polls `get_job` unti
 | `sync_project` | queues a sync of the project with its remote; returns a job id | `design:write` |
 | `start_release_build` | queues a Release Studio candidate build for one commit; returns a job id. It never approves or publishes. | `design:write` |
 | `request_release_approval` | changes nothing: returns the project's Release Studio page, where a person approves | `design:write` |
-| `create_catalog_draft` | creates an unreviewed catalog component in the open workflow stage | `catalog:write` |
+| `create_catalog_draft` | creates an unreviewed catalog component in the open workflow stage; with `source`, it also links the symbol, footprint, 3D models and representations of another component's released revision | `catalog:write` |
 | `update_import_proposal` | saves draft edits to a catalog import session's proposals; it doesn't accept, reject or release anything | `catalog:write` |
 | `update_catalog_component` | fills in or corrects a component's metadata | `catalog:write` |
 | `create_asset_upload` | returns a one-time URL to `PUT` a file too large to send inline, such as a STEP model | `catalog:write` |

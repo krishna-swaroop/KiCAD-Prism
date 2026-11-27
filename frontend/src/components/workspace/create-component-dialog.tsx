@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { CatalogComponent } from "@/types/catalog";
 import { createComponent } from "./catalog-client";
+import { CreateFromSummary, createFromRequest } from "./library-component-create-from-fields";
 
 export type CreateComponentForm = {
   value: string;
@@ -32,17 +33,23 @@ const EMPTY_CREATE_FORM: CreateComponentForm = {
   changeSummary: "Create component metadata record",
 };
 
-/** The first metadata revision of a new catalog component. `initial` fills fields in, as when a BOM line is added to the library. */
+/**
+ * The first metadata revision of a new catalog component. `initial` fills fields in, as when a BOM
+ * line is added to the library. With `source` (a released revision), the new component also links
+ * that revision's assets and keeps its fields that the form does not show.
+ */
 export function CreateComponentDialog({
   open,
   onOpenChange,
   onCreated,
   initial,
+  source,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: (component: CatalogComponent) => void;
   initial?: Partial<CreateComponentForm>;
+  source?: CatalogComponent;
 }) {
   const [form, setForm] = useState<CreateComponentForm>(() => ({ ...EMPTY_CREATE_FORM, ...initial }));
   const [submitting, setSubmitting] = useState(false);
@@ -66,6 +73,7 @@ export function CreateComponentDialog({
         category: form.category.trim(),
         package_name: form.packageName.trim(),
         change_summary: form.changeSummary.trim(),
+        ...(source ? createFromRequest(source) : {}),
       });
       toast.success(`${component.name} v${component.revision} created`);
       setForm(EMPTY_CREATE_FORM);
@@ -82,9 +90,10 @@ export function CreateComponentDialog({
     <Dialog open={open} onOpenChange={(next) => { if (!submitting) onOpenChange(next); }}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>New component</DialogTitle>
+          <DialogTitle>{source ? `New component from ${source.name}` : "New component"}</DialogTitle>
           <DialogDescription className="sr-only">First metadata revision of a new component</DialogDescription>
         </DialogHeader>
+        {source ? <CreateFromSummary source={source} /> : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2"><Label htmlFor="catalog-create-value">Value *</Label><Input id="catalog-create-value" autoFocus required value={form.value} onChange={(event) => setField("value", event.target.value)} placeholder="10 kΩ, TPS55289, USB-C…" /></div>
           <div className="space-y-2"><Label htmlFor="catalog-create-manufacturer">Manufacturer *</Label><Input id="catalog-create-manufacturer" required value={form.manufacturer} onChange={(event) => setField("manufacturer", event.target.value)} placeholder="Texas Instruments" /></div>
