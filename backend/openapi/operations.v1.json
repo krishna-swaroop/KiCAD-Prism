@@ -4,6 +4,11 @@
     "path": "/api/v1/health/about",
     "typed": true
   },
+  "accept_matched": {
+    "method": "POST",
+    "path": "/api/v1/supply/review/matched/accept",
+    "typed": true
+  },
   "accept_project_import_proposal": {
     "method": "POST",
     "path": "/api/v1/catalog/import-proposals/{proposal_id}/accept",
@@ -194,6 +199,11 @@
     "path": "/api/v1/supply/inventory-sources/{source_id}/check",
     "typed": true
   },
+  "check_library": {
+    "method": "POST",
+    "path": "/api/v1/settings/kicad-libraries/{name}/check",
+    "typed": true
+  },
   "check_notices": {
     "method": "POST",
     "path": "/api/v1/supply/parts/{part_id}/check-notices",
@@ -202,6 +212,11 @@
   "check_release_tag": {
     "method": "GET",
     "path": "/api/v1/projects/{project_id}/release-studio/tags/{tag}",
+    "typed": true
+  },
+  "check_remote": {
+    "method": "POST",
+    "path": "/api/v1/settings/kicad-libraries/check",
     "typed": true
   },
   "choose_line": {
@@ -349,6 +364,11 @@
     "path": "/api/v1/supply/inventory-sources",
     "typed": true
   },
+  "create_library": {
+    "method": "POST",
+    "path": "/api/v1/settings/kicad-libraries",
+    "typed": true
+  },
   "create_metadata_batch": {
     "method": "POST",
     "path": "/api/v1/catalog/metadata/batches",
@@ -477,6 +497,11 @@
   "delete_inventory_source": {
     "method": "DELETE",
     "path": "/api/v1/supply/inventory-sources/{source_id}",
+    "typed": true
+  },
+  "delete_library": {
+    "method": "DELETE",
+    "path": "/api/v1/settings/kicad-libraries/{name}",
     "typed": true
   },
   "delete_project_endpoint": {
@@ -634,6 +659,11 @@
     "path": "/api/v1/catalog/metadata/export.csv",
     "typed": true
   },
+  "fetch_library": {
+    "method": "POST",
+    "path": "/api/v1/settings/kicad-libraries/{name}/fetch",
+    "typed": true
+  },
   "find_part": {
     "method": "GET",
     "path": "/api/v1/supply/part-lookup",
@@ -667,6 +697,11 @@
   "forget_signin": {
     "method": "DELETE",
     "path": "/api/v1/supply/connectors/{connector_id}/signin",
+    "typed": true
+  },
+  "freeze_library": {
+    "method": "POST",
+    "path": "/api/v1/settings/kicad-libraries/{name}/freeze",
     "typed": true
   },
   "generate_missing_previews": {
@@ -1314,6 +1349,11 @@
     "path": "/api/v1/supply/parts/{part_id}/library-component",
     "typed": true
   },
+  "library_versions": {
+    "method": "GET",
+    "path": "/api/v1/settings/kicad-libraries/{name}/versions",
+    "typed": true
+  },
   "link_library_asset": {
     "method": "POST",
     "path": "/api/v1/catalog/components/{component_id}/assets/{asset_type}/link",
@@ -1442,6 +1482,11 @@
   "list_inventory_sources": {
     "method": "GET",
     "path": "/api/v1/supply/inventory-sources",
+    "typed": true
+  },
+  "list_libraries": {
+    "method": "GET",
+    "path": "/api/v1/settings/kicad-libraries",
     "typed": true
   },
   "list_linkable_connectors": {
@@ -1964,6 +2009,11 @@
     "path": "/api/v1/projects/{project_id}/comments/{comment_id}/reattach",
     "typed": true
   },
+  "refresh_library": {
+    "method": "POST",
+    "path": "/api/v1/settings/kicad-libraries/{name}/refresh",
+    "typed": true
+  },
   "refresh_rates": {
     "method": "POST",
     "path": "/api/v1/supply/fx/refresh",
@@ -2439,6 +2489,11 @@
     "path": "/api/v1/supply/review/parts/{part_id}/undo",
     "typed": true
   },
+  "unfreeze_library": {
+    "method": "POST",
+    "path": "/api/v1/settings/kicad-libraries/{name}/unfreeze",
+    "typed": true
+  },
   "unlink_comment_tracker": {
     "method": "POST",
     "path": "/api/v1/projects/{project_id}/comments/{comment_id}/tracker/unlink",
@@ -2484,9 +2539,19 @@
     "path": "/api/v1/supply/inventory-sources/{source_id}",
     "typed": true
   },
+  "update_library": {
+    "method": "PATCH",
+    "path": "/api/v1/settings/kicad-libraries/{name}",
+    "typed": true
+  },
   "update_metadata_field": {
     "method": "PATCH",
     "path": "/api/v1/catalog/metadata/fields/{field_id}",
+    "typed": true
+  },
+  "update_now": {
+    "method": "POST",
+    "path": "/api/v1/settings/kicad-libraries/{name}/update",
     "typed": true
   },
   "update_project_config": {
@@ -2557,6 +2622,11 @@
   "use_numbers": {
     "method": "POST",
     "path": "/api/v1/supply/review/choices/{part_id}/numbers",
+    "typed": true
+  },
+  "use_version": {
+    "method": "POST",
+    "path": "/api/v1/settings/kicad-libraries/{name}/versions/{commit}/use",
     "typed": true
   },
   "validate_catalog": {
