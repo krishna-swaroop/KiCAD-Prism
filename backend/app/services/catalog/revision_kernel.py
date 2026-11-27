@@ -277,6 +277,22 @@ class CatalogRevisionKernel:
         )
         # Copies the head's links, and the STEP purge never deletes a head's
         # model, so this needs no asset_files.lock_and_check_asset_bytes.
+        self.copy_revision_links(conn, str(current["id"]), revision_id, now)
+        conn.execute(
+            "UPDATE components SET current_revision_id = %s, updated_at = %s WHERE id = %s",
+            (revision_id, now, component_id),
+        )
+        self.inherit_validation_evidence(conn, str(current["id"]), revision_id)
+        return self.revision_row(conn, revision_id) or {}
+
+    @staticmethod
+    def copy_revision_links(conn: Any, source_revision_id: str, revision_id: str, now: str) -> None:
+        """Give ``revision_id`` the asset links, representations and previews of ``source_revision_id``.
+
+        Links only: no asset row or file is copied. The target revision must
+        not be finalized yet, because the database rejects preview rows for a
+        revision that has a manifest hash.
+        """
         conn.execute(
             """
             INSERT INTO revision_assets (revision_id, asset_type, asset_id, required, created_at, updated_at)
@@ -284,7 +300,7 @@ class CatalogRevisionKernel:
             FROM revision_assets
             WHERE revision_id = %s
             """,
-            (revision_id, now, now, current["id"]),
+            (revision_id, now, now, source_revision_id),
         )
         for representation in conn.execute(
             """
@@ -294,7 +310,7 @@ class CatalogRevisionKernel:
             WHERE revision_id = %s
             ORDER BY display_order, id
             """,
-            (current["id"],),
+            (source_revision_id,),
         ).fetchall():
             conn.execute(
                 """
@@ -318,7 +334,7 @@ class CatalogRevisionKernel:
             FROM revision_previews
             WHERE revision_id = %s
             """,
-            (revision_id, now, current["id"]),
+            (revision_id, now, source_revision_id),
         )
         conn.execute(
             """
@@ -327,14 +343,8 @@ class CatalogRevisionKernel:
             FROM revision_preview_outputs
             WHERE revision_id = %s
             """,
-            (revision_id, now, current["id"]),
+            (revision_id, now, source_revision_id),
         )
-        conn.execute(
-            "UPDATE components SET current_revision_id = %s, updated_at = %s WHERE id = %s",
-            (revision_id, now, component_id),
-        )
-        self.inherit_validation_evidence(conn, str(current["id"]), revision_id)
-        return self.revision_row(conn, revision_id) or {}
 
     def load_assets_for_revision(self, conn: Any, revision_id: str) -> list[dict[str, Any]]:
         rows = conn.execute(

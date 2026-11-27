@@ -59,6 +59,12 @@ def _enqueue_catalog_job(
     )
 
 
+class CreateFromSource(BaseModel):
+    """Link this component's released assets; a release newer than ``expected_revision_id`` is 412."""
+    component_id: str = Field(min_length=1)
+    expected_revision_id: str = Field(min_length=1)
+
+
 class CreateManualComponentRequest(BaseModel):
     value: str
     description: str
@@ -79,6 +85,7 @@ class CreateManualComponentRequest(BaseModel):
     sap_code: str = ""
     change_summary: str = "Create component"
     extra_fields: dict[str, str] = Field(default_factory=dict)
+    source: CreateFromSource | None = None
 
 
 class UpdateComponentMetadataRequest(BaseModel):
@@ -821,8 +828,8 @@ def create_catalog_component(
     payload: CreateManualComponentRequest,
     user: AuthenticatedUser = Depends(require_catalog_writer),
 ):
-    with value_errors_as(400):
-        data = payload.model_dump()
+    with value_errors_as(400, keep_typed=True):
+        data = payload.model_dump(exclude_none=True)
         change_summary = str(data.pop("change_summary"))
         return catalog_service.create_manual_component(actor=user.email, change_summary=change_summary, **data)
 

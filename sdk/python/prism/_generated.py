@@ -1724,6 +1724,12 @@ class CreateFolderRequest(TypedDict, total=False):
     parent_id: str | None
 
 
+class CreateFromSource(TypedDict, total=True):
+    """Link this component's released assets; a release newer than ``expected_revision_id`` is 412."""
+    component_id: str
+    expected_revision_id: str
+
+
 class CreateManualComponentRequest(TypedDict, total=False):
     category: str
     change_summary: str
@@ -1739,6 +1745,7 @@ class CreateManualComponentRequest(TypedDict, total=False):
     rqjc_c_w: str
     rqjc_top_c_w: str
     sap_code: str
+    source: CreateFromSource | None
     temp_max_c: str
     temp_min_c: str
     value: str
