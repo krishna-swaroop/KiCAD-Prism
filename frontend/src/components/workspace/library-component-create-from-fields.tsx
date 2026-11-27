@@ -46,7 +46,7 @@ export function createFromRequest(source: CatalogComponent): Record<string, unkn
 /** What the new component gets from the source besides the form: linked files and kept fields. */
 export function CreateFromSummary({ source }: { source: CatalogComponent }) {
   const kept = [
-    ...Object.entries(KEPT_FIELDS).filter(([key]) => String(source[key as keyof typeof KEPT_FIELDS] ?? "").trim()).map(([, label]) => label),
+    ...Object.entries(KEPT_FIELDS).flatMap(([key, label]) => (String(source[key as keyof typeof KEPT_FIELDS] ?? "").trim() ? [label] : [])),
     ...Object.keys(source.extra_fields ?? {}).filter((key) => String(source.extra_fields[key] ?? "").trim()),
   ];
   return (
