@@ -64,6 +64,7 @@ _CATALOG_FIELDS = (
     "sap_code",
     "change_summary",
     "extra_fields",
+    "source",
 )
 
 
@@ -188,7 +189,12 @@ register(
         description=(
             "Create an unreviewed catalog component draft. It starts in the open "
             "workflow stage; catalog review and release stay a person's decision in "
-            "Prism's library workspace."
+            "Prism's library workspace. With source, the draft also links the symbol, "
+            "footprint, 3D models and representations of another component's released "
+            "revision (take released_revision_id from get_catalog_component); no metadata "
+            "is copied, so give this part's own. A source with no release is refused "
+            "(source_not_released), and a newer release than the one given is a "
+            "revision_conflict."
         ),
         input_schema=_object(
             {
@@ -214,6 +220,24 @@ register(
                     "type": "object",
                     "additionalProperties": {"type": "string"},
                     "description": "Custom metadata field values, keyed by field key (see list_catalog_fields).",
+                },
+                "source": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "component_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The released component to create from.",
+                        },
+                        "expected_revision_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Its released_revision_id, as get_catalog_component returned it.",
+                        },
+                    },
+                    "required": ["component_id", "expected_revision_id"],
+                    "description": "Link the assets of this component's released revision.",
                 },
             },
             (

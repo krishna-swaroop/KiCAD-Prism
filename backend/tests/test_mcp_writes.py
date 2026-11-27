@@ -294,6 +294,38 @@ class WriteRouteTests(unittest.TestCase):
             },
         )
 
+
+    def test_create_catalog_draft_from_a_released_component_posts_the_source(self) -> None:
+        fields = {
+            "value": "4k7",
+            "description": "Resistor",
+            "datasheet": "",
+            "manufacturer": "Acme",
+            "manufacturer_part_number": "R-4K7",
+            "change_summary": "Create from the 10k part",
+            "source": {"component_id": "c-10k", "expected_revision_id": "r-7"},
+        }
+        app = self.call("create_catalog_draft", fields, {"id": "component-2", "workflow_stage": "open"})
+        self.assertEqual(app.seen["path"], "/api/v1/catalog/components")
+        self.assertEqual(app.seen["body"], fields)
+
+    def test_create_catalog_draft_refuses_a_source_without_its_released_revision(self) -> None:
+        app = StubApp()
+        result = asyncio.run(
+            invoke.call_tool(
+                app,
+                registry.tool_named("create_catalog_draft"),
+                {
+                    "value": "4k7", "description": "Resistor", "datasheet": "", "manufacturer": "Acme",
+                    "manufacturer_part_number": "R-4K7", "change_summary": "Create from",
+                    "source": {"component_id": "c-10k"},
+                },
+                authorization="Bearer t",
+            )
+        )
+        self.assertTrue(result["isError"])
+        self.assertEqual(result["structuredContent"]["error"]["code"], "invalid-arguments")
+        self.assertEqual(app.seen, {})
     def test_update_import_proposal_puts_the_drafts(self) -> None:
         drafts = {"proposal-1": {"metadata_overrides": {"value": "10k"}}}
         app = self.call(
