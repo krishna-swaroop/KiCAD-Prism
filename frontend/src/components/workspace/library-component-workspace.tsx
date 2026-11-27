@@ -62,6 +62,7 @@ import {
   releaseComponent,
   verifyComponentAudit,
 } from "./catalog-client";
+import { CreateFromButton } from "./library-component-create-from";
 import { canAdministerCatalog, canOpenSupply, canReviewCatalogQa, canWriteCatalog, workflowStage } from "@/lib/roles";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { User } from "@/types/auth";
@@ -674,6 +675,7 @@ export function LibraryComponentWorkspace({
             {!historical && !canMutate ? (
               <Badge variant="secondary" title={`Editing needs the Designer or Admin role${canReviewCatalogQa(user?.role) ? "; QA review stays available" : ""}`}><ShieldCheck className="h-3 w-3" />Read only</Badge>
             ) : null}
+            {canMutate ? <CreateFromButton component={currentComponent} onCreated={(created) => updateParams({ component: created.id, componentTab: "overview", revision: null, compare: null })} /> : null}
             <Button size="icon-sm" variant="ghost" aria-label="Refresh component workspace" title="Refresh" onClick={() => setRefreshKey((value) => value + 1)}><RefreshCw className="h-3.5 w-3.5" /></Button>
           </div>
         </div>
